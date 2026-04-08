@@ -9,7 +9,7 @@ DataFrame は最低 1 つのカテゴリ列と 1 つの数値列を持つこと�
 group_col / value_col で明示すれば棒グラフが自動描画される。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional
 import pandas as pd
 from simple_salesforce import Salesforce
@@ -26,29 +26,12 @@ class Metric:
     category: str = "活動"             # サイドバーのグルーピング用
 
 
-# ----------------------------------------------------------------------
-# 指標 1: 今月の FC 件数（担当者別）
-# ----------------------------------------------------------------------
-def fetch_fc_this_month(sf: Salesforce) -> pd.DataFrame:
-    soql = (
-        "SELECT OwnerId, Owner.Name oname, COUNT(Id) cnt "
-        "FROM Task "
-        "WHERE Subject = 'FC' AND ActivityDate = THIS_MONTH "
-        "GROUP BY OwnerId, Owner.Name "
-        "ORDER BY COUNT(Id) DESC"
-    )
-    res = sf.query(soql)
-    rows = [
-        {"担当者": r.get("oname") or r["OwnerId"], "件数": r["cnt"]}
-        for r in res["records"]
-    ]
-    return pd.DataFrame(rows)
-
-
-# ----------------------------------------------------------------------
-# 指標 2: 日別 フォローコール（1週間後FC）完了 件数
-# ----------------------------------------------------------------------
-def fetch_fc_1w_completed_daily(sf: Salesforce) -> pd.DataFrame:
+# ======================================================================
+# 活動 / 1週間後FC ボード
+#   対応ステータス='フォローコール（1週間後FC）' かつ
+#   コール結果='完了' の Task を今月分、日付×担当者で集計
+# ======================================================================
+def fetch_fc_1week(sf: Salesforce) -> pd.DataFrame:
     soql = (
         "SELECT ActivityDate, OwnerId, Owner.Name oname, COUNT(Id) cnt "
         "FROM Task "
@@ -78,65 +61,14 @@ def fetch_fc_1w_completed_daily(sf: Salesforce) -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------------
-# 指標 3: 日別×担当者別 フォローコール（1週間後FC）完了 件数
-# ----------------------------------------------------------------------
-def fetch_fc_1w_completed_daily_by_owner(sf: Salesforce) -> pd.DataFrame:
-    soql = (
-        "SELECT ActivityDate, OwnerId, Owner.Name oname, COUNT(Id) cnt "
-        "FROM Task "
-        "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
-        "AND Field4_del__c = '完了' "
-        "AND ActivityDate = LAST_N_DAYS:60 "
-        "GROUP BY ActivityDate, OwnerId, Owner.Name "
-        "ORDER BY ActivityDate"
-    )
-    res = sf.query(soql)
-    rows = [
-        {
-            "日付": str(r["ActivityDate"]),
-            "担当者": r.get("oname") or r["OwnerId"],
-            "件数": r["cnt"],
-        }
-        for r in res["records"]
-    ]
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-    # 日付×担当者のピボット表
-    pivot = df.pivot_table(
-        index="日付", columns="担当者", values="件数", fill_value=0
-    ).reset_index()
-    return pivot
-
-
-# ----------------------------------------------------------------------
 # 指標レジストリ
-#   ↓ ここに追記していくだけで画面に増えます
 # ----------------------------------------------------------------------
 METRICS: list[Metric] = [
     Metric(
-        key="fc_this_month",
-        label="今月のFC件数（担当者別）",
-        description="Subject='FC' かつ ActivityDate が今月の Task を担当者別に集計",
-        fetch=fetch_fc_this_month,
-        group_col="担当者",
-        value_col="件数",
-        category="活動",
-    ),
-    Metric(
-        key="fc_1w_completed_daily",
-        label="日別 フォローコール（1週間後FC）完了件数",
+        key="fc_1week",
+        label="1週間後FC",
         description="対応ステータス='フォローコール（1週間後FC）' かつ コール結果='完了' の Task を今月分、日付×担当者で集計",
-        fetch=fetch_fc_1w_completed_daily,
-        group_col="日付",
-        value_col=None,
-        category="活動",
-    ),
-    Metric(
-        key="fc_1w_completed_daily_by_owner",
-        label="日別×担当者別 フォローコール（1週間後FC）完了件数",
-        description="対応ステータス='フォローコール（1週間後FC）' かつ コール結果='完了' の Task を日付×担当者でピボット集計（直近60日）",
-        fetch=fetch_fc_1w_completed_daily_by_owner,
+        fetch=fetch_fc_1week,
         group_col="日付",
         value_col=None,
         category="活動",

@@ -215,7 +215,34 @@ def _fetch_1week_cancel_reasons(sf: Salesforce) -> Dict[str, pd.DataFrame]:
 # ----------------------------------------------------------------------
 # 指標レジストリ
 # ----------------------------------------------------------------------
+def fetch_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    # 仮実装: 今日のTask件数を担当者別に集計（土台）
+    soql = (
+        "SELECT OwnerId, Owner.Name, COUNT(Id) cnt "
+        "FROM Task "
+        "WHERE ActivityDate = TODAY "
+        "GROUP BY OwnerId, Owner.Name "
+        "ORDER BY COUNT(Id) DESC"
+    )
+    res = sf.query(soql)
+    rows = [
+        {
+            "担当者": (r.get("Name") or (r.get("Owner") or {}).get("Name") or r["OwnerId"]),
+            "件数": r["cnt"],
+        }
+        for r in res["records"]
+    ]
+    return {"TODAY": pd.DataFrame(rows)}
+
+
 METRICS: list[Metric] = [
+    Metric(
+        key="today",
+        label="TODAY",
+        description="本日分の集計ボード（土台）",
+        fetch=fetch_today,
+        category="TODAY",
+    ),
     Metric(
         key="fc_1week",
         label="1週間後FC",

@@ -84,24 +84,21 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
-    HIGHLIGHT = {
-        "NURO開通進捗": ["工事完了数", "工事完了率"],
-        "ソネット開通進捗": ["決済登録率"],
-    }
-    highlight_cols = [c for c in HIGHLIGHT.get(title, []) if c in df.columns]
-    styled = (
-        df.style
-        .set_properties(**{"text-align": "center"})
-        .set_table_styles([
-            {"selector": "th", "props": [("text-align", "center")]},
-        ])
+    html = df.to_html(index=False, escape=False)
+    st.markdown(
+        """
+        <style>
+        .centered-table { width: 100%; border-collapse: collapse; }
+        .centered-table th, .centered-table td {
+            text-align: center !important;
+            padding: 6px 10px;
+            border: 1px solid rgba(128,128,128,0.3);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
-    if highlight_cols:
-        styled = styled.set_properties(
-            subset=highlight_cols,
-            **{"background-color": "#fff3b0", "color": "#222", "text-align": "center"},
-        )
-    st.dataframe(styled, width="stretch", hide_index=True)
+    st.markdown(html.replace("<table", '<table class="centered-table"', 1), unsafe_allow_html=True)
     st.download_button(
         "CSV ダウンロード",
         df.to_csv(index=False).encode("utf-8-sig"),

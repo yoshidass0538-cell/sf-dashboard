@@ -43,7 +43,7 @@ selected_key = None
 for cat, ms in categories.items():
     st.sidebar.subheader(cat)
     for m in ms:
-        if st.sidebar.button(m.label, key=f"btn_{m.key}", use_container_width=True):
+        if st.sidebar.button(m.label, key=f"btn_{m.key}", width="stretch"):
             st.session_state["selected"] = m.key
 
 valid_keys = {m.key for m in METRICS}
@@ -52,7 +52,7 @@ if st.session_state.get("selected") not in valid_keys:
 
 selected_key = st.session_state["selected"]
 
-if st.sidebar.button("🔄 キャッシュ更新", use_container_width=True):
+if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     _load.clear()
     st.rerun()
 
@@ -84,7 +84,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
     st.download_button(
         "CSV ダウンロード",
         df.to_csv(index=False).encode("utf-8-sig"),

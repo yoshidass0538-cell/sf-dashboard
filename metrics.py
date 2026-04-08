@@ -294,6 +294,84 @@ def fetch_progress(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     }
 
 
+# 稼働実績(CustomObject11__c) の 1日〜31日の (開始,終了) フィールド
+SHIFT_DAY_FIELDS = [
+    (1, "Field3__c", "Field4__c"),
+    (2, "Field7__c", "Field8__c"),
+    (3, "Field11__c", "Field12__c"),
+    (4, "Field15__c", "Field16__c"),
+    (5, "Field27__c", "Field20__c"),
+    (6, "Field23__c", "Field28__c"),
+    (7, "Field31__c", "Field24__c"),
+    (8, "Field32__c", "Field33__c"),
+    (9, "Field36__c", "Field37__c"),
+    (10, "Field40__c", "Field41__c"),
+    (11, "Field44__c", "Field45__c"),
+    (12, "Field48__c", "Field49__c"),
+    (13, "Field52__c", "Field53__c"),
+    (14, "Field56__c", "Field57__c"),
+    (15, "Field60__c", "Field61__c"),
+    (16, "Field64__c", "Field65__c"),
+    (17, "Field68__c", "Field69__c"),
+    (18, "Field72__c", "Field73__c"),
+    (19, "Field76__c", "Field77__c"),
+    (20, "Field80__c", "Field81__c"),
+    (21, "Field84__c", "Field85__c"),
+    (22, "Field88__c", "Field89__c"),
+    (23, "Field92__c", "Field93__c"),
+    (24, "Field96__c", "Field97__c"),
+    (25, "Field100__c", "Field101__c"),
+    (26, "Field104__c", "Field105__c"),
+    (27, "Field108__c", "Field109__c"),
+    (28, "Field112__c", "Field113__c"),
+    (29, "Field116__c", "Field117__c"),
+    (30, "Field120__c", "Field121__c"),
+    (31, "Field124__c", "Field125__c"),
+]
+
+
+def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    today = pd.Timestamp.today()
+    year_label = f"{today.year}年"
+    month_label = f"{today.month}月"
+
+    field_list = ["Field128__r.Name"]
+    for _, s, e in SHIFT_DAY_FIELDS:
+        field_list += [s, e]
+    soql = (
+        f"SELECT {', '.join(field_list)} FROM CustomObject11__c "
+        f"WHERE Field1__c = '{year_label}' AND Field2__c = '{month_label}' "
+        f"AND Field128__r.Field13__c = 'CS促進' "
+        f"ORDER BY Field128__r.Name"
+    )
+    rs = sf.query_all(soql)["records"]
+    if not rs:
+        return {"CS促進シフト": pd.DataFrame()}
+
+    def _fmt(t):
+        if not t:
+            return ""
+        # "HH:MM:SS.000Z" → "HH:MM"
+        return str(t)[:5]
+
+    rows = []
+    for r in rs:
+        owner = (r.get("Field128__r") or {}).get("Name") or "(不明)"
+        row = {"担当者": owner}
+        for day, sf_, ef in SHIFT_DAY_FIELDS:
+            s = _fmt(r.get(sf_))
+            e = _fmt(r.get(ef))
+            if s and e:
+                row[f"{day}"] = f"{s}-{e}"
+            elif s:
+                row[f"{day}"] = s
+            else:
+                row[f"{day}"] = ""
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    return {f"CS促進 シフト ({year_label}{month_label})": df}
+
+
 def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     # ===== ソネット (リストビュー仕様) =====
     so_soql = (
@@ -385,6 +463,13 @@ METRICS: list[Metric] = [
         description="本日分: 1週間後FCの集計（担当者別）",
         fetch=fetch_fc_1week_today,
         category="TODAY",
+    ),
+    Metric(
+        key="cs_shift",
+        label="CS促進シフト（今月）",
+        description="稼働実績(CS促進)の今月シフト一覧",
+        fetch=fetch_cs_shift,
+        category="シフト",
     ),
     Metric(
         key="list_volume",

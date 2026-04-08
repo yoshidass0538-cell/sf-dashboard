@@ -119,11 +119,11 @@ def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         df[col] = df[col].map(lambda v: "" if v == 0 else str(v))
     df["担当者"] = df["担当者"].mask(df["担当者"].duplicated(), "")
 
-    cancel_df = _fetch_1week_cancel_reasons(sf)
-    return {"1週間後FC": df, "1週間後FC後のキャンセル理由（担当者別）": cancel_df}
+    cancel_tables = _fetch_1week_cancel_reasons(sf)
+    return {"1週間後FC": df, **cancel_tables}
 
 
-def _fetch_1week_cancel_reasons(sf: Salesforce) -> pd.DataFrame:
+def _fetch_1week_cancel_reasons(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     """今月1週間後FCを行った案件のうち、その後キャンセル対応に至ったものを
     担当者(FC実施者)×キャンセル理由(Account.Field234__c) で集計。"""
     fc_records = sf.query_all(
@@ -143,7 +143,7 @@ def _fetch_1week_cancel_reasons(sf: Salesforce) -> pd.DataFrame:
             (r["Owner"]["Name"] if r.get("Owner") else "(不明)", r["ActivityDate"])
         )
     if not fc_map:
-        return pd.DataFrame()
+        return {}
 
     what_ids = list(fc_map.keys())
     cancel_set = set()
@@ -167,39 +167,49 @@ def _fetch_1week_cancel_reasons(sf: Salesforce) -> pd.DataFrame:
                     cancel_set.add(wid)
                     break
     if not cancel_set:
-        return pd.DataFrame()
+        return {}
 
-    reason_map: Dict[str, str] = {}
+    reason_map: Dict[str, dict] = {}
     cw = list(cancel_set)
     for i in range(0, len(cw), 200):
         chunk = cw[i : i + 200]
         ids_str = ",".join(f"'{x}'" for x in chunk)
         rs = sf.query_all(
-            f"SELECT Id, toLabel(Field234__c) reason FROM Account WHERE Id IN ({ids_str})"
+            f"SELECT Id, Field234__c, Field80__c, Field235__c "
+            f"FROM Account WHERE Id IN ({ids_str})"
         )["records"]
         for r in rs:
-            reason_map[r["Id"]] = r.get("reason") or "(理由未設定)"
+            reason_map[r["Id"]] = {
+                "大": r.get("Field234__c") or "(理由未設定)",
+                "中": r.get("Field80__c") or "(中区分未設定)",
+                "小": r.get("Field235__c") or "(小区分未設定)",
+            }
 
     rows = []
     for wid in cancel_set:
-        reason = reason_map.get(wid, "(理由未設定)")
-        # FC担当者ごとに1件カウント（複数担当者がいれば各々に加算）
-        owners = {o for o, _ in fc_map[wid]}
-        for owner in owners:
-            rows.append({"担当者": owner, "キャンセル理由": reason, "件数": 1})
+        r = reason_map.get(wid, {"大": "(理由未設定)", "中": "(中区分未設定)", "小": "(小区分未設定)"})
+        for owner in {o for o, _ in fc_map[wid]}:
+            rows.append({"担当者": owner, **r, "件数": 1})
     if not rows:
-        return pd.DataFrame()
-    g = (
-        pd.DataFrame(rows)
-        .groupby(["担当者", "キャンセル理由"], as_index=False)["件数"]
-        .sum()
-    )
-    pivot = g.pivot_table(
-        index="担当者", columns="キャンセル理由", values="件数", fill_value=0
-    )
-    pivot["合計"] = pivot.sum(axis=1)
-    pivot = pivot.sort_values("合計", ascending=False).reset_index()
-    return pivot
+        return {}
+    base = pd.DataFrame(rows)
+
+    def _pivot(df: pd.DataFrame, col: str) -> pd.DataFrame:
+        if df.empty:
+            return df
+        g = df.groupby(["担当者", col], as_index=False)["件数"].sum()
+        p = g.pivot_table(index="担当者", columns=col, values="件数", fill_value=0)
+        p["合計"] = p.sum(axis=1)
+        return p.sort_values("合計", ascending=False).reset_index()
+
+    tables = {
+        "1週間後FC後のキャンセル理由（大区分）": _pivot(base, "大"),
+        "└ 意思無し系 内訳（中区分）": _pivot(base[base["大"] == "意思無し系"], "中"),
+        "　 意思無し系 内訳（小区分）": _pivot(base[base["大"] == "意思無し系"], "小"),
+        "└ 認識相違系 内訳（中区分）": _pivot(base[base["大"] == "認識相違系"], "中"),
+        "　 認識相違系 内訳（小区分）": _pivot(base[base["大"] == "認識相違系"], "小"),
+    }
+    return tables
 
 
 # ----------------------------------------------------------------------

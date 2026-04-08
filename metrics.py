@@ -50,20 +50,31 @@ def fetch_fc_this_month(sf: Salesforce) -> pd.DataFrame:
 # ----------------------------------------------------------------------
 def fetch_fc_1w_completed_daily(sf: Salesforce) -> pd.DataFrame:
     soql = (
-        "SELECT ActivityDate, COUNT(Id) cnt "
+        "SELECT ActivityDate, OwnerId, Owner.Name oname, COUNT(Id) cnt "
         "FROM Task "
         "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
         "AND Field4_del__c = '完了' "
-        "AND ActivityDate = LAST_N_DAYS:60 "
-        "GROUP BY ActivityDate "
+        "AND ActivityDate = THIS_MONTH "
+        "GROUP BY ActivityDate, OwnerId, Owner.Name "
         "ORDER BY ActivityDate"
     )
     res = sf.query(soql)
     rows = [
-        {"日付": str(r["ActivityDate"]), "件数": r["cnt"]}
+        {
+            "日付": str(r["ActivityDate"]),
+            "担当者": r.get("oname") or r["OwnerId"],
+            "件数": r["cnt"],
+        }
         for r in res["records"]
     ]
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    pivot = df.pivot_table(
+        index="日付", columns="担当者", values="件数", fill_value=0
+    )
+    pivot["合計"] = pivot.sum(axis=1)
+    return pivot.reset_index()
 
 
 # ----------------------------------------------------------------------
@@ -115,10 +126,10 @@ METRICS: list[Metric] = [
     Metric(
         key="fc_1w_completed_daily",
         label="日別 フォローコール（1週間後FC）完了件数",
-        description="対応ステータス='フォローコール（1週間後FC）' かつ コール結果='完了' の Task を日別に集計（直近60日）",
+        description="対応ステータス='フォローコール（1週間後FC）' かつ コール結果='完了' の Task を今月分、日付×担当者で集計",
         fetch=fetch_fc_1w_completed_daily,
         group_col="日付",
-        value_col="件数",
+        value_col=None,
         category="活動",
     ),
     Metric(

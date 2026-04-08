@@ -113,6 +113,11 @@ def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
             out_rows.append(row)
 
     df = pd.DataFrame(out_rows, columns=["担当者", "指標", *dates, "合計"])
+    # 列ごとに int と str が混在しないよう全セルを文字列化
+    for col in df.columns:
+        if col in ("担当者", "指標"):
+            continue
+        df[col] = df[col].map(lambda v: "" if v == 0 else str(v))
     return {"1週間後FC": df}
 
 

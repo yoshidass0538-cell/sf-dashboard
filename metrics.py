@@ -42,6 +42,19 @@ def _pivot_owner_date(df: pd.DataFrame, value_col: str = "件数") -> pd.DataFra
     return pivot.reset_index()
 
 
+METRIC_ORDER = [
+    ("総コール数", None,    "count"),
+    ("完了数",     "完了",   "count"),
+    ("完了率",     "完了",   "rate"),
+    ("留守数",     "留守",   "count"),
+    ("留守率",     "留守",   "rate"),
+    ("再コール数", "再コール", "count"),
+    ("再コール率", "再コール", "rate"),
+    ("対応依頼数", "対応依頼", "count"),
+    ("対応依頼率", "対応依頼", "rate"),
+]
+
+
 def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     soql = (
         "SELECT ActivityDate, OwnerId, Owner.Name oname, "
@@ -62,73 +75,45 @@ def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         for r in res["records"]
     ]
     raw = pd.DataFrame(rows)
-
-    tables: Dict[str, pd.DataFrame] = {}
-
-    # 総コール数（結果問わず）
     if raw.empty:
-        total = pd.DataFrame()
-    else:
-        total = raw.groupby(["担当者", "日付"], as_index=False)["件数"].sum()
-    tables["1週間後FC総コール数"] = _pivot_owner_date(total)
+        return {"1週間後FC": pd.DataFrame()}
 
-    # 結果別件数
-    result_specs = [
-        ("完了", "1週間後FC完了数"),
-        ("留守", "1週間後FC留守数"),
-        ("再コール", "1週間後FC再コール数"),
-        ("対応依頼", "1週間後FC対応依頼数"),
-    ]
-    counts_by_result: Dict[str, pd.DataFrame] = {}
-    for result_value, title in result_specs:
-        sub = raw[raw["結果"] == result_value][["担当者", "日付", "件数"]] if not raw.empty else raw
-        counts_by_result[result_value] = sub
-        tables[title] = _pivot_owner_date(sub)
+    dates = sorted(raw["日付"].unique().tolist())
+    owners = sorted(raw["担当者"].unique().tolist())
 
-    # 率（担当者×日付セル単位で 結果件数 / 総コール件数）
-    if not raw.empty:
-        total_cell = raw.groupby(["担当者", "日付"], as_index=False)["件数"].sum()
-        total_cell = total_cell.rename(columns={"件数": "総"})
-        rate_specs = [
-            ("完了", "1週間後FC完了率"),
-            ("留守", "1週間後FC留守率"),
-            ("対応依頼", "1週間後FC対応依頼率"),
-            ("再コール", "1週間後FC再コール率"),
-        ]
-        for result_value, title in rate_specs:
-            sub = counts_by_result[result_value]
-            if sub.empty:
-                tables[title] = pd.DataFrame()
-                continue
-            merged = sub.merge(total_cell, on=["担当者", "日付"], how="right").fillna(0)
-            merged["率"] = (merged["件数"] / merged["総"] * 100).round(1)
-            pivot = merged.pivot_table(
-                index="担当者", columns="日付", values="率", fill_value=0
-            )
-            # 担当者ごとの全期間平均率（合計件数ベース）
-            owner_total = (
-                merged.groupby("担当者")[["件数", "総"]].sum()
-            )
-            pivot["合計"] = (
-                (owner_total["件数"] / owner_total["総"] * 100).round(1)
-            )
-            pivot = pivot.reset_index()
-            # 表示を "12.3%" にする
-            for col in pivot.columns:
-                if col == "担当者":
-                    continue
-                pivot[col] = pivot[col].map(lambda v: f"{v}%")
-            tables[title] = pivot
-    else:
-        for _, title in [
-            ("完了", "1週間後FC完了率"),
-            ("留守", "1週間後FC留守率"),
-            ("対応依頼", "1週間後FC対応依頼率"),
-            ("再コール", "1週間後FC再コール率"),
-        ]:
-            tables[title] = pd.DataFrame()
+    # (担当者, 日付) → 総件数
+    total_cell = raw.groupby(["担当者", "日付"])["件数"].sum().unstack(fill_value=0)
+    total_cell = total_cell.reindex(index=owners, columns=dates, fill_value=0)
+    total_owner = total_cell.sum(axis=1)
 
-    return tables
+    out_rows = []
+    for owner in owners:
+        for label, result_value, kind in METRIC_ORDER:
+            row = {"担当者": owner, "指標": label}
+            if result_value is None:
+                # 総コール数
+                for d in dates:
+                    row[d] = int(total_cell.loc[owner, d])
+                row["合計"] = int(total_owner.loc[owner])
+            else:
+                sub = raw[(raw["担当者"] == owner) & (raw["結果"] == result_value)]
+                by_date = sub.groupby("日付")["件数"].sum()
+                if kind == "count":
+                    for d in dates:
+                        row[d] = int(by_date.get(d, 0))
+                    row["合計"] = int(by_date.sum())
+                else:  # rate
+                    for d in dates:
+                        denom = total_cell.loc[owner, d]
+                        num = by_date.get(d, 0)
+                        row[d] = f"{round(num / denom * 100, 1)}%" if denom else "-"
+                    denom_total = total_owner.loc[owner]
+                    num_total = by_date.sum()
+                    row["合計"] = f"{round(num_total / denom_total * 100, 1)}%" if denom_total else "-"
+            out_rows.append(row)
+
+    df = pd.DataFrame(out_rows, columns=["担当者", "指標", *dates, "合計"])
+    return {"1週間後FC": df}
 
 
 # ----------------------------------------------------------------------

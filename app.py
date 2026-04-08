@@ -84,6 +84,11 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
+    HIGHLIGHT = {
+        "NURO開通進捗": ["工事完了数", "工事完了率"],
+        "ソネット開通進捗": ["決済登録率"],
+    }
+    highlight_cols = [c for c in HIGHLIGHT.get(title, []) if c in df.columns]
     styled = (
         df.style
         .set_properties(**{"text-align": "center"})
@@ -91,6 +96,11 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             {"selector": "th", "props": [("text-align", "center")]},
         ])
     )
+    if highlight_cols:
+        styled = styled.set_properties(
+            subset=highlight_cols,
+            **{"background-color": "#fff3b0", "text-align": "center"},
+        )
     st.dataframe(styled, width="stretch", hide_index=True)
     st.download_button(
         "CSV ダウンロード",

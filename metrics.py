@@ -56,12 +56,20 @@ METRIC_ORDER = [
 
 
 def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    return _build_fc_1week(sf, "THIS_MONTH", board_label="1週間後FC")
+
+
+def fetch_fc_1week_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    return _build_fc_1week(sf, "TODAY", board_label="1週間後FC（本日）")
+
+
+def _build_fc_1week(sf: Salesforce, date_literal: str, board_label: str) -> Dict[str, pd.DataFrame]:
     soql = (
         "SELECT ActivityDate, OwnerId, Owner.Name oname, "
         "Field4_del__c result, COUNT(Id) cnt "
         "FROM Task "
         "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
-        "AND ActivityDate = THIS_MONTH "
+        f"AND ActivityDate = {date_literal} "
         "GROUP BY ActivityDate, OwnerId, Owner.Name, Field4_del__c"
     )
     res = sf.query(soql)
@@ -76,7 +84,7 @@ def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     ]
     raw = pd.DataFrame(rows)
     if raw.empty:
-        return {"1週間後FC": pd.DataFrame()}
+        return {board_label: pd.DataFrame()}
 
     dates = sorted(raw["日付"].unique().tolist())
     owners = sorted(raw["担当者"].unique().tolist())
@@ -119,18 +127,18 @@ def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         df[col] = df[col].map(lambda v: "" if v == 0 else str(v))
     df["担当者"] = df["担当者"].mask(df["担当者"].duplicated(), "")
 
-    cancel_tables = _fetch_1week_cancel_reasons(sf)
-    return {"1週間後FC": df, **cancel_tables}
+    cancel_tables = _fetch_1week_cancel_reasons(sf, date_literal)
+    return {board_label: df, **cancel_tables}
 
 
-def _fetch_1week_cancel_reasons(sf: Salesforce) -> Dict[str, pd.DataFrame]:
-    """今月1週間後FCを行った案件のうち、その後キャンセル対応に至ったものを
+def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH") -> Dict[str, pd.DataFrame]:
+    """指定期間に1週間後FCを行った案件のうち、その後キャンセル対応に至ったものを
     担当者(FC実施者)×キャンセル理由(Account.Field234__c) で集計。"""
     fc_records = sf.query_all(
         "SELECT WhatId, Owner.Name, ActivityDate "
         "FROM Task "
         "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
-        "AND ActivityDate = THIS_MONTH "
+        f"AND ActivityDate = {date_literal} "
         "AND WhatId != null"
     )["records"]
     # WhatId が Account(001) のもののみ
@@ -215,32 +223,12 @@ def _fetch_1week_cancel_reasons(sf: Salesforce) -> Dict[str, pd.DataFrame]:
 # ----------------------------------------------------------------------
 # 指標レジストリ
 # ----------------------------------------------------------------------
-def fetch_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
-    # 仮実装: 今日のTask件数を担当者別に集計（土台）
-    soql = (
-        "SELECT OwnerId, Owner.Name, COUNT(Id) cnt "
-        "FROM Task "
-        "WHERE ActivityDate = TODAY "
-        "GROUP BY OwnerId, Owner.Name "
-        "ORDER BY COUNT(Id) DESC"
-    )
-    res = sf.query(soql)
-    rows = [
-        {
-            "担当者": (r.get("Name") or (r.get("Owner") or {}).get("Name") or r["OwnerId"]),
-            "件数": r["cnt"],
-        }
-        for r in res["records"]
-    ]
-    return {"TODAY": pd.DataFrame(rows)}
-
-
 METRICS: list[Metric] = [
     Metric(
         key="today",
         label="TODAY",
-        description="本日分の集計ボード（土台）",
-        fetch=fetch_today,
+        description="本日分: 1週間後FCの集計（担当者別）",
+        fetch=fetch_fc_1week_today,
         category="TODAY",
     ),
     Metric(

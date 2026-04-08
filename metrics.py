@@ -298,6 +298,9 @@ def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     base = (
         "SELECT Field156__c FROM Account "
         "WHERE Field156__c >= 2026-03-01 AND Field253__c < 6 "
+        "AND (Field113__c != 'キャンセル' OR Field113__c = null) "
+        "AND (Field101__c != '後確NG' OR Field101__c = null) "
+        "AND Field63__c != null "
     )
     set_a = sf.query_all(
         base

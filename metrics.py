@@ -68,8 +68,9 @@ def _build_fc_1week(sf: Salesforce, date_literal: str, board_label: str) -> Dict
         "SELECT ActivityDate, OwnerId, Owner.Name oname, "
         "Field4_del__c result, COUNT(Id) cnt "
         "FROM Task "
-        "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
+        "WHERE Field2_del__c IN ('フォローコール（1週間後FC）','フォローコール（その他）') "
         f"AND ActivityDate = {date_literal} "
+        "AND Owner.UserRole.Name IN ('推進部','推進部AP') "
         "GROUP BY ActivityDate, OwnerId, Owner.Name, Field4_del__c"
     )
     res = sf.query(soql)
@@ -137,8 +138,9 @@ def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH"
     fc_records = sf.query_all(
         "SELECT WhatId, Owner.Name, ActivityDate "
         "FROM Task "
-        "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
+        "WHERE Field2_del__c IN ('フォローコール（1週間後FC）','フォローコール（その他）') "
         f"AND ActivityDate = {date_literal} "
+        "AND Owner.UserRole.Name IN ('推進部','推進部AP') "
         "AND WhatId != null"
     )["records"]
     # WhatId が Account(001) のもののみ

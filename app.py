@@ -64,7 +64,6 @@ st.sidebar.caption("データは5分間キャッシュされます")
 # ----------------------------------------------------------------------
 metric = get_metric(selected_key)
 st.title(metric.label)
-st.caption(metric.description)
 
 try:
     fetched = _load(selected_key)
@@ -80,7 +79,8 @@ else:
 
 
 def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
-    st.subheader(title)
+    if title and title != metric.label:
+        st.subheader(title)
     if df is None or df.empty:
         st.info("該当データはありません。")
         return

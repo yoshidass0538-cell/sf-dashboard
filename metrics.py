@@ -232,7 +232,7 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
     soql = (
         "SELECT Field156__c, Field130__c, Field128__c, Field131__c, Field119__c "
         "FROM Account "
-        f"WHERE Field182__c LIKE '%{product_keyword}%' "
+        f"WHERE Field76__r.Name LIKE '%{product_keyword}%' "
         f"AND Field156__c >= {PROGRESS_START}"
     )
     rs = sf.query_all(soql)["records"]

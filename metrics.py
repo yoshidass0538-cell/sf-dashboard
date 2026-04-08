@@ -118,6 +118,8 @@ def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         if col in ("担当者", "指標"):
             continue
         df[col] = df[col].map(lambda v: "" if v == 0 else str(v))
+    # 担当者名は同一担当者の最初の行だけ表示
+    df["担当者"] = df["担当者"].mask(df["担当者"].duplicated(), "")
     return {"1週間後FC": df}
 
 

@@ -320,20 +320,28 @@ def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         ]
     )
 
-    # ===== NURO (旧ロジック: 4日経過, 暫定) =====
-    nuro_records = sf.query_all(
-        "SELECT Field156__c FROM Account "
-        "WHERE Field156__c >= 2026-03-01 AND Field253__c < 6 "
-        "AND (Field113__c != 'キャンセル' OR Field113__c = null) "
+    # ===== NURO (リストビュー仕様) =====
+    nuro_soql = (
+        "SELECT Field156__c, Field253__c, Field130__c "
+        "FROM Account "
+        "WHERE Field232__c LIKE 'NURO光_004新設%' "
+        "AND Field113__c != 'キャンセル' "
+        "AND RecordType.Name = '顧客情報' "
+        "AND Field233__c = false "
         "AND (Field101__c != '後確NG' OR Field101__c = null) "
-        "AND Field63__c != null "
         "AND Field108__c != '株式会社GIFT' "
-        "AND Field76__r.Name LIKE '%NURO%'"
-    )["records"]
-    nuro_dates = pd.to_datetime(
-        [r.get("Field156__c") for r in nuro_records], errors="coerce"
+        "AND ("
+        "  Field253__c IN (1,2,3,4,5) "
+        "  OR (Field253__c = 0 AND Field130__c = null)"
+        ")"
     )
-    nuro_dates = nuro_dates[nuro_dates.notna()]
+    nuro_records = sf.query_all(nuro_soql)["records"]
+    nuro_df = pd.DataFrame(
+        [
+            {"entry": pd.to_datetime(r.get("Field156__c"), errors="coerce")}
+            for r in nuro_records
+        ]
+    )
 
     today = pd.Timestamp(pd.Timestamp.today().date())
     days = [today + pd.Timedelta(days=i) for i in range(31)]
@@ -350,7 +358,15 @@ def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
                     & ((so_df["yotei"].isna()) | (so_df["yotei"] > d))
                 ).sum()
             )
-        nuro_cnt = int((nuro_dates <= d - pd.Timedelta(days=4)).sum())
+        if nuro_df.empty:
+            nuro_cnt = 0
+        else:
+            nuro_cnt = int(
+                (
+                    nuro_df["entry"].notna()
+                    & (nuro_df["entry"] <= d - pd.Timedelta(days=4))
+                ).sum()
+            )
         rows.append(
             {
                 "日付": d.strftime("%Y-%m-%d"),

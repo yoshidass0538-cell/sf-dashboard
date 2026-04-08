@@ -225,6 +225,76 @@ def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH"
 # ----------------------------------------------------------------------
 # 指標レジストリ
 # ----------------------------------------------------------------------
+PROGRESS_START = "2026-02-01"  # エントリ日 >= この日付
+
+
+def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_settlement: bool) -> pd.DataFrame:
+    soql = (
+        "SELECT Field156__c entry, Field130__c kaitsu, "
+        "Field128__c yotei, Field131__c kessai, Field119__c cancel "
+        "FROM Account "
+        f"WHERE Field182__c LIKE '%{product_keyword}%' "
+        f"AND Field156__c >= {PROGRESS_START}"
+    )
+    rs = sf.query_all(soql)["records"]
+    if not rs:
+        return pd.DataFrame()
+    df = pd.DataFrame([
+        {
+            "entry": r.get("entry"),
+            "kaitsu": r.get("kaitsu"),
+            "yotei": r.get("yotei"),
+            "kessai": r.get("kessai"),
+            "cancel": r.get("cancel"),
+        }
+        for r in rs
+    ])
+    for c in ["entry", "kaitsu", "yotei", "kessai", "cancel"]:
+        df[c] = pd.to_datetime(df[c], errors="coerce")
+    df = df.dropna(subset=["entry"])
+    df["月"] = df["entry"].dt.strftime("%Y-%m")
+    today = pd.Timestamp(pd.Timestamp.today().date())
+
+    out_rows = []
+    for month, sub in df.groupby("月", sort=True):
+        entry_n = len(sub)
+        kaitsu_n = sub["kaitsu"].notna().sum()
+        yotei_n = ((sub["yotei"] > today) & sub["kaitsu"].isna()).sum()
+        cancel_n = sub["cancel"].notna().sum()
+        diff = (sub["cancel"] - sub["entry"]).dt.days
+        cancel7_n = ((diff >= 0) & (diff <= 7)).sum()
+
+        def pct(n):
+            return f"{round(n / entry_n * 100, 1)}%" if entry_n else "-"
+
+        row = {
+            "月": month,
+            "エントリー数": int(entry_n),
+            "工事完了数": int(kaitsu_n),
+            "工事完了率": pct(kaitsu_n),
+            "工事待ち数": int(yotei_n),
+            "工事待ち率": pct(yotei_n),
+        }
+        if with_settlement:
+            kessai_n = sub["kessai"].notna().sum()
+            row["決済登録数"] = int(kessai_n)
+            row["決済登録率"] = pct(kessai_n)
+        row["キャンセル数"] = int(cancel_n)
+        row["キャンセル率"] = pct(cancel_n)
+        row["7日以内キャンセル数"] = int(cancel7_n)
+        row["7日以内キャンセル率"] = pct(cancel7_n)
+        out_rows.append(row)
+
+    return pd.DataFrame(out_rows)
+
+
+def fetch_progress(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    return {
+        "NURO開通進捗": _fetch_progress(sf, "NURO", "NURO開通進捗", False),
+        "ソネット開通進捗": _fetch_progress(sf, "So-net", "ソネット開通進捗", True),
+    }
+
+
 METRICS: list[Metric] = [
     Metric(
         key="today",
@@ -232,6 +302,13 @@ METRICS: list[Metric] = [
         description="本日分: 1週間後FCの集計（担当者別）",
         fetch=fetch_fc_1week_today,
         category="TODAY",
+    ),
+    Metric(
+        key="progress",
+        label="開通進捗",
+        description="取次商材別の月次進捗（エントリ日2月以降）",
+        fetch=fetch_progress,
+        category="開通進捗",
     ),
     Metric(
         key="fc_1week",

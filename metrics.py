@@ -295,44 +295,68 @@ def fetch_progress(sf: Salesforce) -> Dict[str, pd.DataFrame]:
 
 
 def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
-    base = (
+    # ===== ソネット (リストビュー仕様) =====
+    so_soql = (
+        "SELECT Field156__c, Field128__c, Field253__c "
+        "FROM Account "
+        "WHERE Field232__c LIKE 'So-net光_004新設%' "
+        "AND Field113__c != 'キャンセル' "
+        "AND Field233__c = false "
+        "AND (Field101__c != '後確NG' OR Field101__c = null) "
+        "AND Field398__c = false "
+        "AND ("
+        "  (Field253__c IN (1,2,3,4,5) AND Field156__c >= 2026-03-01) "
+        "  OR (Field253__c = 0 AND Field156__c >= 2026-04-01)"
+        ")"
+    )
+    so_records = sf.query_all(so_soql)["records"]
+    so_df = pd.DataFrame(
+        [
+            {
+                "entry": pd.to_datetime(r.get("Field156__c"), errors="coerce"),
+                "yotei": pd.to_datetime(r.get("Field128__c"), errors="coerce"),
+            }
+            for r in so_records
+        ]
+    )
+
+    # ===== NURO (旧ロジック: 4日経過, 暫定) =====
+    nuro_records = sf.query_all(
         "SELECT Field156__c FROM Account "
         "WHERE Field156__c >= 2026-03-01 AND Field253__c < 6 "
         "AND (Field113__c != 'キャンセル' OR Field113__c = null) "
         "AND (Field101__c != '後確NG' OR Field101__c = null) "
         "AND Field63__c != null "
+        "AND Field108__c != '株式会社GIFT' "
+        "AND Field76__r.Name LIKE '%NURO%'"
+    )["records"]
+    nuro_dates = pd.to_datetime(
+        [r.get("Field156__c") for r in nuro_records], errors="coerce"
     )
-    set_a = sf.query_all(
-        base
-        + "AND Field108__c = '株式会社GIFT' "
-        + "AND Field76__r.Name LIKE '%So-net%'"
-    )["records"]
-    set_b = sf.query_all(
-        base
-        + "AND Field108__c != '株式会社GIFT' "
-        + "AND Field76__r.Name LIKE '%NURO%'"
-    )["records"]
-
-    a_dates = pd.to_datetime(
-        [r.get("Field156__c") for r in set_a], errors="coerce"
-    ).dropna()
-    b_dates = pd.to_datetime(
-        [r.get("Field156__c") for r in set_b], errors="coerce"
-    ).dropna()
+    nuro_dates = nuro_dates[nuro_dates.notna()]
 
     today = pd.Timestamp(pd.Timestamp.today().date())
     days = [today + pd.Timedelta(days=i) for i in range(31)]
 
     rows = []
     for d in days:
-        a_cnt = int((a_dates <= d - pd.Timedelta(days=5)).sum())
-        b_cnt = int((b_dates <= d - pd.Timedelta(days=4)).sum())
+        if so_df.empty:
+            so_cnt = 0
+        else:
+            so_cnt = int(
+                (
+                    (so_df["entry"].notna())
+                    & (so_df["entry"] <= d - pd.Timedelta(days=5))
+                    & ((so_df["yotei"].isna()) | (so_df["yotei"] > d))
+                ).sum()
+            )
+        nuro_cnt = int((nuro_dates <= d - pd.Timedelta(days=4)).sum())
         rows.append(
             {
                 "日付": d.strftime("%Y-%m-%d"),
-                "ソネット(GIFT/5日経過)": a_cnt,
-                "NURO(非GIFT/4日経過)": b_cnt,
-                "合計": a_cnt + b_cnt,
+                "ソネット(GIFT/5日経過)": so_cnt,
+                "NURO(非GIFT/4日経過)": nuro_cnt,
+                "合計": so_cnt + nuro_cnt,
             }
         )
     return {"リスト体積": pd.DataFrame(rows)}

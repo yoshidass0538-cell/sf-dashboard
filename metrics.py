@@ -24,6 +24,7 @@ class Metric:
     group_col: Optional[str] = None   # 棒グラフのカテゴリ軸
     value_col: Optional[str] = None   # 棒グラフの値軸
     category: str = "活動"             # サイドバーのグルーピング用
+    list_label: str = "一覧"           # 一覧セクションの見出し
 
 
 # ======================================================================
@@ -72,6 +73,7 @@ METRICS: list[Metric] = [
         group_col="日付",
         value_col=None,
         category="活動",
+        list_label="1週間後FC完了数",
     ),
 ]
 

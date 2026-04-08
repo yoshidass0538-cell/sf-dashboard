@@ -86,7 +86,7 @@ if metric.value_col and metric.value_col in df.columns:
 # テーブル & グラフ
 left, right = st.columns([3, 1])
 with left:
-    st.subheader("一覧")
+    st.subheader(metric.list_label)
     st.dataframe(df, use_container_width=True, hide_index=True)
     st.download_button(
         "CSV ダウンロード",

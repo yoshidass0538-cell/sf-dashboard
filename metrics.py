@@ -127,7 +127,7 @@ def _fetch_1week_cancel_reasons(sf: Salesforce) -> pd.DataFrame:
     """今月1週間後FCを行った案件のうち、その後キャンセル対応に至ったものを
     担当者(FC実施者)×キャンセル理由(Account.Field234__c) で集計。"""
     fc_records = sf.query_all(
-        "SELECT WhatId, Owner.Name oname, ActivityDate "
+        "SELECT WhatId, Owner.Name, ActivityDate "
         "FROM Task "
         "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
         "AND ActivityDate = THIS_MONTH "

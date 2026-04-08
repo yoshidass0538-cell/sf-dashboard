@@ -52,8 +52,8 @@ def fetch_fc_1w_completed_daily(sf: Salesforce) -> pd.DataFrame:
     soql = (
         "SELECT ActivityDate, COUNT(Id) cnt "
         "FROM Task "
-        "WHERE 対応ステータス__c = 'フォローコール（1週間後FC）' "
-        "AND コール結果__c = '完了' "
+        "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
+        "AND Field4_del__c = '完了' "
         "AND ActivityDate = LAST_N_DAYS:60 "
         "GROUP BY ActivityDate "
         "ORDER BY ActivityDate"
@@ -73,8 +73,8 @@ def fetch_fc_1w_completed_daily_by_owner(sf: Salesforce) -> pd.DataFrame:
     soql = (
         "SELECT ActivityDate, OwnerId, Owner.Name oname, COUNT(Id) cnt "
         "FROM Task "
-        "WHERE 対応ステータス__c = 'フォローコール（1週間後FC）' "
-        "AND コール結果__c = '完了' "
+        "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
+        "AND Field4_del__c = '完了' "
         "AND ActivityDate = LAST_N_DAYS:60 "
         "GROUP BY ActivityDate, OwnerId, Owner.Name "
         "ORDER BY ActivityDate"

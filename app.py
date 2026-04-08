@@ -67,36 +67,33 @@ st.title(metric.label)
 st.caption(metric.description)
 
 try:
-    df = _load(selected_key)
+    fetched = _load(selected_key)
 except Exception as e:
     st.error(f"取得に失敗しました: {e}")
     st.stop()
 
-if df.empty:
-    st.info("該当データはありません。")
-    st.stop()
+# 単一DataFrame → dict に正規化
+if isinstance(fetched, pd.DataFrame):
+    tables = {metric.list_label: fetched}
+else:
+    tables = fetched
 
-# サマリー
-if metric.value_col and metric.value_col in df.columns:
-    c1, c2, c3 = st.columns(3)
-    c1.metric("合計", int(df[metric.value_col].sum()))
-    c2.metric("対象数", len(df))
-    c3.metric("平均", round(df[metric.value_col].mean(), 1))
 
-# テーブル & グラフ
-left, right = st.columns([3, 1])
-with left:
-    st.subheader(metric.list_label)
+def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
+    st.subheader(title)
+    if df is None or df.empty:
+        st.info("該当データはありません。")
+        return
     st.dataframe(df, use_container_width=True, hide_index=True)
     st.download_button(
         "CSV ダウンロード",
         df.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"{metric.key}.csv",
+        file_name=f"{metric.key}_{key_suffix}.csv",
         mime="text/csv",
+        key=f"dl_{metric.key}_{key_suffix}",
     )
 
-with right:
-    if metric.group_col and metric.value_col:
-        st.subheader("グラフ")
-        chart_df = df.set_index(metric.group_col)[metric.value_col]
-        st.bar_chart(chart_df)
+
+for i, (title, df) in enumerate(tables.items()):
+    _render_table(title, df, str(i))
+    st.divider()

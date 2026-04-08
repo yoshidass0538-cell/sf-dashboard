@@ -99,7 +99,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if highlight_cols:
         styled = styled.set_properties(
             subset=highlight_cols,
-            **{"background-color": "#fff3b0", "text-align": "center"},
+            **{"background-color": "#fff3b0", "color": "#222", "text-align": "center"},
         )
     st.dataframe(styled, width="stretch", hide_index=True)
     st.download_button(

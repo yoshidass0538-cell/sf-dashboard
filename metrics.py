@@ -113,14 +113,93 @@ def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
             out_rows.append(row)
 
     df = pd.DataFrame(out_rows, columns=["担当者", "指標", *dates, "合計"])
-    # 列ごとに int と str が混在しないよう全セルを文字列化
     for col in df.columns:
         if col in ("担当者", "指標"):
             continue
         df[col] = df[col].map(lambda v: "" if v == 0 else str(v))
-    # 担当者名は同一担当者の最初の行だけ表示
     df["担当者"] = df["担当者"].mask(df["担当者"].duplicated(), "")
-    return {"1週間後FC": df}
+
+    cancel_df = _fetch_1week_cancel_reasons(sf)
+    return {"1週間後FC": df, "1週間後FC後のキャンセル理由（担当者別）": cancel_df}
+
+
+def _fetch_1week_cancel_reasons(sf: Salesforce) -> pd.DataFrame:
+    """今月1週間後FCを行った案件のうち、その後キャンセル対応に至ったものを
+    担当者(FC実施者)×キャンセル理由(Account.Field234__c) で集計。"""
+    fc_records = sf.query_all(
+        "SELECT WhatId, Owner.Name oname, ActivityDate "
+        "FROM Task "
+        "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
+        "AND ActivityDate = THIS_MONTH "
+        "AND WhatId != null"
+    )["records"]
+    # WhatId が Account(001) のもののみ
+    fc_map: Dict[str, list] = {}
+    for r in fc_records:
+        wid = r["WhatId"]
+        if not wid or not wid.startswith("001"):
+            continue
+        fc_map.setdefault(wid, []).append(
+            (r["Owner"]["Name"] if r.get("Owner") else "(不明)", r["ActivityDate"])
+        )
+    if not fc_map:
+        return pd.DataFrame()
+
+    what_ids = list(fc_map.keys())
+    cancel_set = set()
+    for i in range(0, len(what_ids), 200):
+        chunk = what_ids[i : i + 200]
+        ids_str = ",".join(f"'{x}'" for x in chunk)
+        rs = sf.query_all(
+            f"SELECT WhatId, ActivityDate FROM Task "
+            f"WHERE Field2_del__c = 'キャンセル対応' AND WhatId IN ({ids_str})"
+        )["records"]
+        for r in rs:
+            wid = r["WhatId"]
+            if wid not in fc_map:
+                continue
+            for _owner, fc_date in fc_map[wid]:
+                if (
+                    not fc_date
+                    or not r["ActivityDate"]
+                    or r["ActivityDate"] >= fc_date
+                ):
+                    cancel_set.add(wid)
+                    break
+    if not cancel_set:
+        return pd.DataFrame()
+
+    reason_map: Dict[str, str] = {}
+    cw = list(cancel_set)
+    for i in range(0, len(cw), 200):
+        chunk = cw[i : i + 200]
+        ids_str = ",".join(f"'{x}'" for x in chunk)
+        rs = sf.query_all(
+            f"SELECT Id, toLabel(Field234__c) reason FROM Account WHERE Id IN ({ids_str})"
+        )["records"]
+        for r in rs:
+            reason_map[r["Id"]] = r.get("reason") or "(理由未設定)"
+
+    rows = []
+    for wid in cancel_set:
+        reason = reason_map.get(wid, "(理由未設定)")
+        # FC担当者ごとに1件カウント（複数担当者がいれば各々に加算）
+        owners = {o for o, _ in fc_map[wid]}
+        for owner in owners:
+            rows.append({"担当者": owner, "キャンセル理由": reason, "件数": 1})
+    if not rows:
+        return pd.DataFrame()
+    g = (
+        pd.DataFrame(rows)
+        .groupby(["担当者", "キャンセル理由"], as_index=False)["件数"]
+        .sum()
+    )
+    pivot = g.pivot_table(
+        index="担当者", columns="キャンセル理由", values="件数", fill_value=0
+    )
+    pivot["合計"] = pivot.sum(axis=1)
+    pivot = pivot.sort_values("合計", ascending=False).reset_index()
+    return pivot
 
 
 # ----------------------------------------------------------------------

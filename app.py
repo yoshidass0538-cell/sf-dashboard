@@ -84,7 +84,7 @@ if metric.value_col and metric.value_col in df.columns:
     c3.metric("平均", round(df[metric.value_col].mean(), 1))
 
 # テーブル & グラフ
-left, right = st.columns([1, 2])
+left, right = st.columns([3, 1])
 with left:
     st.subheader("一覧")
     st.dataframe(df, use_container_width=True, hide_index=True)

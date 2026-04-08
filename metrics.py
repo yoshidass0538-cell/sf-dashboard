@@ -348,6 +348,18 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     if not rs:
         return {"CS促進シフト": pd.DataFrame()}
 
+    # 今月1週間後FCを記録した担当者のみに絞る
+    active_rs = sf.query_all(
+        "SELECT Owner.Name FROM Task "
+        "WHERE Field2_del__c IN ('フォローコール（1週間後FC）','フォローコール（その他）') "
+        "AND ActivityDate = THIS_MONTH"
+    )["records"]
+    active_names = {
+        ((r.get("Owner") or {}).get("Name") or "").replace(" ", "").replace("\u3000", "")
+        for r in active_rs
+    }
+    active_names.discard("")
+
     def _fmt(t):
         if not t:
             return ""
@@ -357,6 +369,9 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     rows = []
     for r in rs:
         owner = (r.get("Field128__r") or {}).get("Name") or "(不明)"
+        normalized = owner.replace(" ", "").replace("\u3000", "")
+        if normalized not in active_names:
+            continue
         row = {"担当者": owner}
         for day, sf_, ef in SHIFT_DAY_FIELDS:
             s = _fmt(r.get(sf_))

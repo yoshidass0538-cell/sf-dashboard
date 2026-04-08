@@ -294,6 +294,47 @@ def fetch_progress(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     }
 
 
+def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    base = (
+        "SELECT Field156__c FROM Account "
+        "WHERE Field156__c >= 2026-03-01 AND Field253__c < 6 "
+    )
+    set_a = sf.query_all(
+        base
+        + "AND Field108__c = '株式会社GIFT' "
+        + "AND Field76__r.Name LIKE '%So-net%'"
+    )["records"]
+    set_b = sf.query_all(
+        base
+        + "AND Field108__c != '株式会社GIFT' "
+        + "AND Field76__r.Name LIKE '%NURO%'"
+    )["records"]
+
+    a_dates = pd.to_datetime(
+        [r.get("Field156__c") for r in set_a], errors="coerce"
+    ).dropna()
+    b_dates = pd.to_datetime(
+        [r.get("Field156__c") for r in set_b], errors="coerce"
+    ).dropna()
+
+    today = pd.Timestamp(pd.Timestamp.today().date())
+    days = [today + pd.Timedelta(days=i) for i in range(31)]
+
+    rows = []
+    for d in days:
+        a_cnt = int((a_dates <= d - pd.Timedelta(days=5)).sum())
+        b_cnt = int((b_dates <= d - pd.Timedelta(days=4)).sum())
+        rows.append(
+            {
+                "日付": d.strftime("%Y-%m-%d"),
+                "ソネット(GIFT/5日経過)": a_cnt,
+                "NURO(非GIFT/4日経過)": b_cnt,
+                "合計": a_cnt + b_cnt,
+            }
+        )
+    return {"リスト体積": pd.DataFrame(rows)}
+
+
 METRICS: list[Metric] = [
     Metric(
         key="today",
@@ -301,6 +342,13 @@ METRICS: list[Metric] = [
         description="本日分: 1週間後FCの集計（担当者別）",
         fetch=fetch_fc_1week_today,
         category="TODAY",
+    ),
+    Metric(
+        key="list_volume",
+        label="リスト体積",
+        description="1週間後FCの架電対象数を当日〜30日後まで日別に予測",
+        fetch=fetch_list_volume,
+        category="リスト体積",
     ),
     Metric(
         key="progress",

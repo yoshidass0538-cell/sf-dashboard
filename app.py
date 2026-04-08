@@ -84,7 +84,14 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
-    st.dataframe(df, width="stretch", hide_index=True)
+    styled = (
+        df.style
+        .set_properties(**{"text-align": "center"})
+        .set_table_styles([
+            {"selector": "th", "props": [("text-align", "center")]},
+        ])
+    )
+    st.dataframe(styled, width="stretch", hide_index=True)
     st.download_button(
         "CSV ダウンロード",
         df.to_csv(index=False).encode("utf-8-sig"),

@@ -46,7 +46,8 @@ for cat, ms in categories.items():
         if st.sidebar.button(m.label, key=f"btn_{m.key}", use_container_width=True):
             st.session_state["selected"] = m.key
 
-if "selected" not in st.session_state:
+valid_keys = {m.key for m in METRICS}
+if st.session_state.get("selected") not in valid_keys:
     st.session_state["selected"] = METRICS[0].key
 
 selected_key = st.session_state["selected"]

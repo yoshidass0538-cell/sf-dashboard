@@ -230,8 +230,7 @@ PROGRESS_START = "2026-02-01"  # エントリ日 >= この日付
 
 def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_settlement: bool) -> pd.DataFrame:
     soql = (
-        "SELECT Field156__c entry, Field130__c kaitsu, "
-        "Field128__c yotei, Field131__c kessai, Field119__c cancel "
+        "SELECT Field156__c, Field130__c, Field128__c, Field131__c, Field119__c "
         "FROM Account "
         f"WHERE Field182__c LIKE '%{product_keyword}%' "
         f"AND Field156__c >= {PROGRESS_START}"
@@ -241,11 +240,11 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
         return pd.DataFrame()
     df = pd.DataFrame([
         {
-            "entry": r.get("entry"),
-            "kaitsu": r.get("kaitsu"),
-            "yotei": r.get("yotei"),
-            "kessai": r.get("kessai"),
-            "cancel": r.get("cancel"),
+            "entry": r.get("Field156__c"),
+            "kaitsu": r.get("Field130__c"),
+            "yotei": r.get("Field128__c"),
+            "kessai": r.get("Field131__c"),
+            "cancel": r.get("Field119__c"),
         }
         for r in rs
     ])

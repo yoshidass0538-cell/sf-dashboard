@@ -809,7 +809,7 @@ METRICS: list[Metric] = [
         label="新設FCシフト",
         description="新設FC担当の今月シフト一覧",
         fetch=fetch_shinsetsu_fc_shift,
-        category="新設FC",
+        category="促進",
     ),
     # --- 促進 ---
     Metric(

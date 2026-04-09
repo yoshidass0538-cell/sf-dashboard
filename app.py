@@ -93,22 +93,15 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             {c: np.array([("" if pd.isna(v) else str(v)) for v in df[c]], dtype=object) for c in df.columns}
         )
         gb = GridOptionsBuilder.from_dataframe(df_ag)
-        # ドラッグ並び替えを有効化するためソート/フィルタは無効
-        gb.configure_default_column(resizable=True, sortable=False, filter=False)
-        # 各列を内容幅に合わせる
-        for col in df_ag.columns:
-            max_len = int(max(df_ag[col].map(len).max() or 0, len(str(col))))
-            gb.configure_column(col, width=max(50, max_len * 14 + 20))
+        gb.configure_default_column(resizable=True, sortable=False, filter=False, width=85)
         if "担当者" in df_ag.columns:
-            gb.configure_column("担当者", rowDrag=True)
-        on_ready = JsCode(
-            "function(p){ p.api.autoSizeAllColumns(); }"
-        )
+            max_len = int(df_ag["担当者"].map(len).max() or 4)
+            gb.configure_column("担当者", rowDrag=True, pinned="left", width=max(120, max_len * 18))
         gb.configure_grid_options(
             rowDragManaged=True,
             animateRows=True,
-            suppressMoveWhenRowDragging=False,
-            onFirstDataRendered=on_ready,
+            suppressHorizontalScroll=False,
+            alwaysShowHorizontalScroll=True,
         )
         AgGrid(
             df_ag,

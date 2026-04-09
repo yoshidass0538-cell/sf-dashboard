@@ -213,6 +213,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
                 padding: 6px 10px;
                 color: {t['td_color']};
                 border: 1px solid {t['td_border']};
+                font-weight: bold;
             }}
             .{css_class} tr:nth-child(even) {{
                 background: {t['even_bg']};

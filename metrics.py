@@ -800,7 +800,66 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     return tables
 
 
+# ======================================================================
+# トータルコール数集計
+# ======================================================================
+TOTAL_CALL_OWNERS = [
+    "室谷慧", "原田綾子", "金澤駿平", "吉本将吾", "大滝紀香", "堀田輝斗", "角田心華",
+    "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香", "武田ほのか",
+]
+TOTAL_CALL_OWNERS_SET = {n.replace(" ", "").replace("\u3000", "") for n in TOTAL_CALL_OWNERS}
+
+
+def fetch_total_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    """指定メンバーの全活動記録を日付別に集計。"""
+    soql = (
+        "SELECT ActivityDate, Owner.Name oname, COUNT(Id) cnt "
+        "FROM Task "
+        "WHERE ActivityDate = THIS_MONTH "
+        "AND Owner.UserRole.Name IN ('推進部','推進部AP') "
+        "GROUP BY ActivityDate, Owner.Name"
+    )
+    res = sf.query_all(soql)
+    rows = []
+    for r in res["records"]:
+        owner = r.get("oname") or ""
+        norm = owner.replace(" ", "").replace("\u3000", "")
+        if norm not in TOTAL_CALL_OWNERS_SET:
+            continue
+        rows.append({
+            "日付": str(r["ActivityDate"]),
+            "担当者": owner,
+            "件数": int(r["cnt"]),
+        })
+    raw = pd.DataFrame(rows)
+    if raw.empty:
+        return {"トータルコール数集計": pd.DataFrame()}
+
+    dates = sorted(raw["日付"].unique().tolist())
+
+    # 指定順で担当者を並べる
+    owner_norm_map: dict = {}
+    for _, row in raw.iterrows():
+        norm = row["担当者"].replace(" ", "").replace("\u3000", "")
+        owner_norm_map[norm] = row["担当者"]
+    ordered_owners = [owner_norm_map[n] for n in TOTAL_CALL_OWNERS if n in owner_norm_map]
+
+    pivot = raw.pivot_table(index="担当者", columns="日付", values="件数", aggfunc="sum", fill_value=0)
+    pivot = pivot.reindex(index=ordered_owners, columns=dates, fill_value=0)
+    pivot["合計"] = pivot.sum(axis=1)
+    df = pivot.reset_index()
+    return {"トータルコール数集計": df}
+
+
 METRICS: list[Metric] = [
+    # --- TOTAL ---
+    Metric(
+        key="total_calls",
+        label="トータルコール数集計",
+        description="指定メンバーの全活動記録を日付別に集計",
+        fetch=fetch_total_calls,
+        category="TOTAL",
+    ),
     # --- 1週間後FC ---
     Metric(
         key="today",

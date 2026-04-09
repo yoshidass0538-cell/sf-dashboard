@@ -776,10 +776,10 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
 METRICS: list[Metric] = [
     Metric(
         key="today",
-        label="TODAY",
+        label="1週間後FC TODAY",
         description="本日分: 1週間後FCの集計（担当者別）",
         fetch=fetch_fc_1week_today,
-        category="TODAY",
+        category="1週間後FC TODAY",
     ),
     Metric(
         key="cs_shift",

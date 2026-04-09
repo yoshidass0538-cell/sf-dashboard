@@ -774,54 +774,57 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
 
 
 METRICS: list[Metric] = [
+    # --- 1週間後FC ---
     Metric(
         key="today",
         label="1週間後FC TODAY",
         description="本日分: 1週間後FCの集計（担当者別）",
         fetch=fetch_fc_1week_today,
-        category="1週間後FC TODAY",
+        category="1週間後FC",
     ),
     Metric(
         key="cs_shift",
         label="1週間FCシフト",
         description="稼働実績(CS促進)の今月シフト一覧",
         fetch=fetch_cs_shift,
-        category="シフト",
-    ),
-    Metric(
-        key="shinsetsu_shift",
-        label="新設FCシフト",
-        description="新設FC担当の今月シフト一覧",
-        fetch=fetch_shinsetsu_fc_shift,
-        category="シフト",
-    ),
-    Metric(
-        key="list_volume",
-        label="1週間後FC リスト体積",
-        description="1週間後FCの架電対象数を当日〜30日後まで日別に予測",
-        fetch=fetch_list_volume,
-        category="リスト体積",
-    ),
-    Metric(
-        key="progress",
-        label="開通進捗",
-        description="取次商材別の月次進捗（エントリ日2月以降）",
-        fetch=fetch_progress,
-        category="開通進捗",
+        category="1週間後FC",
     ),
     Metric(
         key="fc_1week",
         label="1週間後FC 月間CRデータ",
         description="対応ステータス='フォローコール（1週間後FC）' の Task を今月分、コール結果別に担当者×日付で集計（率は日別に算出）",
         fetch=fetch_fc_1week,
-        category="活動",
+        category="1週間後FC",
+    ),
+    Metric(
+        key="list_volume",
+        label="1週間後FC リスト体積",
+        description="1週間後FCの架電対象数を当日〜30日後まで日別に予測",
+        fetch=fetch_list_volume,
+        category="1週間後FC",
+    ),
+    # --- 新設FC ---
+    Metric(
+        key="shinsetsu_shift",
+        label="新設FCシフト",
+        description="新設FC担当の今月シフト一覧",
+        fetch=fetch_shinsetsu_fc_shift,
+        category="新設FC",
+    ),
+    # --- 促進 ---
+    Metric(
+        key="progress",
+        label="開通進捗",
+        description="取次商材別の月次進捗（エントリ日2月以降）",
+        fetch=fetch_progress,
+        category="促進",
     ),
     Metric(
         key="daikon_kaitsu",
         label="停滞別開通率",
         description="1次〜10次ダイコン理由ごとの発生率・開通率",
         fetch=fetch_daikon_kaitsu,
-        category="停滞別開通率",
+        category="促進",
     ),
 ]
 

@@ -635,6 +635,72 @@ def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     return {"リスト体積": pd.DataFrame(rows)}
 
 
+# ======================================================================
+# 停滞別開通率
+# ======================================================================
+DAIKON_REASON_FIELDS = [
+    (1, "Field242__c"),
+    (2, "Field243__c"),
+    (3, "Field244__c"),
+    (4, "Field245__c"),
+    (5, "Field246__c"),
+    (6, "Field341__c"),
+    (7, "Field342__c"),
+    (8, "Field343__c"),
+    (9, "Field344__c"),
+    (10, "Field345__c"),
+]
+
+
+def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    """1次〜10次ダイコン理由ごとの発生率・開通率を集計。"""
+    reason_fields = ", ".join(f[1] for f in DAIKON_REASON_FIELDS)
+    soql = (
+        f"SELECT Id, Field130__c, {reason_fields} "
+        "FROM Account "
+        "WHERE Field232__c LIKE 'So-net光%'"
+    )
+    records = sf.query_all(soql)["records"]
+    total_accounts = len(records)
+    if total_accounts == 0:
+        return {"停滞別開通率": pd.DataFrame()}
+
+    tables: Dict[str, pd.DataFrame] = {}
+
+    for nth, field in DAIKON_REASON_FIELDS:
+        # 理由が入っている = その次数の停滞が発生
+        counts: Dict[str, Dict[str, int]] = {}  # {理由: {発生: n, 開通: n}}
+        for r in records:
+            reason = r.get(field)
+            if not reason:
+                continue
+            if reason not in counts:
+                counts[reason] = {"発生": 0, "開通": 0}
+            counts[reason]["発生"] += 1
+            if r.get("Field130__c"):
+                counts[reason]["開通"] += 1
+
+        if not counts:
+            continue
+
+        rows = []
+        for reason, c in sorted(counts.items(), key=lambda x: -x[1]["発生"]):
+            rate = round(c["発生"] / total_accounts * 100, 1)
+            kaitsu_rate = round(c["開通"] / c["発生"] * 100, 1) if c["発生"] else 0.0
+            rows.append({
+                "理由": reason,
+                "発生件数": c["発生"],
+                f"発生率(母数{total_accounts})": f"{rate}%",
+                "開通件数": c["開通"],
+                "開通率": f"{kaitsu_rate}%",
+            })
+        tables[f"{nth}次ダイコン理由"] = pd.DataFrame(rows)
+
+    if not tables:
+        return {"停滞別開通率": pd.DataFrame()}
+    return tables
+
+
 METRICS: list[Metric] = [
     Metric(
         key="today",
@@ -670,6 +736,13 @@ METRICS: list[Metric] = [
         description="対応ステータス='フォローコール（1週間後FC）' の Task を今月分、コール結果別に担当者×日付で集計（率は日別に算出）",
         fetch=fetch_fc_1week,
         category="活動",
+    ),
+    Metric(
+        key="daikon_kaitsu",
+        label="停滞別開通率",
+        description="1次〜10次ダイコン理由ごとの発生率・開通率",
+        fetch=fetch_daikon_kaitsu,
+        category="停滞別開通率",
     ),
 ]
 

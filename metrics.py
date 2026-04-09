@@ -754,14 +754,31 @@ DAIKON_REASON_FIELDS = [
 
 
 def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
-    """全次数のダイコン理由を統合し、理由ごとの発生率・開通率を集計。"""
+    """全次数のダイコン理由を統合し、理由ごとの発生率・開通率を集計。
+    1次ダイコン理由が1件もない月は母数から除外。"""
     reason_fields = ", ".join(f[1] for f in DAIKON_REASON_FIELDS)
     soql = (
-        f"SELECT Id, Field130__c, Field43__c, {reason_fields} "
+        f"SELECT Id, Field130__c, Field43__c, Field156__c, {reason_fields} "
         "FROM Account "
         "WHERE Field232__c LIKE 'So-net光%'"
     )
-    records = sf.query_all(soql)["records"]
+    all_records = sf.query_all(soql)["records"]
+    if not all_records:
+        return {"停滞別開通率": pd.DataFrame()}
+
+    # 月別に1次ダイコン理由(Field242__c)が1件でもある月を特定
+    from collections import defaultdict
+    month_has_daikon: dict[str, bool] = defaultdict(bool)
+    month_map: dict[str, str] = {}  # record Id -> YYYY-MM
+    for r in all_records:
+        entry = r.get("Field156__c") or ""
+        ym = entry[:7] if len(entry) >= 7 else "unknown"
+        month_map[r["Id"]] = ym
+        if r.get("Field242__c"):
+            month_has_daikon[ym] = True
+
+    valid_months = {ym for ym, has in month_has_daikon.items() if has}
+    records = [r for r in all_records if month_map.get(r["Id"], "") in valid_months]
     total_accounts = len(records)
     if total_accounts == 0:
         return {"停滞別開通率": pd.DataFrame()}

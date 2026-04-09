@@ -18,6 +18,10 @@ from metrics import METRICS, get_metric
 
 st.set_page_config(page_title="SF 集計ダッシュボード", page_icon="📊", layout="wide")
 
+# ブラウザ自動翻訳を無効化
+st.markdown('<meta name="google" content="notranslate">', unsafe_allow_html=True)
+st.markdown('<style>[translate] { translate: no; }</style>', unsafe_allow_html=True)
+
 
 # ----------------------------------------------------------------------
 # 接続 & データ取得（キャッシュ）

@@ -86,7 +86,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
-    if metric.key == "cs_shift":
+    if metric.key in ("cs_shift", "shinsetsu_shift"):
         # AgGrid: 行ドラッグで並び替え可能
         import numpy as np
         df_ag = pd.DataFrame(

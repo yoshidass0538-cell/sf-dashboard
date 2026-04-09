@@ -400,6 +400,70 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     return {f"1週間FCシフト ({year_label}{month_label})": df}
 
 
+SHINSETSU_FC_OWNERS = {
+    n.replace(" ", "").replace("\u3000", "")
+    for n in ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香"]
+}
+
+SHINSETSU_FC_ORDER = ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香"]
+
+
+def fetch_shinsetsu_fc_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    today = pd.Timestamp.today()
+    year_label = f"{today.year}年"
+    month_label = f"{today.month}月"
+
+    field_list = ["Field128__r.Name"]
+    for _, s, e in SHIFT_DAY_FIELDS:
+        field_list += [s, e]
+    soql = (
+        f"SELECT {', '.join(field_list)} FROM CustomObject11__c "
+        f"WHERE Field1__c = '{year_label}' AND Field2__c = '{month_label}' "
+        f"AND Field128__r.Field13__c = 'CS促進' "
+        f"ORDER BY Field128__r.Name"
+    )
+    rs = sf.query_all(soql)["records"]
+    if not rs:
+        return {"新設FCシフト": pd.DataFrame()}
+
+    def _fmt(t):
+        if not t:
+            return ""
+        return str(t)[:5]
+
+    today_day = today.day
+    visible_days = [t for t in SHIFT_DAY_FIELDS if t[0] >= today_day]
+
+    rows = []
+    for r in rs:
+        owner = (r.get("Field128__r") or {}).get("Name") or "(不明)"
+        normalized = owner.replace(" ", "").replace("\u3000", "")
+        if normalized not in SHINSETSU_FC_OWNERS:
+            continue
+        row = {"担当者": owner}
+        for day, sf_, ef in visible_days:
+            s = _fmt(r.get(sf_))
+            e = _fmt(r.get(ef))
+            if s and e:
+                row[f"{day}"] = f"{s}-{e}"
+            elif s:
+                row[f"{day}"] = s
+            else:
+                row[f"{day}"] = ""
+        rows.append(row)
+    df = pd.DataFrame(rows)
+
+    def _rank(name: str) -> int:
+        norm = (name or "").replace(" ", "").replace("\u3000", "")
+        for i, key in enumerate(SHINSETSU_FC_ORDER):
+            if key in norm:
+                return i
+        return len(SHINSETSU_FC_ORDER)
+    if not df.empty:
+        df = df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True)
+    return {f"新設FCシフト ({year_label}{month_label})": df}
+
+
 def _shift_hours(start: str, end: str) -> float:
     """"HH:MM" 形式の開始/終了から稼働時間(h)を返す。14:00-15:00 を跨ぐ場合は休憩-1h。"""
     if not start or not end:
@@ -722,6 +786,13 @@ METRICS: list[Metric] = [
         label="1週間FCシフト",
         description="稼働実績(CS促進)の今月シフト一覧",
         fetch=fetch_cs_shift,
+        category="シフト",
+    ),
+    Metric(
+        key="shinsetsu_shift",
+        label="新設FCシフト",
+        description="新設FC担当の今月シフト一覧",
+        fetch=fetch_shinsetsu_fc_shift,
         category="シフト",
     ),
     Metric(

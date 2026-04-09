@@ -105,7 +105,8 @@ def _build_fc_board(
     rows = []
     for r in res["records"]:
         owner_name = r.get("oname") or r["OwnerId"]
-        if owner_name in EXCLUDE_OWNERS:
+        owner_norm = owner_name.replace(" ", "").replace("\u3000", "")
+        if owner_norm in EXCLUDE_OWNERS:
             continue
         if owner_filter:
             norm = owner_name.replace(" ", "").replace("\u3000", "")

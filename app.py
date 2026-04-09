@@ -39,8 +39,16 @@ def _load(metric_key: str) -> pd.DataFrame:
 # ----------------------------------------------------------------------
 # サイドバー: 指標選択
 # ----------------------------------------------------------------------
-st.sidebar.image("5065e1e637de06a018cf1dbbf567009a.png", width=80)
-st.sidebar.title("CS促進")
+import base64
+with open("5065e1e637de06a018cf1dbbf567009a.png", "rb") as f:
+    _icon_b64 = base64.b64encode(f.read()).decode()
+st.sidebar.markdown(
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+    f'<img src="data:image/png;base64,{_icon_b64}" width="40">'
+    f'<span style="font-size:1.5rem;font-weight:bold;">CS促進</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 
 # カテゴリでグルーピング
 categories: dict[str, list] = {}

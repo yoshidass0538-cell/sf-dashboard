@@ -56,33 +56,58 @@ METRIC_ORDER = [
 
 
 def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
-    return _build_fc_1week(sf, "THIS_MONTH", board_label="1週間後FC")
+    return _build_fc_board(sf, "THIS_MONTH", board_label="1週間後FC",
+        activities=("フォローコール（1週間後FC）", "フォローコール（その他）"))
 
 
 def fetch_fc_1week_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
-    return _build_fc_1week(sf, "TODAY", board_label="1週間後FC（本日）")
+    return _build_fc_board(sf, "TODAY", board_label="1週間後FC（本日）",
+        activities=("フォローコール（1週間後FC）", "フォローコール（その他）"))
 
 
-def _build_fc_1week(sf: Salesforce, date_literal: str, board_label: str) -> Dict[str, pd.DataFrame]:
+SHINSETSU_FC_NAMES = {
+    n.replace(" ", "").replace("\u3000", "")
+    for n in ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香"]
+}
+
+
+def fetch_shinsetsu_fc_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    return _build_fc_board(sf, "TODAY", board_label="新設FC TODAY",
+        activities=("フォローコール（代コン）", "フォローコール（代コン窓口）", "フォローコール（工事取得）"),
+        owner_filter=SHINSETSU_FC_NAMES)
+
+
+def _build_fc_board(
+    sf: Salesforce,
+    date_literal: str,
+    board_label: str,
+    activities: tuple = ("フォローコール（1週間後FC）", "フォローコール（その他）"),
+    owner_filter: set = None,
+) -> Dict[str, pd.DataFrame]:
+    act_str = ", ".join(f"'{a}'" for a in activities)
     soql = (
         "SELECT ActivityDate, OwnerId, Owner.Name oname, "
         "Field4_del__c result, COUNT(Id) cnt "
         "FROM Task "
-        "WHERE Field2_del__c IN ('フォローコール（1週間後FC）','フォローコール（その他）') "
+        f"WHERE Field2_del__c IN ({act_str}) "
         f"AND ActivityDate = {date_literal} "
         "AND Owner.UserRole.Name IN ('推進部','推進部AP') "
         "GROUP BY ActivityDate, OwnerId, Owner.Name, Field4_del__c"
     )
     res = sf.query(soql)
-    rows = [
-        {
+    rows = []
+    for r in res["records"]:
+        owner_name = r.get("oname") or r["OwnerId"]
+        if owner_filter:
+            norm = owner_name.replace(" ", "").replace("\u3000", "")
+            if norm not in owner_filter:
+                continue
+        rows.append({
             "日付": str(r["ActivityDate"]),
-            "担当者": r.get("oname") or r["OwnerId"],
+            "担当者": owner_name,
             "結果": r.get("result") or "(未設定)",
             "件数": r["cnt"],
-        }
-        for r in res["records"]
-    ]
+        })
     raw = pd.DataFrame(rows)
     if raw.empty:
         return {board_label: pd.DataFrame()}
@@ -128,8 +153,10 @@ def _build_fc_1week(sf: Salesforce, date_literal: str, board_label: str) -> Dict
         df[col] = df[col].map(lambda v: "" if v == 0 else str(v))
     df["担当者"] = df["担当者"].mask(df["担当者"].duplicated(), "")
 
-    cancel_tables = _fetch_1week_cancel_reasons(sf, date_literal)
-    return {board_label: df, **cancel_tables}
+    if not owner_filter:
+        cancel_tables = _fetch_1week_cancel_reasons(sf, date_literal)
+        return {board_label: df, **cancel_tables}
+    return {board_label: df}
 
 
 def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH") -> Dict[str, pd.DataFrame]:
@@ -803,7 +830,14 @@ METRICS: list[Metric] = [
         fetch=fetch_list_volume,
         category="1週間後FC",
     ),
-    # --- 新設FC ---
+    # --- 促進 ---
+    Metric(
+        key="shinsetsu_today",
+        label="新設FC TODAY",
+        description="本日分: 新設FC（代コン/代コン窓口/工事取得）の集計（担当者別）",
+        fetch=fetch_shinsetsu_fc_today,
+        category="促進",
+    ),
     Metric(
         key="shinsetsu_shift",
         label="新設FCシフト",

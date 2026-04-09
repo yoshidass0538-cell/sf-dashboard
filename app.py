@@ -93,10 +93,18 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             {c: np.array([("" if pd.isna(v) else str(v)) for v in df[c]], dtype=object) for c in df.columns}
         )
         gb = GridOptionsBuilder.from_dataframe(df_ag)
-        gb.configure_default_column(resizable=True, sortable=False, filter=False, width=85)
-        if "担当者" in df_ag.columns:
-            max_len = int(df_ag["担当者"].map(len).max() or 4)
-            gb.configure_column("担当者", rowDrag=True, pinned="left", width=max(120, max_len * 18))
+        gb.configure_default_column(resizable=False, sortable=False, filter=False, suppressSizeToFit=True)
+        # 列ごとに内容幅で固定
+        for col in df_ag.columns:
+            content_len = int(df_ag[col].map(len).max() or 0)
+            header_len = len(str(col))
+            max_len = max(content_len, header_len)
+            if col == "担当者":
+                width = max(130, max_len * 18 + 30)
+                gb.configure_column(col, rowDrag=True, pinned="left", width=width, suppressSizeToFit=True)
+            else:
+                width = max(60, max_len * 9 + 16)
+                gb.configure_column(col, width=width, suppressSizeToFit=True)
         gb.configure_grid_options(
             rowDragManaged=True,
             animateRows=True,

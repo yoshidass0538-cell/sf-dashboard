@@ -39,7 +39,8 @@ def _load(metric_key: str) -> pd.DataFrame:
 # ----------------------------------------------------------------------
 # サイドバー: 指標選択
 # ----------------------------------------------------------------------
-st.sidebar.title("📊 CS促進")
+st.sidebar.image("電話.png", width=60)
+st.sidebar.title("CS促進")
 
 # カテゴリでグルーピング
 categories: dict[str, list] = {}

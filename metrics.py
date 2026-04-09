@@ -797,7 +797,7 @@ METRICS: list[Metric] = [
     ),
     Metric(
         key="list_volume",
-        label="リスト体積",
+        label="1週間後FC リスト体積",
         description="1週間後FCの架電対象数を当日〜30日後まで日別に予測",
         fetch=fetch_list_volume,
         category="リスト体積",
@@ -811,7 +811,7 @@ METRICS: list[Metric] = [
     ),
     Metric(
         key="fc_1week",
-        label="1週間後FC",
+        label="1週間後FC 月間CRデータ",
         description="対応ステータス='フォローコール（1週間後FC）' の Task を今月分、コール結果別に担当者×日付で集計（率は日別に算出）",
         fetch=fetch_fc_1week,
         category="活動",

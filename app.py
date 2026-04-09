@@ -18,9 +18,19 @@ from metrics import METRICS, get_metric
 
 st.set_page_config(page_title="SF 集計ダッシュボード", page_icon="📊", layout="wide")
 
-# ブラウザ自動翻訳を無効化
+# ブラウザ自動翻訳を無効化 & フォント設定
 st.markdown('<meta name="google" content="notranslate">', unsafe_allow_html=True)
-st.markdown('<style>[translate] { translate: no; }</style>', unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    html, body, [class*="css"], .stMarkdown, .stDataFrame, th, td,
+    .ag-theme-balham, .ag-cell, .ag-header-cell-text {
+        font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ----------------------------------------------------------------------

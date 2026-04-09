@@ -11,6 +11,7 @@ import pandas as pd
 pd.options.future.infer_string = False
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+from streamlit_sortables import sort_items
 
 from sf_client import get_sf
 from metrics import METRICS, get_metric
@@ -40,13 +41,28 @@ st.sidebar.title("📊 CS促進")
 categories: dict[str, list] = {}
 for m in METRICS:
     categories.setdefault(m.category, []).append(m)
+key_to_metric = {m.key: m for m in METRICS}
 
-selected_key = None
-for cat, ms in categories.items():
-    st.sidebar.subheader(cat)
-    for m in ms:
-        if st.sidebar.button(m.label, key=f"btn_{m.key}", width="stretch"):
-            st.session_state["selected"] = m.key
+# カテゴリごとにドラッグ並び替え可能なリストを表示
+sorted_items = sort_items(
+    [
+        {"header": cat, "items": [m.label for m in ms]}
+        for cat, ms in categories.items()
+    ],
+    multi_containers=True,
+    direction="vertical",
+)
+
+# ラベル→key の逆引き
+label_to_key = {m.label: m.key for m in METRICS}
+
+# 並び替え後のリストからボタン生成
+for container in sorted_items:
+    st.sidebar.subheader(container["header"])
+    for label in container["items"]:
+        mkey = label_to_key.get(label)
+        if mkey and st.sidebar.button(label, key=f"btn_{mkey}", width="stretch"):
+            st.session_state["selected"] = mkey
 
 valid_keys = {m.key for m in METRICS}
 if st.session_state.get("selected") not in valid_keys:

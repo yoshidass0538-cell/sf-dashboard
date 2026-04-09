@@ -61,10 +61,10 @@ for container in st.session_state["board_order"]:
         mkey = label_to_key.get(label)
         if mkey and st.sidebar.button(label, key=f"btn_{mkey}", width="stretch"):
             st.session_state["selected"] = mkey
-
-# マスタボタン
-if st.sidebar.button("⚙ マスタ", key="btn_master", width="stretch"):
-    st.session_state["selected"] = "_master"
+    # マスタボタンをTOTALヘッダー内の末尾に表示
+    if container["header"] == "TOTAL":
+        if st.sidebar.button("⚙ マスタ", key="btn_master", width="stretch"):
+            st.session_state["selected"] = "_master"
 
 valid_keys = {m.key for m in METRICS} | {"_master"}
 if st.session_state.get("selected") not in valid_keys:

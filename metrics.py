@@ -923,7 +923,7 @@ METRICS: list[Metric] = [
         label="開通進捗",
         description="取次商材別の月次進捗（エントリ日2月以降）",
         fetch=fetch_progress,
-        category="促進",
+        category="TOTAL",
     ),
     Metric(
         key="daikon_kaitsu",

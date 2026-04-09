@@ -154,7 +154,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             df_ag,
             gridOptions=gb.build(),
             height=max(200, 45 + 32 * len(df_ag)),
-            theme="streamlit",
+            theme="balham",
             allow_unsafe_jscode=True,
             key=f"aggrid_{metric.key}_{key_suffix}",
         )
@@ -163,11 +163,34 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
         st.markdown(
             """
             <style>
-            .centered-table { width: 100%; border-collapse: collapse; }
-            .centered-table th, .centered-table td {
+            .centered-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.9rem;
+            }
+            .centered-table th {
+                text-align: center !important;
+                padding: 8px 10px;
+                background: #4A6FA5;
+                color: #ffffff;
+                font-weight: 600;
+                border: 1px solid #3A5F95;
+                position: sticky;
+                top: 0;
+            }
+            .centered-table td {
                 text-align: center !important;
                 padding: 6px 10px;
-                border: 1px solid rgba(128,128,128,0.3);
+                border: 1px solid #dde2e8;
+            }
+            .centered-table tr:nth-child(even) {
+                background: #f4f7fb;
+            }
+            .centered-table tr:nth-child(odd) {
+                background: #ffffff;
+            }
+            .centered-table tr:hover {
+                background: #e3ecf7;
             }
             </style>
             """,

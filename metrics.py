@@ -346,7 +346,7 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     )
     rs = sf.query_all(soql)["records"]
     if not rs:
-        return {"CS促進シフト": pd.DataFrame()}
+        return {"1週間FCシフト": pd.DataFrame()}
 
     # 今月1週間後FCを記録した担当者のみに絞る
     active_rs = sf.query_all(
@@ -397,7 +397,7 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         return len(order)
     if not df.empty:
         df = df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True)
-    return {f"CS促進 シフト ({year_label}{month_label})": df}
+    return {f"1週間FCシフト ({year_label}{month_label})": df}
 
 
 def _shift_hours(start: str, end: str) -> float:
@@ -719,7 +719,7 @@ METRICS: list[Metric] = [
     ),
     Metric(
         key="cs_shift",
-        label="CS促進シフト（今月）",
+        label="1週間FCシフト",
         description="稼働実績(CS促進)の今月シフト一覧",
         fetch=fetch_cs_shift,
         category="シフト",

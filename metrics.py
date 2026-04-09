@@ -366,6 +366,9 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         # "HH:MM:SS.000Z" → "HH:MM"
         return str(t)[:5]
 
+    today_day = today.day
+    visible_days = [t for t in SHIFT_DAY_FIELDS if t[0] >= today_day]
+
     rows = []
     for r in rs:
         owner = (r.get("Field128__r") or {}).get("Name") or "(不明)"
@@ -373,7 +376,7 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         if normalized not in active_names:
             continue
         row = {"担当者": owner}
-        for day, sf_, ef in SHIFT_DAY_FIELDS:
+        for day, sf_, ef in visible_days:
             s = _fmt(r.get(sf_))
             e = _fmt(r.get(ef))
             if s and e:

@@ -100,10 +100,13 @@ def _build_fc_board(
         "AND Owner.UserRole.Name IN ('推進部','推進部AP') "
         "GROUP BY ActivityDate, OwnerId, Owner.Name, Field4_del__c"
     )
+    EXCLUDE_OWNERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
     res = sf.query(soql)
     rows = []
     for r in res["records"]:
         owner_name = r.get("oname") or r["OwnerId"]
+        if owner_name in EXCLUDE_OWNERS:
+            continue
         if owner_filter:
             norm = owner_name.replace(" ", "").replace("\u3000", "")
             if norm not in owner_filter:

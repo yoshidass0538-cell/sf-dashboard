@@ -141,8 +141,23 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
         df_ag = pd.DataFrame(
             {c: np.array([("" if pd.isna(v) else str(v)) for v in df[c]], dtype=object) for c in df.columns}
         )
+        # カテゴリ別AgGrid配色
+        AG_THEME = {
+            "1週間後FC": {"headerBg": "#4A6FA5", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#f0f4fa", "fg": "#1a2a3a"},
+            "促進": {"headerBg": "#2E8B57", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#edf7f1", "fg": "#1a2f22"},
+            "TOTAL": {"headerBg": "#D4850A", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#fdf5e9", "fg": "#2a1f0a"},
+        }
+        ag_t = AG_THEME.get(metric.category, AG_THEME["1週間後FC"])
+        custom_css = {
+            ".ag-header-cell": {"background-color": ag_t["headerBg"], "color": ag_t["headerFg"], "font-weight": "bold", "text-align": "center"},
+            ".ag-header-cell-label": {"justify-content": "center"},
+            ".ag-cell": {"text-align": "center", "display": "flex", "align-items": "center", "justify-content": "center", "color": ag_t["fg"], "font-weight": "bold"},
+            ".ag-row-odd": {"background-color": ag_t["oddBg"]},
+            ".ag-row-even": {"background-color": ag_t["evenBg"]},
+        }
         gb = GridOptionsBuilder.from_dataframe(df_ag)
-        gb.configure_default_column(resizable=False, sortable=False, filter=False, suppressSizeToFit=True)
+        gb.configure_default_column(resizable=False, sortable=False, filter=False, suppressSizeToFit=True,
+                                    cellStyle={"textAlign": "center", "display": "flex", "alignItems": "center", "justifyContent": "center"})
         # 列ごとに内容幅で固定
         for col in df_ag.columns:
             content_len = int(df_ag[col].map(len).max() or 0)
@@ -166,6 +181,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             height=max(200, 45 + 32 * len(df_ag)),
             theme="balham",
             allow_unsafe_jscode=True,
+            custom_css=custom_css,
             key=f"aggrid_{metric.key}_{key_suffix}",
         )
     else:

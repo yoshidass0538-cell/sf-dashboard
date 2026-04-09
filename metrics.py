@@ -77,6 +77,12 @@ def fetch_shinsetsu_fc_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         owner_filter=SHINSETSU_FC_NAMES)
 
 
+def fetch_sokushin_monthly(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    return _build_fc_board(sf, "THIS_MONTH", board_label="促進 月間CRデータ",
+        activities=("フォローコール（代コン）", "フォローコール（代コン窓口）", "フォローコール（工事取得）"),
+        owner_filter=SHINSETSU_FC_NAMES)
+
+
 def _build_fc_board(
     sf: Salesforce,
     date_literal: str,
@@ -902,6 +908,13 @@ METRICS: list[Metric] = [
         label="新設FCシフト",
         description="新設FC担当の今月シフト一覧",
         fetch=fetch_shinsetsu_fc_shift,
+        category="促進",
+    ),
+    Metric(
+        key="sokushin_monthly",
+        label="促進 月間CRデータ",
+        description="代コン/代コン窓口/工事取得の月間コール結果を担当者×日付で集計",
+        fetch=fetch_sokushin_monthly,
         category="促進",
     ),
     # --- 促進 ---

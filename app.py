@@ -200,6 +200,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             }}
             .{css_class} th {{
                 text-align: center !important;
+                vertical-align: middle !important;
                 padding: 8px 10px;
                 background: {t['th_bg']};
                 color: {t['th_color']};
@@ -210,6 +211,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             }}
             .{css_class} td {{
                 text-align: center !important;
+                vertical-align: middle !important;
                 padding: 6px 10px;
                 color: {t['td_color']};
                 border: 1px solid {t['td_border']};

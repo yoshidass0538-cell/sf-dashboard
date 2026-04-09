@@ -159,44 +159,65 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             key=f"aggrid_{metric.key}_{key_suffix}",
         )
     else:
+        # カテゴリ別配色
+        THEME = {
+            "1週間後FC": {
+                "th_bg": "#4A6FA5", "th_border": "#3A5F95", "th_color": "#ffffff",
+                "even_bg": "#f0f4fa", "odd_bg": "#ffffff", "hover_bg": "#dce6f5",
+                "td_color": "#1a2a3a", "td_border": "#c8d4e3",
+            },
+            "促進": {
+                "th_bg": "#2E8B57", "th_border": "#257A4A", "th_color": "#ffffff",
+                "even_bg": "#edf7f1", "odd_bg": "#ffffff", "hover_bg": "#d4eddf",
+                "td_color": "#1a2f22", "td_border": "#bdd8c9",
+            },
+            "TOTAL": {
+                "th_bg": "#D4850A", "th_border": "#B8730A", "th_color": "#ffffff",
+                "even_bg": "#fdf5e9", "odd_bg": "#ffffff", "hover_bg": "#f5e4c8",
+                "td_color": "#2a1f0a", "td_border": "#e0d0b5",
+            },
+        }
+        t = THEME.get(metric.category, THEME["1週間後FC"])
+        css_class = f"table-{metric.category.replace(' ', '_')}"
         html = df.to_html(index=False, escape=False)
         st.markdown(
-            """
+            f"""
             <style>
-            .centered-table {
+            .{css_class} {{
                 width: 100%;
                 border-collapse: collapse;
                 font-size: 0.9rem;
-            }
-            .centered-table th {
+            }}
+            .{css_class} th {{
                 text-align: center !important;
                 padding: 8px 10px;
-                background: #4A6FA5;
-                color: #ffffff;
+                background: {t['th_bg']};
+                color: {t['th_color']};
                 font-weight: 600;
-                border: 1px solid #3A5F95;
+                border: 1px solid {t['th_border']};
                 position: sticky;
                 top: 0;
-            }
-            .centered-table td {
+            }}
+            .{css_class} td {{
                 text-align: center !important;
                 padding: 6px 10px;
-                border: 1px solid #dde2e8;
-            }
-            .centered-table tr:nth-child(even) {
-                background: #f4f7fb;
-            }
-            .centered-table tr:nth-child(odd) {
-                background: #ffffff;
-            }
-            .centered-table tr:hover {
-                background: #e3ecf7;
-            }
+                color: {t['td_color']};
+                border: 1px solid {t['td_border']};
+            }}
+            .{css_class} tr:nth-child(even) {{
+                background: {t['even_bg']};
+            }}
+            .{css_class} tr:nth-child(odd) {{
+                background: {t['odd_bg']};
+            }}
+            .{css_class} tr:hover {{
+                background: {t['hover_bg']};
+            }}
             </style>
             """,
             unsafe_allow_html=True,
         )
-        st.markdown(html.replace("<table", '<table class="centered-table"', 1), unsafe_allow_html=True)
+        st.markdown(html.replace("<table", f'<table class="{css_class}"', 1), unsafe_allow_html=True)
     st.download_button(
         "CSV ダウンロード",
         df.to_csv(index=False).encode("utf-8-sig"),

@@ -8,7 +8,9 @@ Salesforce 集計ダッシュボード（Streamlit）
 """
 
 import pandas as pd
+pd.options.future.infer_string = False
 import streamlit as st
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 from sf_client import get_sf
 from metrics import METRICS, get_metric
@@ -84,21 +86,54 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
-    html = df.to_html(index=False, escape=False)
-    st.markdown(
-        """
-        <style>
-        .centered-table { width: 100%; border-collapse: collapse; }
-        .centered-table th, .centered-table td {
-            text-align: center !important;
-            padding: 6px 10px;
-            border: 1px solid rgba(128,128,128,0.3);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(html.replace("<table", '<table class="centered-table"', 1), unsafe_allow_html=True)
+    if metric.key == "cs_shift":
+        # AgGrid: 行ドラッグで並び替え可能
+        import numpy as np
+        df_ag = pd.DataFrame(
+            {c: np.array([("" if pd.isna(v) else str(v)) for v in df[c]], dtype=object) for c in df.columns}
+        )
+        gb = GridOptionsBuilder.from_dataframe(df_ag)
+        # ドラッグ並び替えを有効化するためソート/フィルタは無効
+        gb.configure_default_column(resizable=True, sortable=False, filter=False)
+        # 各列を内容幅に合わせる
+        for col in df_ag.columns:
+            max_len = int(max(df_ag[col].map(len).max() or 0, len(str(col))))
+            gb.configure_column(col, width=max(50, max_len * 14 + 20))
+        if "担当者" in df_ag.columns:
+            gb.configure_column("担当者", rowDrag=True)
+        on_ready = JsCode(
+            "function(p){ p.api.autoSizeAllColumns(); }"
+        )
+        gb.configure_grid_options(
+            rowDragManaged=True,
+            animateRows=True,
+            suppressMoveWhenRowDragging=False,
+            onFirstDataRendered=on_ready,
+        )
+        AgGrid(
+            df_ag,
+            gridOptions=gb.build(),
+            height=max(200, 45 + 32 * len(df_ag)),
+            theme="streamlit",
+            allow_unsafe_jscode=True,
+            key=f"aggrid_{metric.key}_{key_suffix}",
+        )
+    else:
+        html = df.to_html(index=False, escape=False)
+        st.markdown(
+            """
+            <style>
+            .centered-table { width: 100%; border-collapse: collapse; }
+            .centered-table th, .centered-table td {
+                text-align: center !important;
+                padding: 6px 10px;
+                border: 1px solid rgba(128,128,128,0.3);
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(html.replace("<table", '<table class="centered-table"', 1), unsafe_allow_html=True)
     st.download_button(
         "CSV ダウンロード",
         df.to_csv(index=False).encode("utf-8-sig"),

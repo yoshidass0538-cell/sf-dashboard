@@ -384,7 +384,142 @@ def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
                 row[f"{day}"] = ""
         rows.append(row)
     df = pd.DataFrame(rows)
+    # 指定順で並び替え（該当しない人は末尾）
+    order = ["原田綾子", "室谷慧", "堀田輝斗", "大滝紀香", "角田心華", "金澤", "吉本"]
+    def _rank(name: str) -> int:
+        norm = (name or "").replace(" ", "").replace("\u3000", "")
+        for i, key in enumerate(order):
+            if key in norm:
+                return i
+        return len(order)
+    if not df.empty:
+        df = df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True)
     return {f"CS促進 シフト ({year_label}{month_label})": df}
+
+
+def _shift_hours(start: str, end: str) -> float:
+    """"HH:MM" 形式の開始/終了から稼働時間(h)を返す。14:00-15:00 を跨ぐ場合は休憩-1h。"""
+    if not start or not end:
+        return 0.0
+    try:
+        sh, sm = int(start[:2]), int(start[3:5])
+        eh, em = int(end[:2]), int(end[3:5])
+    except Exception:
+        return 0.0
+    s = sh + sm / 60
+    e = eh + em / 60
+    if e <= s:
+        return 0.0
+    h = e - s
+    # 14:00-15:00 を跨ぐ
+    if s < 15 and e > 14:
+        h -= 1
+    return max(h, 0.0)
+
+
+CONSUME_OWNERS = {
+    n.replace(" ", "").replace("\u3000", "")
+    for n in ["角田心華", "原田綾子", "室谷慧", "大滝紀香", "堀田輝斗"]
+}
+
+
+def _owner_shift_hours_by_day(sf: Salesforce) -> Dict[str, Dict[pd.Timestamp, float]]:
+    """{担当者(正規化): {date: hours}} を返す（今月分、CONSUME_OWNERSのみ）。"""
+    today = pd.Timestamp.today()
+    year_label = f"{today.year}年"
+    month_label = f"{today.month}月"
+    fields = ["Field128__r.Name"]
+    for _, s, e in SHIFT_DAY_FIELDS:
+        fields += [s, e]
+    rs = sf.query_all(
+        f"SELECT {', '.join(fields)} FROM CustomObject11__c "
+        f"WHERE Field1__c = '{year_label}' AND Field2__c = '{month_label}' "
+        f"AND Field128__r.Field13__c = 'CS促進'"
+    )["records"]
+    result: Dict[str, Dict[pd.Timestamp, float]] = {}
+    for r in rs:
+        owner = (r.get("Field128__r") or {}).get("Name") or ""
+        norm = owner.replace(" ", "").replace("\u3000", "")
+        if not norm or norm not in CONSUME_OWNERS:
+            continue
+        per_day: Dict[pd.Timestamp, float] = {}
+        for day, sf_, ef in SHIFT_DAY_FIELDS:
+            s = str(r.get(sf_) or "")[:5]
+            e = str(r.get(ef) or "")[:5]
+            h = _shift_hours(s, e)
+            if h > 0:
+                try:
+                    d = pd.Timestamp(year=today.year, month=today.month, day=day)
+                except ValueError:
+                    continue
+                per_day[d] = h
+        if per_day:
+            result[norm] = per_day
+    return result
+
+
+def _owner_call_stats(sf: Salesforce) -> Dict[str, Dict[str, float]]:
+    """個人別の {担当者(正規化): {"calls_per_h": x, "complete_rate": y}} を今月実績から算出。"""
+    soql = (
+        "SELECT Owner.Name oname, Field4_del__c result, COUNT(Id) cnt "
+        "FROM Task "
+        "WHERE Field2_del__c IN ('フォローコール（1週間後FC）','フォローコール（その他）') "
+        "AND ActivityDate = THIS_MONTH "
+        "AND Owner.UserRole.Name IN ('推進部','推進部AP') "
+        "GROUP BY Owner.Name, Field4_del__c"
+    )
+    rs = sf.query_all(soql)["records"]
+    totals: Dict[str, int] = {}
+    completes: Dict[str, int] = {}
+    for r in rs:
+        owner = r.get("oname") or ""
+        norm = owner.replace(" ", "").replace("\u3000", "")
+        if not norm:
+            continue
+        cnt = int(r.get("cnt") or 0)
+        totals[norm] = totals.get(norm, 0) + cnt
+        if r.get("result") == "完了":
+            completes[norm] = completes.get(norm, 0) + cnt
+
+    shifts = _owner_shift_hours_by_day(sf)
+    today = pd.Timestamp(pd.Timestamp.today().date())
+    out: Dict[str, Dict[str, float]] = {}
+    for norm, total in totals.items():
+        # 今月開始から今日までの稼働実績h
+        per_day = shifts.get(norm, {})
+        worked_h = sum(h for d, h in per_day.items() if d <= today)
+        if worked_h <= 0 or total <= 0:
+            continue
+        out[norm] = {
+            "calls_per_h": total / worked_h,
+            "complete_rate": (completes.get(norm, 0) / total) if total else 0.0,
+        }
+    return out
+
+
+def _avg_daily_6th_fc(sf: Salesforce) -> float:
+    """今月、累計6回目の1週間後FCに到達したAccount件数の日平均。"""
+    rs = sf.query_all(
+        "SELECT WhatId, ActivityDate FROM Task "
+        "WHERE Field2_del__c IN ('フォローコール（1週間後FC）','フォローコール（その他）') "
+        "AND WhatId != null "
+        "AND ActivityDate = THIS_MONTH"
+    )["records"]
+    # WhatId 別に Task を集める（過去分含めず今月内通算でカウント）
+    counts: Dict[str, int] = {}
+    reached = 0
+    # 日付昇順にソートして「6回目に達した瞬間」をカウント
+    items = [
+        (r["WhatId"], r["ActivityDate"]) for r in rs if r.get("WhatId") and r["WhatId"].startswith("001")
+    ]
+    items.sort(key=lambda x: x[1] or "")
+    for wid, _d in items:
+        counts[wid] = counts.get(wid, 0) + 1
+        if counts[wid] == 6:
+            reached += 1
+    today = pd.Timestamp.today()
+    days_elapsed = today.day
+    return reached / days_elapsed if days_elapsed else 0.0
 
 
 def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
@@ -439,6 +574,12 @@ def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     today = pd.Timestamp(pd.Timestamp.today().date())
     days = [today + pd.Timedelta(days=i) for i in range(31)]
 
+    # ===== 消化スピード用データ =====
+    owner_shifts = _owner_shift_hours_by_day(sf)  # {owner: {date: h}}
+    owner_stats = _owner_call_stats(sf)           # {owner: {calls_per_h, complete_rate}}
+    avg_6th = _avg_daily_6th_fc(sf)               # 月平均(日次)
+    cumulative = 0.0
+
     rows = []
     for d in days:
         if so_df.empty:
@@ -460,12 +601,32 @@ def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
                     & (nuro_df["entry"] <= d - pd.Timedelta(days=4))
                 ).sum()
             )
+        # --- 消化見込み計算 ---
+        total_h = 0.0
+        complete_calls = 0.0
+        for owner, per_day in owner_shifts.items():
+            h = per_day.get(d, 0.0)
+            if h <= 0:
+                continue
+            total_h += h
+            stat = owner_stats.get(owner)
+            if not stat:
+                continue
+            complete_calls += h * stat["calls_per_h"] * stat["complete_rate"]
+        consumed = complete_calls + avg_6th
+        cumulative += consumed
+        remain = max((so_cnt + nuro_cnt) - cumulative, 0.0)
+
         rows.append(
             {
                 "日付": d.strftime("%Y-%m-%d"),
                 "ソネット(GIFT/5日経過)": so_cnt,
                 "NURO(非GIFT/4日経過)": nuro_cnt,
                 "合計": so_cnt + nuro_cnt,
+                "シフト人時": round(total_h, 1),
+                "消化見込み": round(consumed, 1),
+                "累計消化": round(cumulative, 1),
+                "残体積": round(remain, 1),
             }
         )
     return {"リスト体積": pd.DataFrame(rows)}

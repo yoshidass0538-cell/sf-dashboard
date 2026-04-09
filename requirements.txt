@@ -2,3 +2,4 @@ simple-salesforce
 python-dotenv
 streamlit
 pandas
+streamlit-aggrid

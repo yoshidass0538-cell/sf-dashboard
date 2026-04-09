@@ -653,7 +653,7 @@ DAIKON_REASON_FIELDS = [
 
 
 def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
-    """1次〜10次ダイコン理由ごとの発生率・開通率を集計。"""
+    """全次数のダイコン理由を統合し、理由ごとの発生率・開通率を集計。"""
     reason_fields = ", ".join(f[1] for f in DAIKON_REASON_FIELDS)
     soql = (
         f"SELECT Id, Field130__c, {reason_fields} "
@@ -665,40 +665,36 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     if total_accounts == 0:
         return {"停滞別開通率": pd.DataFrame()}
 
-    tables: Dict[str, pd.DataFrame] = {}
-
-    for nth, field in DAIKON_REASON_FIELDS:
-        # 理由が入っている = その次数の停滞が発生
-        counts: Dict[str, Dict[str, int]] = {}  # {理由: {発生: n, 開通: n}}
-        for r in records:
+    # 全次数を統合（同一顧客・同一理由は1回だけカウント）
+    counts: Dict[str, Dict[str, int]] = {}  # {理由: {発生: n, 開通: n}}
+    for r in records:
+        seen_reasons: set = set()
+        for _, field in DAIKON_REASON_FIELDS:
             reason = r.get(field)
-            if not reason:
+            if not reason or reason in seen_reasons:
                 continue
+            seen_reasons.add(reason)
             if reason not in counts:
                 counts[reason] = {"発生": 0, "開通": 0}
             counts[reason]["発生"] += 1
             if r.get("Field130__c"):
                 counts[reason]["開通"] += 1
 
-        if not counts:
-            continue
-
-        rows = []
-        for reason, c in sorted(counts.items(), key=lambda x: -x[1]["発生"]):
-            rate = round(c["発生"] / total_accounts * 100, 1)
-            kaitsu_rate = round(c["開通"] / c["発生"] * 100, 1) if c["発生"] else 0.0
-            rows.append({
-                "理由": reason,
-                "発生件数": c["発生"],
-                f"発生率(母数{total_accounts})": f"{rate}%",
-                "開通件数": c["開通"],
-                "開通率": f"{kaitsu_rate}%",
-            })
-        tables[f"{nth}次ダイコン理由"] = pd.DataFrame(rows)
-
-    if not tables:
+    if not counts:
         return {"停滞別開通率": pd.DataFrame()}
-    return tables
+
+    rows = []
+    for reason, c in sorted(counts.items(), key=lambda x: -x[1]["発生"]):
+        rate = round(c["発生"] / total_accounts * 100, 1)
+        kaitsu_rate = round(c["開通"] / c["発生"] * 100, 1) if c["発生"] else 0.0
+        rows.append({
+            "理由": reason,
+            "発生件数": c["発生"],
+            f"発生率(母数{total_accounts})": f"{rate}%",
+            "開通件数": c["開通"],
+            "開通率": f"{kaitsu_rate}%",
+        })
+    return {"停滞別開通率": pd.DataFrame(rows)}
 
 
 METRICS: list[Metric] = [

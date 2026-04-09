@@ -43,22 +43,22 @@ for m in METRICS:
     categories.setdefault(m.category, []).append(m)
 key_to_metric = {m.key: m for m in METRICS}
 
-# カテゴリごとにドラッグ並び替え可能なリストを表示
-sorted_items = sort_items(
-    [
-        {"header": cat, "items": [m.label for m in ms]}
-        for cat, ms in categories.items()
-    ],
-    multi_containers=True,
-    direction="vertical",
-)
-
 # ラベル→key の逆引き
 label_to_key = {m.label: m.key for m in METRICS}
 
+# カテゴリごとにドラッグ並び替え可能なリストをサイドバーに表示
+with st.sidebar:
+    sorted_items = sort_items(
+        [
+            {"header": cat, "items": [m.label for m in ms]}
+            for cat, ms in categories.items()
+        ],
+        multi_containers=True,
+        direction="vertical",
+    )
+
 # 並び替え後のリストからボタン生成
 for container in sorted_items:
-    st.sidebar.subheader(container["header"])
     for label in container["items"]:
         mkey = label_to_key.get(label)
         if mkey and st.sidebar.button(label, key=f"btn_{mkey}", width="stretch"):

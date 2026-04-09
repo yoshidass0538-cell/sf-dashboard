@@ -41,30 +41,28 @@ st.sidebar.title("📊 CS促進")
 categories: dict[str, list] = {}
 for m in METRICS:
     categories.setdefault(m.category, []).append(m)
-key_to_metric = {m.key: m for m in METRICS}
-
-# ラベル→key の逆引き
 label_to_key = {m.label: m.key for m in METRICS}
 
-# カテゴリごとにドラッグ並び替え可能なリストをサイドバーに表示
-with st.sidebar:
-    sorted_items = sort_items(
-        [
-            {"header": cat, "items": [m.label for m in ms]}
-            for cat, ms in categories.items()
-        ],
-        multi_containers=True,
-        direction="vertical",
-    )
+# セッションに並び順を保持
+if "board_order" not in st.session_state:
+    st.session_state["board_order"] = [
+        {"header": cat, "items": [m.label for m in ms]}
+        for cat, ms in categories.items()
+    ]
 
-# 並び替え後のリストからボタン生成
-for container in sorted_items:
+# サイドバー: 通常のボタン表示（並び順はセッションに従う）
+for container in st.session_state["board_order"]:
+    st.sidebar.subheader(container["header"])
     for label in container["items"]:
         mkey = label_to_key.get(label)
         if mkey and st.sidebar.button(label, key=f"btn_{mkey}", width="stretch"):
             st.session_state["selected"] = mkey
 
-valid_keys = {m.key for m in METRICS}
+# マスタボタン
+if st.sidebar.button("⚙ マスタ", key="btn_master", width="stretch"):
+    st.session_state["selected"] = "_master"
+
+valid_keys = {m.key for m in METRICS} | {"_master"}
 if st.session_state.get("selected") not in valid_keys:
     st.session_state["selected"] = METRICS[0].key
 
@@ -80,6 +78,18 @@ st.sidebar.caption("データは5分間キャッシュされます")
 # ----------------------------------------------------------------------
 # メイン
 # ----------------------------------------------------------------------
+if selected_key == "_master":
+    st.title("⚙ マスタ")
+    st.subheader("ボード並び順の変更")
+    st.caption("ドラッグ＆ドロップで並び替えてください。変更は即座にサイドバーへ反映されます。")
+    new_order = sort_items(
+        st.session_state["board_order"],
+        multi_containers=True,
+        direction="vertical",
+    )
+    st.session_state["board_order"] = new_order
+    st.stop()
+
 metric = get_metric(selected_key)
 st.title(metric.label)
 

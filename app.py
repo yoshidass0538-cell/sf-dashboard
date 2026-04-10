@@ -61,13 +61,24 @@ st.markdown(
         [data-testid="stSidebar"] * {
             color: #ffffff !important;
         }
-        [data-testid="stSidebar"] .stButton button {
+        [data-testid="stSidebar"] .stButton button,
+        [data-testid="stSidebar"] button {
             background: rgba(255, 255, 255, 0.12) !important;
             color: #ffffff !important;
             border: 1px solid rgba(255, 255, 255, 0.25) !important;
         }
-        [data-testid="stSidebar"] .stButton button:hover {
+        [data-testid="stSidebar"] .stButton button:hover,
+        [data-testid="stSidebar"] button:hover {
             background: rgba(255, 255, 255, 0.22) !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary,
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary p,
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary svg,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] label {
+            color: #ffffff !important;
         }
     }
     /* +タブを右端に寄せる */

@@ -270,11 +270,20 @@ if selected_key == "ikusei_kpi":
                 member_tabs = st.tabs(group["items"])
                 for m_tab, member in zip(member_tabs, group["items"]):
                     with m_tab:
-                        dummy = pd.DataFrame(
-                            [[""] * 5 for _ in range(20)],
-                            columns=["項目", "取得したいスキル", "進捗", "完了日", "メモ"],
+                        dummy = pd.DataFrame({
+                            "項目": [""] * 20,
+                            "取得したいスキル": [""] * 20,
+                            "進捗": [False] * 20,
+                            "完了日": [""] * 20,
+                            "メモ": [""] * 20,
+                        })
+                        st.data_editor(
+                            dummy,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={"進捗": st.column_config.CheckboxColumn("進捗")},
+                            disabled=True,
                         )
-                        st.dataframe(dummy, use_container_width=True, hide_index=True)
     st.stop()
 
 try:

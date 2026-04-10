@@ -37,31 +37,6 @@ st.markdown(
     .ag-theme-balham, .ag-cell, .ag-header-cell-text {
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
-    /* カテゴリトグルボタン: 1週間後FC(青) */
-    [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] div[data-testid="stVerticalBlock"][data-testid-key="cat-fc"]) button,
-    div[data-testid-key="cat-fc"] button {
-        background: #4A6FA5 !important;
-        color: #ffffff !important;
-        font-weight: 700 !important;
-        font-size: 1.05rem !important;
-        border: none !important;
-        border-radius: 8px !important;
-    }
-    div[data-testid-key="cat-fc"] button:hover {
-        background: #3A5F95 !important;
-    }
-    /* カテゴリトグルボタン: 促進(緑) */
-    div[data-testid-key="cat-sokusin"] button {
-        background: #2E8B57 !important;
-        color: #ffffff !important;
-        font-weight: 700 !important;
-        font-size: 1.05rem !important;
-        border: none !important;
-        border-radius: 8px !important;
-    }
-    div[data-testid-key="cat-sokusin"] button:hover {
-        background: #257A4A !important;
-    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -151,6 +126,34 @@ if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     st.rerun()
 
 st.sidebar.caption("データは5分間キャッシュされます")
+
+# カテゴリトグルボタンの配色をJSで適用
+import streamlit.components.v1 as components
+components.html("""
+<script>
+const colorMap = {
+    '1週間後FC': {bg: '#4A6FA5', hover: '#3A5F95'},
+    '促進':      {bg: '#2E8B57', hover: '#257A4A'},
+};
+function styleCatButtons() {
+    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+    if (!sidebar) return;
+    const buttons = sidebar.querySelectorAll('button');
+    buttons.forEach(btn => {
+        const text = btn.textContent.trim().replace(/^[▶▼]\\s*/, '');
+        const c = colorMap[text];
+        if (c) {
+            btn.style.cssText = 'background:'+c.bg+' !important;color:#fff !important;font-weight:700 !important;font-size:1.05rem !important;border:none !important;border-radius:8px !important;';
+            btn.onmouseenter = () => btn.style.background = c.hover;
+            btn.onmouseleave = () => btn.style.background = c.bg;
+        }
+    });
+}
+styleCatButtons();
+const obs = new MutationObserver(styleCatButtons);
+obs.observe(window.parent.document.body, {childList: true, subtree: true});
+</script>
+""", height=0)
 
 if st.sidebar.button("⚙ マスタ", key="btn_master", width="stretch"):
     st.session_state["selected"] = "_master"

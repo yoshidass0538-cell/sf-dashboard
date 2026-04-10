@@ -247,7 +247,12 @@ if selected_key == "ikusei_kpi":
         st.session_state["ikusei_order"] = _IKUSEI_DEFAULT
 
     # メンバーをドラッグ&ドロップで配置
-    with st.expander("メンバー配置を変更"):
+    if "ikusei_edit" not in st.session_state:
+        st.session_state["ikusei_edit"] = False
+    if st.button("メンバー配置を変更" if not st.session_state["ikusei_edit"] else "配置を閉じる"):
+        st.session_state["ikusei_edit"] = not st.session_state["ikusei_edit"]
+        st.rerun()
+    if st.session_state["ikusei_edit"]:
         new_order = sort_items(
             st.session_state["ikusei_order"],
             multi_containers=True,

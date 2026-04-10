@@ -83,13 +83,20 @@ if "board_order" not in st.session_state:
         for cat, ms in categories.items()
     ]
 
-# サイドバー: カテゴリ折りたたみ表示（並び順はセッションに従う）
+# サイドバー: TOTAL はそのまま表示、他カテゴリは折りたたみ
 for container in st.session_state["board_order"]:
-    with st.sidebar.expander(container["header"], expanded=False):
+    if container["header"] == "TOTAL":
+        st.sidebar.subheader(container["header"])
         for label in container["items"]:
             mkey = label_to_key.get(label)
-            if mkey and st.button(label, key=f"btn_{mkey}", use_container_width=True):
+            if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                 st.session_state["selected"] = mkey
+    else:
+        with st.sidebar.expander(container["header"], expanded=False):
+            for label in container["items"]:
+                mkey = label_to_key.get(label)
+                if mkey and st.button(label, key=f"btn_{mkey}", use_container_width=True):
+                    st.session_state["selected"] = mkey
 valid_keys = {m.key for m in METRICS} | {"_master"}
 if st.session_state.get("selected") not in valid_keys:
     st.session_state["selected"] = METRICS[0].key

@@ -58,6 +58,24 @@ st.markdown(
 
 
 # ----------------------------------------------------------------------
+# 育成KPI 共有ストア（全ユーザー間で共有）
+# ----------------------------------------------------------------------
+@st.cache_resource
+def _ikusei_store():
+    """アプリ全体で共有される育成KPIデータストア。"""
+    return {
+        "order": [
+            {"header": "1週間後FC", "items": ["堀田 輝斗", "角田 心華"]},
+            {"header": "促進", "items": ["半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"]},
+        ],
+        "tabs": {},   # {member_key: [{"name":..., "type":...}, ...]}
+        "data": {},   # {data_key: DataFrame}
+        "memo": {},   # {memo_key: str}
+        "phases_initialized": set(),  # 初期化済みメンバー追跡
+    }
+
+
+# ----------------------------------------------------------------------
 # 接続 & データ取得（キャッシュ）
 # ----------------------------------------------------------------------
 @st.cache_resource
@@ -253,12 +271,11 @@ st.markdown(f'<h1 translate="no">{metric.label}</h1>', unsafe_allow_html=True)
 
 # 育成KPI: カテゴリ→メンバータブ表示
 if selected_key == "ikusei_kpi":
-    _IKUSEI_DEFAULT = [
-        {"header": "1週間後FC", "items": ["堀田 輝斗", "角田 心華"]},
-        {"header": "促進", "items": ["半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"]},
-    ]
+    store = _ikusei_store()
+
+    # セッション用に共有ストアからコピー（sort_itemsはセッション経由で操作）
     if "ikusei_order" not in st.session_state:
-        st.session_state["ikusei_order"] = _IKUSEI_DEFAULT
+        st.session_state["ikusei_order"] = store["order"]
 
     # メンバーをドラッグ&ドロップで配置
     if "ikusei_edit" not in st.session_state:
@@ -273,26 +290,26 @@ if selected_key == "ikusei_kpi":
             direction="vertical",
         )
         st.session_state["ikusei_order"] = new_order
+        store["order"] = new_order
 
-        # 担当者の削除
         with st.expander("担当者を削除"):
-            for group in st.session_state["ikusei_order"]:
+            for group in store["order"]:
                 for member in group["items"]:
                     col1, col2 = st.columns([4, 1])
                     col1.write(f"{group['header']} ▸ {member}")
                     m_key = member.replace(" ", "").replace("\u3000", "")
                     if col2.button("✕", key=f"del_{m_key}"):
                         group["items"].remove(member)
+                        st.session_state["ikusei_order"] = store["order"]
                         st.rerun()
 
         with st.expander("フェーズ・メモを削除"):
-            for group in st.session_state["ikusei_order"]:
+            for group in store["order"]:
                 for member in group["items"]:
                     m_key = member.replace(" ", "").replace("\u3000", "")
-                    tabs_info_key = f"ikusei_tabs_{m_key}"
-                    if tabs_info_key not in st.session_state:
+                    if m_key not in store["tabs"]:
                         continue
-                    tabs_info = st.session_state[tabs_info_key]
+                    tabs_info = store["tabs"][m_key]
                     if not tabs_info:
                         continue
                     st.markdown(f"**{member}**")
@@ -306,17 +323,17 @@ if selected_key == "ikusei_kpi":
                             st.rerun()
 
     # カテゴリ→メンバータブ
-    groups = st.session_state["ikusei_order"]
+    groups = store["order"]
     cat_names = [g["header"] for g in groups] + ["+"]
     all_cat_tabs = st.tabs(cat_names)
 
-    # 「+」カテゴリタブ
     with all_cat_tabs[-1]:
         new_cat = st.text_input("新しいカテゴリ名", key="new_ikusei_cat", placeholder="例: CS入電")
         if st.button("カテゴリを追加", key="add_ikusei_cat") and new_cat:
-            existing = [g["header"] for g in st.session_state["ikusei_order"]]
+            existing = [g["header"] for g in store["order"]]
             if new_cat not in existing:
-                st.session_state["ikusei_order"].append({"header": new_cat, "items": []})
+                store["order"].append({"header": new_cat, "items": []})
+                st.session_state["ikusei_order"] = store["order"]
                 st.rerun()
             else:
                 st.warning("同じ名前のカテゴリが既にあります")
@@ -326,12 +343,12 @@ if selected_key == "ikusei_kpi":
             member_labels = group["items"] + ["+"] if group["items"] else ["+"]
             all_member_tabs = st.tabs(member_labels)
 
-            # 「+」担当者タブ
             with all_member_tabs[-1]:
                 new_member = st.text_input("新しい担当者名", key=f"new_member_{group['header']}", placeholder="例: 山田 太郎")
                 if st.button("担当者を追加", key=f"add_member_{group['header']}") and new_member:
                     if new_member not in group["items"]:
                         group["items"].append(new_member)
+                        st.session_state["ikusei_order"] = store["order"]
                         st.rerun()
                     else:
                         st.warning("同じ名前の担当者が既にいます")
@@ -342,19 +359,19 @@ if selected_key == "ikusei_kpi":
                         from datetime import datetime, timezone, timedelta
 
                         member_key = member.replace(" ", "").replace("\u3000", "")
-                        tabs_info_key = f"ikusei_tabs_{member_key}"
-                        if tabs_info_key not in st.session_state:
-                            st.session_state[tabs_info_key] = [
+
+                        # 共有ストアからタブ情報取得/初期化
+                        if member_key not in store["tabs"]:
+                            store["tabs"][member_key] = [
                                 {"name": "フェーズ1", "type": "phase"},
                                 {"name": "フェーズ2", "type": "phase"},
                                 {"name": "フェーズ3", "type": "phase"},
                             ]
 
-                        tabs_info = st.session_state[tabs_info_key]
+                        tabs_info = store["tabs"][member_key]
                         tab_labels = [t["name"] for t in tabs_info] + ["+"]
                         all_tabs = st.tabs(tab_labels)
 
-                        # 「+」タブ
                         with all_tabs[-1]:
                             tab_type = st.selectbox("タブの種類", ["フェーズ", "メモ"], key=f"tab_type_{member_key}")
                             new_name = st.text_input("タブ名", key=f"new_tab_{member_key}",
@@ -374,20 +391,20 @@ if selected_key == "ikusei_kpi":
                                 tab_type = tab_info["type"]
 
                                 if tab_type == "memo":
-                                    # メモ帳タブ
                                     memo_key = f"ikusei_memo_{member_key}_{tab_name_key}"
-                                    if memo_key not in st.session_state:
-                                        st.session_state[memo_key] = ""
-                                    st.session_state[memo_key] = st.text_area(
-                                        "メモ", value=st.session_state[memo_key],
+                                    if memo_key not in store["memo"]:
+                                        store["memo"][memo_key] = ""
+                                    val = st.text_area(
+                                        "メモ", value=store["memo"][memo_key],
                                         height=400, key=f"memo_editor_{member_key}_{tab_name_key}",
                                         placeholder="自由にメモを入力...",
                                     )
+                                    store["memo"][memo_key] = val
                                 else:
                                     # フェーズタブ（AgGrid）
                                     data_key = f"ikusei_data_{member_key}_{tab_name_key}"
-                                    if data_key not in st.session_state:
-                                        st.session_state[data_key] = pd.DataFrame({
+                                    if data_key not in store["data"]:
+                                        store["data"][data_key] = pd.DataFrame({
                                             "項目": [""] * 20,
                                             "取得したいスキル": [""] * 20,
                                             "進捗": [False] * 20,
@@ -395,7 +412,7 @@ if selected_key == "ikusei_kpi":
                                             "メモ": [""] * 20,
                                         })
 
-                                    df_ag = st.session_state[data_key].copy()
+                                    df_ag = store["data"][data_key].copy()
                                     for c in ["項目", "取得したいスキル", "完了日", "メモ"]:
                                         df_ag[c] = df_ag[c].fillna("").astype(str)
                                     df_ag["進捗"] = df_ag["進捗"].astype(bool)
@@ -501,7 +518,7 @@ if selected_key == "ikusei_kpi":
                                         update_mode="VALUE_CHANGED",
                                     )
                                     if ag_result and ag_result.data is not None:
-                                        st.session_state[data_key] = ag_result.data
+                                        store["data"][data_key] = ag_result.data
     st.stop()
 
 try:

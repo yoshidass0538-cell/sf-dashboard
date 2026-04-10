@@ -369,7 +369,7 @@ if selected_key == "ikusei_kpi":
                                 }
                             """),
                         )
-                        gb.configure_column("完了日", width=70, editable=False)
+                        gb.configure_column("完了日", width=90, editable=False)
                         gb.configure_column("メモ", flex=2, minWidth=150,
                             cellEditor=popup_editor,
                             cellEditorPopup=True,

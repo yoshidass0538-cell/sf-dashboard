@@ -252,9 +252,10 @@ const obs = new MutationObserver(styleCatButtons);
 obs.observe(window.parent.document.body, {childList: true, subtree: true});
 
 // Streamlitのテーマ検出 → html にクラス付与
+// stHeaderの背景色はグラデーション適用外なので安定して検出できる
 function detectTheme() {
     const doc = window.parent.document;
-    const el = doc.querySelector('[data-testid="stAppViewContainer"]');
+    const el = doc.querySelector('[data-testid="stHeader"]');
     if (!el) return;
     const bg = window.getComputedStyle(el).backgroundColor;
     const match = bg.match(/\d+/g);
@@ -270,8 +271,7 @@ function detectTheme() {
     }
 }
 detectTheme();
-const themeObs = new MutationObserver(detectTheme);
-themeObs.observe(window.parent.document.body, {attributes: true, childList: true, subtree: true});
+setInterval(detectTheme, 2000);
 </script>
 """, height=0)
 

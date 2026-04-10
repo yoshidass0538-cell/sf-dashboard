@@ -277,143 +277,130 @@ if selected_key == "ikusei_kpi":
                         from datetime import datetime, timezone, timedelta
 
                         member_key = member.replace(" ", "").replace("\u3000", "")
-                        data_key = f"ikusei_data_{member_key}"
+                        PHASES = ["フェーズ1", "フェーズ2", "フェーズ3"]
+                        phase_tabs = st.tabs(PHASES)
+                        for p_tab, phase in zip(phase_tabs, PHASES):
+                            with p_tab:
+                                phase_key = phase.replace(" ", "")
+                                data_key = f"ikusei_data_{member_key}_{phase_key}"
 
-                        # 初期データ
-                        if data_key not in st.session_state:
-                            st.session_state[data_key] = pd.DataFrame({
-                                "項目": [""] * 20,
-                                "取得したいスキル": [""] * 20,
-                                "進捗": [False] * 20,
-                                "完了日": [""] * 20,
-                                "メモ": [""] * 20,
-                            })
+                                # 初期データ
+                                if data_key not in st.session_state:
+                                    st.session_state[data_key] = pd.DataFrame({
+                                        "項目": [""] * 20,
+                                        "取得したいスキル": [""] * 20,
+                                        "進捗": [False] * 20,
+                                        "完了日": [""] * 20,
+                                        "メモ": [""] * 20,
+                                    })
 
-                        df_ag = st.session_state[data_key].copy()
-                        # AgGrid用に文字列化
-                        for c in ["項目", "取得したいスキル", "完了日", "メモ"]:
-                            df_ag[c] = df_ag[c].fillna("").astype(str)
-                        df_ag["進捗"] = df_ag["進捗"].astype(bool)
+                                df_ag = st.session_state[data_key].copy()
+                                for c in ["項目", "取得したいスキル", "完了日", "メモ"]:
+                                    df_ag[c] = df_ag[c].fillna("").astype(str)
+                                df_ag["進捗"] = df_ag["進捗"].astype(bool)
 
-                        # Enterで改行できるカスタムポップアップエディタ
-                        popup_editor = JsCode("""
-                            class PopupTextEditor {
-                                init(params) {
-                                    this.params = params;
-                                    this.wrapper = document.createElement('div');
-                                    this.wrapper.style.cssText = 'background:#fff;border:2px solid #8B5CF6;border-radius:8px;padding:12px;box-shadow:0 4px 20px rgba(0,0,0,0.15);';
-                                    this.textarea = document.createElement('textarea');
-                                    this.textarea.value = params.value || '';
-                                    this.textarea.style.cssText = 'width:350px;height:150px;font-size:14px;font-family:Meiryo,sans-serif;border:1px solid #ddd;border-radius:4px;padding:8px;resize:both;';
-                                    this.textarea.addEventListener('keydown', (e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.stopPropagation();
+                                popup_editor = JsCode("""
+                                    class PopupTextEditor {
+                                        init(params) {
+                                            this.params = params;
+                                            this.wrapper = document.createElement('div');
+                                            this.wrapper.style.cssText = 'background:#fff;border:2px solid #8B5CF6;border-radius:8px;padding:12px;box-shadow:0 4px 20px rgba(0,0,0,0.15);';
+                                            this.textarea = document.createElement('textarea');
+                                            this.textarea.value = params.value || '';
+                                            this.textarea.style.cssText = 'width:350px;height:150px;font-size:14px;font-family:Meiryo,sans-serif;border:1px solid #ddd;border-radius:4px;padding:8px;resize:both;';
+                                            this.textarea.addEventListener('keydown', (e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) { e.stopPropagation(); }
+                                                if (e.key === 'Escape') { params.stopEditing(); }
+                                            });
+                                            this.btn = document.createElement('button');
+                                            this.btn.textContent = '確定';
+                                            this.btn.style.cssText = 'display:block;margin-top:8px;padding:6px 20px;background:#8B5CF6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;float:right;';
+                                            this.btn.addEventListener('click', () => params.stopEditing());
+                                            this.wrapper.appendChild(this.textarea);
+                                            this.wrapper.appendChild(this.btn);
                                         }
-                                        if (e.key === 'Escape') {
-                                            params.stopEditing();
+                                        getGui() { return this.wrapper; }
+                                        getValue() { return this.textarea.value; }
+                                        afterGuiAttached() { this.textarea.focus(); }
+                                        isPopup() { return true; }
+                                    }
+                                """)
+
+                                gb = GridOptionsBuilder.from_dataframe(df_ag)
+                                gb.configure_default_column(
+                                    editable=True, resizable=True, sortable=False, filter=False,
+                                    cellStyle={"textAlign": "center"},
+                                )
+                                _popup_col_style = {"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
+                                                    "paddingTop": "8px", "paddingBottom": "8px"}
+                                gb.configure_column("項目", editable=True,
+                                    cellEditor=popup_editor, cellEditorPopup=True,
+                                    wrapText=True, autoHeight=True, flex=2, minWidth=200,
+                                    cellStyle=_popup_col_style,
+                                )
+                                gb.configure_column("取得したいスキル", flex=2, minWidth=150,
+                                    cellEditor=popup_editor, cellEditorPopup=True,
+                                    wrapText=True, autoHeight=True, cellStyle=_popup_col_style,
+                                )
+                                gb.configure_column("進捗", width=60, editable=True,
+                                    cellRenderer=JsCode("""
+                                        class CheckboxRenderer {
+                                            init(params) {
+                                                this.params = params;
+                                                this.eGui = document.createElement('input');
+                                                this.eGui.type = 'checkbox';
+                                                this.eGui.checked = params.value === true;
+                                                this.eGui.style.cursor = 'pointer';
+                                                this.eGui.addEventListener('change', (e) => {
+                                                    params.node.setDataValue(params.colDef.field, e.target.checked);
+                                                });
+                                            }
+                                            getGui() { return this.eGui; }
+                                            refresh(params) { this.eGui.checked = params.value === true; return true; }
                                         }
-                                    });
-                                    this.btn = document.createElement('button');
-                                    this.btn.textContent = '確定';
-                                    this.btn.style.cssText = 'display:block;margin-top:8px;padding:6px 20px;background:#8B5CF6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;float:right;';
-                                    this.btn.addEventListener('click', () => params.stopEditing());
-                                    this.wrapper.appendChild(this.textarea);
-                                    this.wrapper.appendChild(this.btn);
-                                }
-                                getGui() { return this.wrapper; }
-                                getValue() { return this.textarea.value; }
-                                afterGuiAttached() { this.textarea.focus(); }
-                                isPopup() { return true; }
-                            }
-                        """)
+                                    """),
+                                )
+                                gb.configure_column("完了日", width=90, editable=False)
+                                gb.configure_column("メモ", flex=2, minWidth=150,
+                                    cellEditor=popup_editor, cellEditorPopup=True,
+                                    wrapText=True, autoHeight=True, cellStyle=_popup_col_style,
+                                )
 
-                        gb = GridOptionsBuilder.from_dataframe(df_ag)
-                        gb.configure_default_column(
-                            editable=True, resizable=True, sortable=False, filter=False,
-                            cellStyle={"textAlign": "center"},
-                        )
-                        _popup_col_style = {"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
-                                            "paddingTop": "8px", "paddingBottom": "8px"}
-                        # 項目: ポップアップ編集 + 自動改行
-                        gb.configure_column("項目", editable=True,
-                            cellEditor=popup_editor,
-                            cellEditorPopup=True,
-                            wrapText=True, autoHeight=True,
-                            flex=2, minWidth=200,
-                            cellStyle=_popup_col_style,
-                        )
-                        gb.configure_column("取得したいスキル", flex=2, minWidth=150,
-                            cellEditor=popup_editor,
-                            cellEditorPopup=True,
-                            wrapText=True, autoHeight=True,
-                            cellStyle=_popup_col_style,
-                        )
-                        gb.configure_column("進捗", width=60, editable=True,
-                            cellRenderer=JsCode("""
-                                class CheckboxRenderer {
-                                    init(params) {
-                                        this.params = params;
-                                        this.eGui = document.createElement('input');
-                                        this.eGui.type = 'checkbox';
-                                        this.eGui.checked = params.value === true;
-                                        this.eGui.style.cursor = 'pointer';
-                                        this.eGui.addEventListener('change', (e) => {
-                                            params.node.setDataValue(params.colDef.field, e.target.checked);
-                                        });
-                                    }
-                                    getGui() { return this.eGui; }
-                                    refresh(params) {
-                                        this.eGui.checked = params.value === true;
-                                        return true;
-                                    }
-                                }
-                            """),
-                        )
-                        gb.configure_column("完了日", width=90, editable=False)
-                        gb.configure_column("メモ", flex=2, minWidth=150,
-                            cellEditor=popup_editor,
-                            cellEditorPopup=True,
-                            wrapText=True, autoHeight=True,
-                            cellStyle=_popup_col_style,
-                        )
-
-                        # 進捗チェック時に完了日を自動設定するJS
-                        jst = timezone(timedelta(hours=9))
-                        now = datetime.now(jst)
-                        today_js = f"{now.month}/{now.day}"
-                        gb.configure_grid_options(
-                            onCellValueChanged=JsCode(f"""
-                                function(e) {{
-                                    if (e.colDef.field === '進捗') {{
-                                        if (e.newValue === true) {{
-                                            e.node.setDataValue('完了日', '{today_js}');
-                                        }} else {{
-                                            e.node.setDataValue('完了日', '');
+                                jst = timezone(timedelta(hours=9))
+                                now = datetime.now(jst)
+                                today_js = f"{now.month}/{now.day}"
+                                gb.configure_grid_options(
+                                    onCellValueChanged=JsCode(f"""
+                                        function(e) {{
+                                            if (e.colDef.field === '進捗') {{
+                                                if (e.newValue === true) {{
+                                                    e.node.setDataValue('完了日', '{today_js}');
+                                                }} else {{
+                                                    e.node.setDataValue('完了日', '');
+                                                }}
+                                            }}
                                         }}
-                                    }}
-                                }}
-                            """),
-                        )
+                                    """),
+                                )
 
-                        ag_result = AgGrid(
-                            df_ag,
-                            gridOptions=gb.build(),
-                            height=max(300, 42 + 36 * len(df_ag)),
-                            theme="balham",
-                            allow_unsafe_jscode=True,
-                            custom_css={
-                                ".ag-header-cell": {"background-color": "#8B5CF6", "color": "#fff", "font-weight": "bold", "text-align": "center", "border-right": "1px solid #d0c4f0"},
-                                ".ag-header-cell-label": {"justify-content": "center"},
-                                ".ag-cell": {"border-right": "1px solid #e0dce8"},
-                                ".ag-row-odd": {"background-color": "#ffffff"},
-                                ".ag-row-even": {"background-color": "#f5f3ff"},
-                            },
-                            key=f"ikusei_ag_{member_key}",
-                            update_mode="VALUE_CHANGED",
-                        )
-                        # 編集結果をセッションに保存
-                        if ag_result and ag_result.data is not None:
-                            st.session_state[data_key] = ag_result.data
+                                ag_result = AgGrid(
+                                    df_ag,
+                                    gridOptions=gb.build(),
+                                    height=max(300, 42 + 36 * len(df_ag)),
+                                    theme="balham",
+                                    allow_unsafe_jscode=True,
+                                    custom_css={
+                                        ".ag-header-cell": {"background-color": "#8B5CF6", "color": "#fff", "font-weight": "bold", "text-align": "center", "border-right": "1px solid #d0c4f0"},
+                                        ".ag-header-cell-label": {"justify-content": "center"},
+                                        ".ag-cell": {"border-right": "1px solid #e0dce8"},
+                                        ".ag-row-odd": {"background-color": "#ffffff"},
+                                        ".ag-row-even": {"background-color": "#f5f3ff"},
+                                    },
+                                    key=f"ikusei_ag_{member_key}_{phase_key}",
+                                    update_mode="VALUE_CHANGED",
+                                )
+                                if ag_result and ag_result.data is not None:
+                                    st.session_state[data_key] = ag_result.data
     st.stop()
 
 try:

@@ -273,9 +273,11 @@ if selected_key == "ikusei_kpi":
                 member_tabs = st.tabs(group["items"])
                 for m_tab, member in zip(member_tabs, group["items"]):
                     with m_tab:
+                        import numpy as np
+                        from datetime import datetime, timezone, timedelta
+
                         member_key = member.replace(" ", "").replace("\u3000", "")
                         data_key = f"ikusei_data_{member_key}"
-                        prev_key = f"ikusei_prev_{member_key}"
 
                         # 初期データ
                         if data_key not in st.session_state:
@@ -286,44 +288,97 @@ if selected_key == "ikusei_kpi":
                                 "完了日": [""] * 20,
                                 "メモ": [""] * 20,
                             })
-                        if prev_key not in st.session_state:
-                            st.session_state[prev_key] = [False] * 20
 
-                        edited = st.data_editor(
-                            st.session_state[data_key],
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "項目": st.column_config.TextColumn("項目", width="large"),
-                                "取得したいスキル": st.column_config.TextColumn("取得したいスキル", width="large"),
-                                "進捗": st.column_config.CheckboxColumn("進捗", width="small"),
-                                "完了日": st.column_config.TextColumn("完了日", width="small"),
-                                "メモ": st.column_config.TextColumn("メモ", width="large"),
-                            },
-                            disabled=["完了日"],
-                            key=f"ikusei_editor_{member_key}",
+                        df_ag = st.session_state[data_key].copy()
+                        # AgGrid用に文字列化
+                        for c in ["項目", "取得したいスキル", "完了日", "メモ"]:
+                            df_ag[c] = df_ag[c].fillna("").astype(str)
+                        df_ag["進捗"] = df_ag["進捗"].astype(bool)
+
+                        gb = GridOptionsBuilder.from_dataframe(df_ag)
+                        gb.configure_default_column(
+                            editable=True, resizable=True, sortable=False, filter=False,
+                            cellStyle={"textAlign": "center", "display": "flex", "alignItems": "center", "justifyContent": "center"},
+                        )
+                        # 項目: ポップアップ編集 + 自動改行
+                        gb.configure_column("項目", editable=True,
+                            cellEditor="agLargeTextCellEditor",
+                            cellEditorPopup=True,
+                            cellEditorParams={"maxLength": 500, "rows": 5, "cols": 40},
+                            wrapText=True, autoHeight=True,
+                            flex=2, minWidth=200,
+                            cellStyle={"textAlign": "left", "whiteSpace": "normal", "lineHeight": "1.4",
+                                        "paddingTop": "6px", "paddingBottom": "6px"},
+                        )
+                        gb.configure_column("取得したいスキル", flex=2, minWidth=150,
+                            wrapText=True, autoHeight=True,
+                            cellStyle={"textAlign": "left", "whiteSpace": "normal", "lineHeight": "1.4",
+                                        "paddingTop": "6px", "paddingBottom": "6px"},
+                        )
+                        gb.configure_column("進捗", width=60, editable=True,
+                            cellRenderer=JsCode("""
+                                class CheckboxRenderer {
+                                    init(params) {
+                                        this.params = params;
+                                        this.eGui = document.createElement('input');
+                                        this.eGui.type = 'checkbox';
+                                        this.eGui.checked = params.value === true;
+                                        this.eGui.style.cursor = 'pointer';
+                                        this.eGui.addEventListener('change', (e) => {
+                                            params.node.setDataValue(params.colDef.field, e.target.checked);
+                                        });
+                                    }
+                                    getGui() { return this.eGui; }
+                                    refresh(params) {
+                                        this.eGui.checked = params.value === true;
+                                        return true;
+                                    }
+                                }
+                            """),
+                        )
+                        gb.configure_column("完了日", width=70, editable=False)
+                        gb.configure_column("メモ", flex=2, minWidth=150,
+                            wrapText=True, autoHeight=True,
+                            cellStyle={"textAlign": "left", "whiteSpace": "normal", "lineHeight": "1.4",
+                                        "paddingTop": "6px", "paddingBottom": "6px"},
                         )
 
-                        # チェック変更を検知して完了日を自動設定
-                        from datetime import datetime, timezone, timedelta
+                        # 進捗チェック時に完了日を自動設定するJS
                         jst = timezone(timedelta(hours=9))
                         now = datetime.now(jst)
-                        today_str = f"{now.month}/{now.day}"
-                        prev = st.session_state[prev_key]
-                        changed = False
-                        for i in range(len(edited)):
-                            cur = bool(edited.at[i, "進捗"])
-                            was = bool(prev[i]) if i < len(prev) else False
-                            if cur and not was:
-                                edited.at[i, "完了日"] = today_str
-                                changed = True
-                            elif not cur and was:
-                                edited.at[i, "完了日"] = ""
-                                changed = True
-                        st.session_state[prev_key] = edited["進捗"].tolist()
-                        st.session_state[data_key] = edited
-                        if changed:
-                            st.rerun()
+                        today_js = f"{now.month}/{now.day}"
+                        gb.configure_grid_options(
+                            onCellValueChanged=JsCode(f"""
+                                function(e) {{
+                                    if (e.colDef.field === '進捗') {{
+                                        if (e.newValue === true) {{
+                                            e.node.setDataValue('完了日', '{today_js}');
+                                        }} else {{
+                                            e.node.setDataValue('完了日', '');
+                                        }}
+                                    }}
+                                }}
+                            """),
+                        )
+
+                        ag_result = AgGrid(
+                            df_ag,
+                            gridOptions=gb.build(),
+                            height=max(300, 42 + 36 * len(df_ag)),
+                            theme="balham",
+                            allow_unsafe_jscode=True,
+                            custom_css={
+                                ".ag-header-cell": {"background-color": "#8B5CF6", "color": "#fff", "font-weight": "bold", "text-align": "center"},
+                                ".ag-header-cell-label": {"justify-content": "center"},
+                                ".ag-row-odd": {"background-color": "#ffffff"},
+                                ".ag-row-even": {"background-color": "#f5f3ff"},
+                            },
+                            key=f"ikusei_ag_{member_key}",
+                            update_mode="VALUE_CHANGED",
+                        )
+                        # 編集結果をセッションに保存
+                        if ag_result and ag_result.data is not None:
+                            st.session_state[data_key] = ag_result.data
     st.stop()
 
 try:

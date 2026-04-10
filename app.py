@@ -8,7 +8,10 @@ Salesforce 集計ダッシュボード（Streamlit）
 """
 
 import pandas as pd
-pd.options.future.infer_string = False
+try:
+    pd.options.future.infer_string = False
+except Exception:
+    pass
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from streamlit_sortables import sort_items

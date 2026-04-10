@@ -8,12 +8,13 @@
 fetch が dict を返した場合、ボード上に複数の表として並べて表示される。
 """
 
+from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Optional, Union, Dict
+from typing import Callable, Optional, Union
 import pandas as pd
 from simple_salesforce import Salesforce
 
-FetchResult = Union[pd.DataFrame, Dict[str, pd.DataFrame]]
+FetchResult = Union[pd.DataFrame, dict[str, pd.DataFrame]]
 
 
 @dataclass
@@ -55,12 +56,12 @@ METRIC_ORDER = [
 ]
 
 
-def fetch_fc_1week(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_fc_1week(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return _build_fc_board(sf, "THIS_MONTH", board_label="1週間後FC",
         activities=("フォローコール（1週間後FC）", "フォローコール（その他）"))
 
 
-def fetch_fc_1week_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_fc_1week_today(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return _build_fc_board(sf, "TODAY", board_label="1週間後FC（本日）",
         activities=("フォローコール（1週間後FC）", "フォローコール（その他）"))
 
@@ -71,13 +72,13 @@ SHINSETSU_FC_NAMES = {
 }
 
 
-def fetch_shinsetsu_fc_today(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_shinsetsu_fc_today(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return _build_fc_board(sf, "TODAY", board_label="新設FC TODAY",
         activities=("フォローコール（代コン）", "フォローコール（代コン窓口）", "フォローコール（工事取得）"),
         owner_filter=SHINSETSU_FC_NAMES)
 
 
-def fetch_sokushin_monthly(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_sokushin_monthly(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return _build_fc_board(sf, "THIS_MONTH", board_label="促進 月間CRデータ",
         activities=("フォローコール（代コン）", "フォローコール（代コン窓口）", "フォローコール（工事取得）"),
         owner_filter=SHINSETSU_FC_NAMES)
@@ -89,7 +90,7 @@ def _build_fc_board(
     board_label: str,
     activities: tuple = ("フォローコール（1週間後FC）", "フォローコール（その他）"),
     owner_filter: set = None,
-) -> Dict[str, pd.DataFrame]:
+) -> dict[str, pd.DataFrame]:
     act_str = ", ".join(f"'{a}'" for a in activities)
     soql = (
         "SELECT ActivityDate, OwnerId, Owner.Name oname, "
@@ -169,7 +170,7 @@ def _build_fc_board(
     return {board_label: df}
 
 
-def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH") -> Dict[str, pd.DataFrame]:
+def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH") -> dict[str, pd.DataFrame]:
     """指定期間に1週間後FCを行った案件のうち、その後キャンセル対応に至ったものを
     担当者(FC実施者)×キャンセル理由(Account.Field234__c) で集計。"""
     fc_records = sf.query_all(
@@ -181,7 +182,7 @@ def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH"
         "AND WhatId != null"
     )["records"]
     # WhatId が Account(001) のもののみ
-    fc_map: Dict[str, list] = {}
+    fc_map: dict[str, list] = {}
     for r in fc_records:
         wid = r["WhatId"]
         if not wid or not wid.startswith("001"):
@@ -216,7 +217,7 @@ def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH"
     if not cancel_set:
         return {}
 
-    reason_map: Dict[str, dict] = {}
+    reason_map: dict[str, dict] = {}
     cw = list(cancel_set)
     for i in range(0, len(cw), 200):
         chunk = cw[i : i + 200]
@@ -333,7 +334,7 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
     return result.iloc[::-1].reset_index(drop=True) if not result.empty else result
 
 
-def fetch_progress(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_progress(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return {
         "NURO開通進捗": _fetch_progress(sf, "NURO", "NURO開通進捗", False),
         "ソネット開通進捗": _fetch_progress(sf, "So-net", "ソネット開通進捗", True),
@@ -376,7 +377,7 @@ SHIFT_DAY_FIELDS = [
 ]
 
 
-def fetch_cs_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_cs_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
     today = pd.Timestamp.today()
     year_label = f"{today.year}年"
     month_label = f"{today.month}月"
@@ -454,7 +455,7 @@ SHINSETSU_FC_OWNERS = {
 SHINSETSU_FC_ORDER = ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香"]
 
 
-def fetch_shinsetsu_fc_shift(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_shinsetsu_fc_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
     today = pd.Timestamp.today()
     year_label = f"{today.year}年"
     month_label = f"{today.month}月"
@@ -536,7 +537,7 @@ CONSUME_OWNERS = {
 }
 
 
-def _owner_shift_hours_by_day(sf: Salesforce) -> Dict[str, Dict[pd.Timestamp, float]]:
+def _owner_shift_hours_by_day(sf: Salesforce) -> dict[str, dict[pd.Timestamp, float]]:
     """{担当者(正規化): {date: hours}} を返す（今月分、CONSUME_OWNERSのみ）。"""
     today = pd.Timestamp.today()
     year_label = f"{today.year}年"
@@ -549,13 +550,13 @@ def _owner_shift_hours_by_day(sf: Salesforce) -> Dict[str, Dict[pd.Timestamp, fl
         f"WHERE Field1__c = '{year_label}' AND Field2__c = '{month_label}' "
         f"AND Field128__r.Field13__c = 'CS促進'"
     )["records"]
-    result: Dict[str, Dict[pd.Timestamp, float]] = {}
+    result: dict[str, dict[pd.Timestamp, float]] = {}
     for r in rs:
         owner = (r.get("Field128__r") or {}).get("Name") or ""
         norm = owner.replace(" ", "").replace("\u3000", "")
         if not norm or norm not in CONSUME_OWNERS:
             continue
-        per_day: Dict[pd.Timestamp, float] = {}
+        per_day: dict[pd.Timestamp, float] = {}
         for day, sf_, ef in SHIFT_DAY_FIELDS:
             s = str(r.get(sf_) or "")[:5]
             e = str(r.get(ef) or "")[:5]
@@ -571,7 +572,7 @@ def _owner_shift_hours_by_day(sf: Salesforce) -> Dict[str, Dict[pd.Timestamp, fl
     return result
 
 
-def _owner_call_stats(sf: Salesforce) -> Dict[str, Dict[str, float]]:
+def _owner_call_stats(sf: Salesforce) -> dict[str, dict[str, float]]:
     """個人別の {担当者(正規化): {"calls_per_h": x, "complete_rate": y}} を今月実績から算出。"""
     soql = (
         "SELECT Owner.Name oname, Field4_del__c result, COUNT(Id) cnt "
@@ -582,8 +583,8 @@ def _owner_call_stats(sf: Salesforce) -> Dict[str, Dict[str, float]]:
         "GROUP BY Owner.Name, Field4_del__c"
     )
     rs = sf.query_all(soql)["records"]
-    totals: Dict[str, int] = {}
-    completes: Dict[str, int] = {}
+    totals: dict[str, int] = {}
+    completes: dict[str, int] = {}
     for r in rs:
         owner = r.get("oname") or ""
         norm = owner.replace(" ", "").replace("\u3000", "")
@@ -596,7 +597,7 @@ def _owner_call_stats(sf: Salesforce) -> Dict[str, Dict[str, float]]:
 
     shifts = _owner_shift_hours_by_day(sf)
     today = pd.Timestamp(pd.Timestamp.today().date())
-    out: Dict[str, Dict[str, float]] = {}
+    out: dict[str, dict[str, float]] = {}
     for norm, total in totals.items():
         # 今月開始から今日までの稼働実績h
         per_day = shifts.get(norm, {})
@@ -619,7 +620,7 @@ def _avg_daily_6th_fc(sf: Salesforce) -> float:
         "AND ActivityDate = THIS_MONTH"
     )["records"]
     # WhatId 別に Task を集める（過去分含めず今月内通算でカウント）
-    counts: Dict[str, int] = {}
+    counts: dict[str, int] = {}
     reached = 0
     # 日付昇順にソートして「6回目に達した瞬間」をカウント
     items = [
@@ -635,7 +636,7 @@ def _avg_daily_6th_fc(sf: Salesforce) -> float:
     return reached / days_elapsed if days_elapsed else 0.0
 
 
-def fetch_list_volume(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_list_volume(sf: Salesforce) -> dict[str, pd.DataFrame]:
     # ===== ソネット (リストビュー仕様) =====
     so_soql = (
         "SELECT Field156__c, Field128__c, Field253__c "
@@ -762,7 +763,7 @@ DAIKON_REASON_FIELDS = [
 ]
 
 
-def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_daikon_kaitsu(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """全次数のダイコン理由を統合し、理由ごとの発生率・開通率を集計。
     1次ダイコン理由が1件もない月は母数から除外。"""
     reason_fields = ", ".join(f[1] for f in DAIKON_REASON_FIELDS)
@@ -793,7 +794,7 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         return {"停滞別開通率": pd.DataFrame()}
 
     def _build_table(recs, total):
-        counts: Dict[str, Dict[str, int]] = {}
+        counts: dict[str, dict[str, int]] = {}
         for r in recs:
             seen: set = set()
             for _, field in DAIKON_REASON_FIELDS:
@@ -822,7 +823,7 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         return pd.DataFrame(rows)
 
     # 全体
-    tables: Dict[str, pd.DataFrame] = {}
+    tables: dict[str, pd.DataFrame] = {}
     tables["停滞別開通率（全体）"] = _build_table(records, total_accounts)
 
     # エリア別
@@ -846,7 +847,7 @@ TOTAL_CALL_OWNERS = [
 TOTAL_CALL_OWNERS_SET = {n.replace(" ", "").replace("\u3000", "") for n in TOTAL_CALL_OWNERS}
 
 
-def fetch_total_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_total_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """指定メンバーの全活動記録を日付別に集計。"""
     soql = (
         "SELECT ActivityDate, Owner.Name oname, COUNT(Id) cnt "
@@ -894,7 +895,7 @@ TIMEE_MEMBERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
 DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "対馬拓人", "早瀬太一"}
 
 
-def fetch_day_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """本日のCS促進メンバー + タイミーの対応ステータス別コール数を集計。"""
     # CS促進メンバー名を取得
     members_rs = sf.query_all(

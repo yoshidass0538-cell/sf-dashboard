@@ -72,6 +72,13 @@ st.markdown(
     html.dark-mode [data-testid="stSidebar"] button:hover {
         background: rgba(255, 255, 255, 0.22) !important;
     }
+    /* メインエリア背景: ダークモード */
+    html.dark-mode [data-testid="stAppViewContainer"] {
+        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%) !important;
+    }
+    html.dark-mode [data-testid="stMain"] {
+        background: transparent !important;
+    }
     /* +タブを右端に寄せる */
     [data-testid="stTabs"] [role="tablist"] {
         display: flex;

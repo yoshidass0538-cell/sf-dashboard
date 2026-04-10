@@ -295,28 +295,58 @@ if selected_key == "ikusei_kpi":
                             df_ag[c] = df_ag[c].fillna("").astype(str)
                         df_ag["進捗"] = df_ag["進捗"].astype(bool)
 
+                        # Enterで改行できるカスタムポップアップエディタ
+                        popup_editor = JsCode("""
+                            class PopupTextEditor {
+                                init(params) {
+                                    this.params = params;
+                                    this.wrapper = document.createElement('div');
+                                    this.wrapper.style.cssText = 'background:#fff;border:2px solid #8B5CF6;border-radius:8px;padding:12px;box-shadow:0 4px 20px rgba(0,0,0,0.15);';
+                                    this.textarea = document.createElement('textarea');
+                                    this.textarea.value = params.value || '';
+                                    this.textarea.style.cssText = 'width:350px;height:150px;font-size:14px;font-family:Meiryo,sans-serif;border:1px solid #ddd;border-radius:4px;padding:8px;resize:both;';
+                                    this.textarea.addEventListener('keydown', (e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.stopPropagation();
+                                        }
+                                        if (e.key === 'Escape') {
+                                            params.stopEditing();
+                                        }
+                                    });
+                                    this.btn = document.createElement('button');
+                                    this.btn.textContent = '確定';
+                                    this.btn.style.cssText = 'display:block;margin-top:8px;padding:6px 20px;background:#8B5CF6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;float:right;';
+                                    this.btn.addEventListener('click', () => params.stopEditing());
+                                    this.wrapper.appendChild(this.textarea);
+                                    this.wrapper.appendChild(this.btn);
+                                }
+                                getGui() { return this.wrapper; }
+                                getValue() { return this.textarea.value; }
+                                afterGuiAttached() { this.textarea.focus(); }
+                                isPopup() { return true; }
+                            }
+                        """)
+
                         gb = GridOptionsBuilder.from_dataframe(df_ag)
                         gb.configure_default_column(
                             editable=True, resizable=True, sortable=False, filter=False,
                             cellStyle={"textAlign": "center"},
                         )
+                        _popup_col_style = {"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
+                                            "paddingTop": "8px", "paddingBottom": "8px"}
                         # 項目: ポップアップ編集 + 自動改行
                         gb.configure_column("項目", editable=True,
-                            cellEditor="agLargeTextCellEditor",
+                            cellEditor=popup_editor,
                             cellEditorPopup=True,
-                            cellEditorParams={"maxLength": 500, "rows": 5, "cols": 40},
                             wrapText=True, autoHeight=True,
                             flex=2, minWidth=200,
-                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
-                                        "paddingTop": "8px", "paddingBottom": "8px"},
+                            cellStyle=_popup_col_style,
                         )
                         gb.configure_column("取得したいスキル", flex=2, minWidth=150,
-                            cellEditor="agLargeTextCellEditor",
+                            cellEditor=popup_editor,
                             cellEditorPopup=True,
-                            cellEditorParams={"maxLength": 500, "rows": 5, "cols": 40},
                             wrapText=True, autoHeight=True,
-                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
-                                        "paddingTop": "8px", "paddingBottom": "8px"},
+                            cellStyle=_popup_col_style,
                         )
                         gb.configure_column("進捗", width=60, editable=True,
                             cellRenderer=JsCode("""
@@ -341,12 +371,10 @@ if selected_key == "ikusei_kpi":
                         )
                         gb.configure_column("完了日", width=70, editable=False)
                         gb.configure_column("メモ", flex=2, minWidth=150,
-                            cellEditor="agLargeTextCellEditor",
+                            cellEditor=popup_editor,
                             cellEditorPopup=True,
-                            cellEditorParams={"maxLength": 500, "rows": 5, "cols": 40},
                             wrapText=True, autoHeight=True,
-                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
-                                        "paddingTop": "8px", "paddingBottom": "8px"},
+                            cellStyle=_popup_col_style,
                         )
 
                         # 進捗チェック時に完了日を自動設定するJS

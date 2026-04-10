@@ -285,6 +285,26 @@ if selected_key == "ikusei_kpi":
                         group["items"].remove(member)
                         st.rerun()
 
+        with st.expander("フェーズ・メモを削除"):
+            for group in st.session_state["ikusei_order"]:
+                for member in group["items"]:
+                    m_key = member.replace(" ", "").replace("\u3000", "")
+                    tabs_info_key = f"ikusei_tabs_{m_key}"
+                    if tabs_info_key not in st.session_state:
+                        continue
+                    tabs_info = st.session_state[tabs_info_key]
+                    if not tabs_info:
+                        continue
+                    st.markdown(f"**{member}**")
+                    for tab_info in tabs_info:
+                        t_label = "フェーズ" if tab_info["type"] == "phase" else "メモ"
+                        col1, col2 = st.columns([4, 1])
+                        col1.write(f"　{tab_info['name']}（{t_label}）")
+                        t_key = tab_info["name"].replace(" ", "")
+                        if col2.button("✕", key=f"deltab_{m_key}_{t_key}"):
+                            tabs_info.remove(tab_info)
+                            st.rerun()
+
     # カテゴリ→メンバータブ
     groups = st.session_state["ikusei_order"]
     cat_names = [g["header"] for g in groups] + ["+"]

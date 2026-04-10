@@ -74,7 +74,7 @@ st.markdown(
     }
     /* メインエリア背景: ライトモード */
     html.light-mode [data-testid="stAppViewContainer"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f0f4fa 40%, #dce8f5 100%) !important;
+        background: linear-gradient(180deg, #e8eaf6 0%, #c5cae9 30%, #9fa8da 70%, #b39ddb 100%) !important;
     }
     html.light-mode [data-testid="stMain"],
     html.light-mode [data-testid="stMainBlockContainer"],

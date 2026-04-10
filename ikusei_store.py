@@ -101,11 +101,20 @@ def get_store() -> dict:
     return _shared_store()
 
 
+import time
+
+_last_save_time = {"t": 0}
+
+
 def save_store():
-    """共有ストアをGoogle Sheetsに保存。"""
+    """共有ストアをGoogle Sheetsに保存（最低5秒間隔）。"""
+    now = time.time()
+    if now - _last_save_time["t"] < 5:
+        return
     try:
         store = _shared_store()
         ws = _get_worksheet()
         ws.update_acell(DATA_CELL, _serialize(store))
+        _last_save_time["t"] = now
     except Exception as e:
         st.toast(f"保存エラー: {e}", icon="⚠️")

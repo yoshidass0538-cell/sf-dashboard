@@ -274,7 +274,6 @@ if selected_key == "ikusei_kpi":
         )
         st.session_state["ikusei_order"] = new_order
         store["order"] = new_order
-        save_store()
 
         with st.expander("担当者を削除"):
             for group in store["order"]:
@@ -508,10 +507,11 @@ if selected_key == "ikusei_kpi":
                                     )
                                     if ag_result and ag_result.data is not None:
                                         store["phase_data"][data_key] = ag_result.data
-                                        save_store()
 
-    # メモ変更も保存
-    save_store()
+    # 手動保存ボタン
+    if st.button("💾 保存", use_container_width=True):
+        save_store()
+        st.toast("保存しました", icon="✅")
     st.stop()
 
 try:

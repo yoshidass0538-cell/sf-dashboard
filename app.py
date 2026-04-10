@@ -277,9 +277,24 @@ if selected_key == "ikusei_kpi":
                         from datetime import datetime, timezone, timedelta
 
                         member_key = member.replace(" ", "").replace("\u3000", "")
-                        PHASES = ["フェーズ1", "フェーズ2", "フェーズ3"]
-                        phase_tabs = st.tabs(PHASES)
-                        for p_tab, phase in zip(phase_tabs, PHASES):
+                        phases_key = f"ikusei_phases_{member_key}"
+                        if phases_key not in st.session_state:
+                            st.session_state[phases_key] = ["フェーズ1", "フェーズ2", "フェーズ3"]
+
+                        tab_labels = st.session_state[phases_key] + ["+"]
+                        all_tabs = st.tabs(tab_labels)
+
+                        # 「+」タブ
+                        with all_tabs[-1]:
+                            new_name = st.text_input("新しいタブ名", key=f"new_phase_{member_key}", placeholder="フェーズ4")
+                            if st.button("追加", key=f"add_phase_{member_key}") and new_name:
+                                if new_name not in st.session_state[phases_key]:
+                                    st.session_state[phases_key].append(new_name)
+                                    st.rerun()
+                                else:
+                                    st.warning("同じ名前のタブが既にあります")
+
+                        for p_tab, phase in zip(all_tabs[:-1], st.session_state[phases_key]):
                             with p_tab:
                                 phase_key = phase.replace(" ", "")
                                 data_key = f"ikusei_data_{member_key}_{phase_key}"

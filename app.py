@@ -76,8 +76,16 @@ st.markdown(
     html.light-mode [data-testid="stAppViewContainer"] {
         background: linear-gradient(180deg, #ffffff 0%, #f0f4fa 40%, #dce8f5 100%) !important;
     }
-    html.light-mode [data-testid="stMain"] {
+    html.light-mode [data-testid="stMain"],
+    html.light-mode [data-testid="stMainBlockContainer"],
+    html.light-mode [data-testid="stVerticalBlock"],
+    html.light-mode .main .block-container,
+    html.light-mode section[data-testid="stMain"] {
         background: transparent !important;
+    }
+    html.light-mode [data-testid="stHeader"] {
+        background: rgba(255, 255, 255, 0.8) !important;
+        backdrop-filter: blur(10px) !important;
     }
     /* メインエリア背景: ダークモード */
     html.dark-mode [data-testid="stAppViewContainer"] {

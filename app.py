@@ -239,17 +239,33 @@ st.markdown(f'<h1 translate="no">{metric.label}</h1>', unsafe_allow_html=True)
 
 # 育成KPI: カテゴリ→メンバータブ表示
 if selected_key == "ikusei_kpi":
-    IKUSEI_GROUPS = {
-        "1週間後FC": ["堀田 輝斗", "角田 心華"],
-        "促進": ["半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"],
-    }
-    cat_tabs = st.tabs(list(IKUSEI_GROUPS.keys()))
-    for cat_tab, (cat_name, members) in zip(cat_tabs, IKUSEI_GROUPS.items()):
-        with cat_tab:
-            member_tabs = st.tabs(members)
-            for m_tab, member in zip(member_tabs, members):
-                with m_tab:
-                    st.info(f"{member}（準備中）")
+    _IKUSEI_DEFAULT = [
+        {"header": "1週間後FC", "items": ["堀田 輝斗", "角田 心華"]},
+        {"header": "促進", "items": ["半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"]},
+    ]
+    if "ikusei_order" not in st.session_state:
+        st.session_state["ikusei_order"] = _IKUSEI_DEFAULT
+
+    # メンバー配置の編集モード
+    with st.expander("メンバー配置を編集（ドラッグ＆ドロップ）"):
+        new_order = sort_items(
+            st.session_state["ikusei_order"],
+            multi_containers=True,
+            direction="vertical",
+        )
+        st.session_state["ikusei_order"] = new_order
+
+    # カテゴリ→メンバータブ
+    groups = st.session_state["ikusei_order"]
+    cat_names = [g["header"] for g in groups if g["items"]]
+    if cat_names:
+        cat_tabs = st.tabs(cat_names)
+        for cat_tab, group in zip(cat_tabs, [g for g in groups if g["items"]]):
+            with cat_tab:
+                member_tabs = st.tabs(group["items"])
+                for m_tab, member in zip(member_tabs, group["items"]):
+                    with m_tab:
+                        st.info(f"{member}（準備中）")
     st.stop()
 
 try:

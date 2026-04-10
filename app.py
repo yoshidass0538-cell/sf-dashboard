@@ -112,7 +112,7 @@ if selected_key == "_master":
     st.stop()
 
 metric = get_metric(selected_key)
-st.title(metric.label)
+st.markdown(f'<h1 translate="no">{metric.label}</h1>', unsafe_allow_html=True)
 
 try:
     fetched = _load(selected_key)
@@ -132,18 +132,20 @@ if selected_key == "day_calls":
     totals = df_chart.groupby("担当者")["コール数"].sum().sort_values(ascending=False)
     owner_order = totals.index.tolist()
 
+    df_chart["ラベル"] = df_chart["対応ステータス"] + " " + df_chart["コール数"].astype(str)
+
     fig = px.bar(
         df_chart,
         y="担当者",
         x="コール数",
         color="対応ステータス",
         orientation="h",
-        text="コール数",
+        text="ラベル",
         category_orders={"担当者": owner_order},
     )
     fig.update_traces(
         textposition="inside",
-        textfont_size=13,
+        textfont_size=12,
         textfont_color="white",
         insidetextanchor="middle",
     )

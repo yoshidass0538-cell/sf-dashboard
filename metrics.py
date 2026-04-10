@@ -884,8 +884,12 @@ def fetch_total_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
 # ======================================================================
 # DAYコール数（本日・CS促進・対応ステータス別）
 # ======================================================================
-def fetch_day_calls(sf: Salesforce) -> pd.DataFrame:
-    """本日のCS促進メンバーの対応ステータス別コール数を集計。"""
+TIMEE_MEMBERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
+DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "早瀬太一"}
+
+
+def fetch_day_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
+    """本日のCS促進メンバー + タイミーの対応ステータス別コール数を集計。"""
     # CS促進メンバー名を取得
     members_rs = sf.query_all(
         "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
@@ -895,9 +899,6 @@ def fetch_day_calls(sf: Salesforce) -> pd.DataFrame:
         for r in members_rs
     }
     cs_names.discard("")
-
-    # 除外メンバー
-    DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "早瀬太一"}
     cs_names -= DAY_CALLS_EXCLUDE
 
     # 本日のTask集計
@@ -908,23 +909,25 @@ def fetch_day_calls(sf: Salesforce) -> pd.DataFrame:
         "GROUP BY Owner.Name, Field2_del__c"
     )
     rs = sf.query_all(soql)["records"]
-    rows = []
+    cs_rows = []
+    timee_rows = []
     for r in rs:
         owner = (r.get("oname") or "")
         norm = owner.replace(" ", "").replace("\u3000", "")
-        if norm not in cs_names:
-            continue
         status = r.get("status")
         if not status:
             continue
-        rows.append({
-            "担当者": owner,
-            "対応ステータス": status,
-            "コール数": int(r["cnt"]),
-        })
-    if not rows:
-        return pd.DataFrame(columns=["担当者", "対応ステータス", "コール数"])
-    return pd.DataFrame(rows)
+        row = {"担当者": owner, "対応ステータス": status, "コール数": int(r["cnt"])}
+        if norm in cs_names:
+            cs_rows.append(row)
+        elif norm in TIMEE_MEMBERS:
+            timee_rows.append(row)
+
+    empty = pd.DataFrame(columns=["担当者", "対応ステータス", "コール数"])
+    return {
+        "DAYコール数": pd.DataFrame(cs_rows) if cs_rows else empty.copy(),
+        "タイミーコール数": pd.DataFrame(timee_rows) if timee_rows else empty.copy(),
+    }
 
 
 METRICS: list[Metric] = [

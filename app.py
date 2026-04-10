@@ -51,8 +51,40 @@ def _sf():
     return get_sf()
 
 
-@st.cache_data(ttl=300, show_spinner="Salesforce から取得中...")
-def _load(metric_key: str) -> pd.DataFrame:
+# ボードを開くたびに毎回取得（キャッシュなし）
+_REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift"}
+# 2時間キャッシュ
+_CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly"}
+# 毎日11:00更新（日次キャッシュ）
+_CACHE_DAILY_KEYS = {"progress", "daikon_kaitsu"}
+
+
+def _daily_cache_key() -> str:
+    """11:00を境に切り替わるキャッシュキーを返す。"""
+    from datetime import datetime, timezone, timedelta
+    jst = timezone(timedelta(hours=9))
+    now = datetime.now(jst)
+    if now.hour < 11:
+        return (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    return now.strftime("%Y-%m-%d")
+
+
+@st.cache_data(ttl=7200, show_spinner="Salesforce から取得中...")
+def _load_2h(metric_key: str) -> pd.DataFrame:
+    return get_metric(metric_key).fetch(_sf())
+
+
+@st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
+def _load_daily(metric_key: str, _cache_day: str) -> pd.DataFrame:
+    return get_metric(metric_key).fetch(_sf())
+
+
+def _load(metric_key: str):
+    if metric_key in _CACHE_2H_KEYS:
+        return _load_2h(metric_key)
+    if metric_key in _CACHE_DAILY_KEYS:
+        return _load_daily(metric_key, _daily_cache_key())
+    # リアルタイム: 毎回取得
     return get_metric(metric_key).fetch(_sf())
 
 
@@ -122,7 +154,8 @@ if st.session_state.get("selected") not in valid_keys:
 selected_key = st.session_state["selected"]
 
 if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
-    _load.clear()
+    _load_2h.clear()
+    _load_daily.clear()
     st.rerun()
 
 st.sidebar.caption("データは5分間キャッシュされます")

@@ -265,13 +265,36 @@ if selected_key == "ikusei_kpi":
 
     # カテゴリ→メンバータブ
     groups = st.session_state["ikusei_order"]
-    cat_names = [g["header"] for g in groups if g["items"]]
-    if cat_names:
-        cat_tabs = st.tabs(cat_names)
-        for cat_tab, group in zip(cat_tabs, [g for g in groups if g["items"]]):
-            with cat_tab:
-                member_tabs = st.tabs(group["items"])
-                for m_tab, member in zip(member_tabs, group["items"]):
+    cat_names = [g["header"] for g in groups] + ["+"]
+    all_cat_tabs = st.tabs(cat_names)
+
+    # 「+」カテゴリタブ
+    with all_cat_tabs[-1]:
+        new_cat = st.text_input("新しいカテゴリ名", key="new_ikusei_cat", placeholder="例: CS入電")
+        if st.button("カテゴリを追加", key="add_ikusei_cat") and new_cat:
+            existing = [g["header"] for g in st.session_state["ikusei_order"]]
+            if new_cat not in existing:
+                st.session_state["ikusei_order"].append({"header": new_cat, "items": []})
+                st.rerun()
+            else:
+                st.warning("同じ名前のカテゴリが既にあります")
+
+    for cat_tab, group in zip(all_cat_tabs[:-1], groups):
+        with cat_tab:
+            member_labels = group["items"] + ["+"] if group["items"] else ["+"]
+            all_member_tabs = st.tabs(member_labels)
+
+            # 「+」担当者タブ
+            with all_member_tabs[-1]:
+                new_member = st.text_input("新しい担当者名", key=f"new_member_{group['header']}", placeholder="例: 山田 太郎")
+                if st.button("担当者を追加", key=f"add_member_{group['header']}") and new_member:
+                    if new_member not in group["items"]:
+                        group["items"].append(new_member)
+                        st.rerun()
+                    else:
+                        st.warning("同じ名前の担当者が既にいます")
+
+            for m_tab, member in zip(all_member_tabs[:-1], group["items"]):
                     with m_tab:
                         import numpy as np
                         from datetime import datetime, timezone, timedelta

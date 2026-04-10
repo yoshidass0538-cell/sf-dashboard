@@ -37,6 +37,15 @@ st.markdown(
     .ag-theme-balham, .ag-cell, .ag-header-cell-text {
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
+    /* data_editor セル中央寄せ */
+    [data-testid="stDataEditor"] [role="gridcell"] {
+        text-align: center !important;
+        justify-content: center !important;
+    }
+    [data-testid="stDataEditor"] [role="columnheader"] {
+        text-align: center !important;
+        justify-content: center !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,

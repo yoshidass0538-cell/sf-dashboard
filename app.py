@@ -275,15 +275,15 @@ if selected_key == "ikusei_kpi":
         st.session_state["ikusei_order"] = new_order
 
         # 担当者の削除
-        st.caption("担当者を削除")
-        for group in st.session_state["ikusei_order"]:
-            for member in group["items"]:
-                col1, col2 = st.columns([4, 1])
-                col1.write(f"{group['header']} ▸ {member}")
-                m_key = member.replace(" ", "").replace("\u3000", "")
-                if col2.button("✕", key=f"del_{m_key}"):
-                    group["items"].remove(member)
-                    st.rerun()
+        with st.expander("担当者を削除"):
+            for group in st.session_state["ikusei_order"]:
+                for member in group["items"]:
+                    col1, col2 = st.columns([4, 1])
+                    col1.write(f"{group['header']} ▸ {member}")
+                    m_key = member.replace(" ", "").replace("\u3000", "")
+                    if col2.button("✕", key=f"del_{m_key}"):
+                        group["items"].remove(member)
+                        st.rerun()
 
     # カテゴリ→メンバータブ
     groups = st.session_state["ikusei_order"]

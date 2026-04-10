@@ -18,6 +18,7 @@ from streamlit_sortables import sort_items
 
 from sf_client import get_sf
 from metrics import METRICS, get_metric
+from ikusei_store import get_store, save_store
 
 st.set_page_config(page_title="SF 集計ダッシュボード", page_icon="📊", layout="wide")
 
@@ -55,24 +56,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-
-# ----------------------------------------------------------------------
-# 育成KPI 共有ストア（全ユーザー間で共有）
-# ----------------------------------------------------------------------
-@st.cache_resource
-def _ikusei_store():
-    """アプリ全体で共有される育成KPIデータストア。"""
-    return {
-        "order": [
-            {"header": "1週間後FC", "items": ["堀田 輝斗", "角田 心華"]},
-            {"header": "促進", "items": ["半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"]},
-        ],
-        "tabs": {},   # {member_key: [{"name":..., "type":...}, ...]}
-        "data": {},   # {data_key: DataFrame}
-        "memo": {},   # {memo_key: str}
-        "phases_initialized": set(),  # 初期化済みメンバー追跡
-    }
 
 
 # ----------------------------------------------------------------------
@@ -271,7 +254,7 @@ st.markdown(f'<h1 translate="no">{metric.label}</h1>', unsafe_allow_html=True)
 
 # 育成KPI: カテゴリ→メンバータブ表示
 if selected_key == "ikusei_kpi":
-    store = _ikusei_store()
+    store = get_store()
 
     # セッション用に共有ストアからコピー（sort_itemsはセッション経由で操作）
     if "ikusei_order" not in st.session_state:
@@ -291,6 +274,7 @@ if selected_key == "ikusei_kpi":
         )
         st.session_state["ikusei_order"] = new_order
         store["order"] = new_order
+        save_store()
 
         with st.expander("担当者を削除"):
             for group in store["order"]:
@@ -301,6 +285,7 @@ if selected_key == "ikusei_kpi":
                     if col2.button("✕", key=f"del_{m_key}"):
                         group["items"].remove(member)
                         st.session_state["ikusei_order"] = store["order"]
+                        save_store()
                         st.rerun()
 
         with st.expander("フェーズ・メモを削除"):
@@ -320,6 +305,7 @@ if selected_key == "ikusei_kpi":
                         t_key = tab_info["name"].replace(" ", "")
                         if col2.button("✕", key=f"deltab_{m_key}_{t_key}"):
                             tabs_info.remove(tab_info)
+                            save_store()
                             st.rerun()
 
     # カテゴリ→メンバータブ
@@ -334,6 +320,7 @@ if selected_key == "ikusei_kpi":
             if new_cat not in existing:
                 store["order"].append({"header": new_cat, "items": []})
                 st.session_state["ikusei_order"] = store["order"]
+                save_store()
                 st.rerun()
             else:
                 st.warning("同じ名前のカテゴリが既にあります")
@@ -349,6 +336,7 @@ if selected_key == "ikusei_kpi":
                     if new_member not in group["items"]:
                         group["items"].append(new_member)
                         st.session_state["ikusei_order"] = store["order"]
+                        save_store()
                         st.rerun()
                     else:
                         st.warning("同じ名前の担当者が既にいます")
@@ -381,6 +369,7 @@ if selected_key == "ikusei_kpi":
                                 if new_name not in existing_names:
                                     new_type = "phase" if tab_type == "フェーズ" else "memo"
                                     tabs_info.append({"name": new_name, "type": new_type})
+                                    save_store()
                                     st.rerun()
                                 else:
                                     st.warning("同じ名前のタブが既にあります")
@@ -403,8 +392,8 @@ if selected_key == "ikusei_kpi":
                                 else:
                                     # フェーズタブ（AgGrid）
                                     data_key = f"ikusei_data_{member_key}_{tab_name_key}"
-                                    if data_key not in store["data"]:
-                                        store["data"][data_key] = pd.DataFrame({
+                                    if data_key not in store["phase_data"]:
+                                        store["phase_data"][data_key] = pd.DataFrame({
                                             "項目": [""] * 20,
                                             "取得したいスキル": [""] * 20,
                                             "進捗": [False] * 20,
@@ -412,7 +401,7 @@ if selected_key == "ikusei_kpi":
                                             "メモ": [""] * 20,
                                         })
 
-                                    df_ag = store["data"][data_key].copy()
+                                    df_ag = store["phase_data"][data_key].copy()
                                     for c in ["項目", "取得したいスキル", "完了日", "メモ"]:
                                         df_ag[c] = df_ag[c].fillna("").astype(str)
                                     df_ag["進捗"] = df_ag["進捗"].astype(bool)
@@ -518,7 +507,11 @@ if selected_key == "ikusei_kpi":
                                         update_mode="VALUE_CHANGED",
                                     )
                                     if ag_result and ag_result.data is not None:
-                                        store["data"][data_key] = ag_result.data
+                                        store["phase_data"][data_key] = ag_result.data
+                                        save_store()
+
+    # メモ変更も保存
+    save_store()
     st.stop()
 
 try:

@@ -402,8 +402,9 @@ if selected_key == "ikusei_kpi":
                             theme="balham",
                             allow_unsafe_jscode=True,
                             custom_css={
-                                ".ag-header-cell": {"background-color": "#8B5CF6", "color": "#fff", "font-weight": "bold", "text-align": "center"},
+                                ".ag-header-cell": {"background-color": "#8B5CF6", "color": "#fff", "font-weight": "bold", "text-align": "center", "border-right": "1px solid #d0c4f0"},
                                 ".ag-header-cell-label": {"justify-content": "center"},
+                                ".ag-cell": {"border-right": "1px solid #e0dce8"},
                                 ".ag-row-odd": {"background-color": "#ffffff"},
                                 ".ag-row-even": {"background-color": "#f5f3ff"},
                             },

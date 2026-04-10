@@ -8,7 +8,6 @@
 fetch が dict を返した場合、ボード上に複数の表として並べて表示される。
 """
 
-from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional, Union
 import pandas as pd

@@ -298,7 +298,7 @@ if selected_key == "ikusei_kpi":
                         gb = GridOptionsBuilder.from_dataframe(df_ag)
                         gb.configure_default_column(
                             editable=True, resizable=True, sortable=False, filter=False,
-                            cellStyle={"textAlign": "center", "display": "flex", "alignItems": "center", "justifyContent": "center"},
+                            cellStyle={"textAlign": "center"},
                         )
                         # 項目: ポップアップ編集 + 自動改行
                         gb.configure_column("項目", editable=True,
@@ -307,13 +307,13 @@ if selected_key == "ikusei_kpi":
                             cellEditorParams={"maxLength": 500, "rows": 5, "cols": 40},
                             wrapText=True, autoHeight=True,
                             flex=2, minWidth=200,
-                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4",
-                                        "paddingTop": "6px", "paddingBottom": "6px"},
+                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
+                                        "paddingTop": "8px", "paddingBottom": "8px"},
                         )
                         gb.configure_column("取得したいスキル", flex=2, minWidth=150,
                             wrapText=True, autoHeight=True,
-                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4",
-                                        "paddingTop": "6px", "paddingBottom": "6px"},
+                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
+                                        "paddingTop": "8px", "paddingBottom": "8px"},
                         )
                         gb.configure_column("進捗", width=60, editable=True,
                             cellRenderer=JsCode("""
@@ -339,8 +339,8 @@ if selected_key == "ikusei_kpi":
                         gb.configure_column("完了日", width=70, editable=False)
                         gb.configure_column("メモ", flex=2, minWidth=150,
                             wrapText=True, autoHeight=True,
-                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4",
-                                        "paddingTop": "6px", "paddingBottom": "6px"},
+                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5",
+                                        "paddingTop": "8px", "paddingBottom": "8px"},
                         )
 
                         # 進捗チェック時に完了日を自動設定するJS

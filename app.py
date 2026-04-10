@@ -43,9 +43,13 @@ st.markdown(
     /* +タブを右端に寄せる */
     [data-testid="stTabs"] [role="tablist"] {
         display: flex;
+        width: 100%;
     }
     [data-testid="stTabs"] [role="tablist"] button:last-child {
         margin-left: auto;
+        margin-right: 0;
+        position: absolute;
+        right: 0;
     }
     </style>
     """,

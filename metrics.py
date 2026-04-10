@@ -910,7 +910,9 @@ def fetch_day_calls(sf: Salesforce) -> pd.DataFrame:
         norm = owner.replace(" ", "").replace("\u3000", "")
         if norm not in cs_names:
             continue
-        status = r.get("status") or "(なし)"
+        status = r.get("status")
+        if not status:
+            continue
         rows.append({
             "担当者": owner,
             "対応ステータス": status,

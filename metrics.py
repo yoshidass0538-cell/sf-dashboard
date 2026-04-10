@@ -885,7 +885,7 @@ def fetch_total_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
 # DAYコール数（本日・CS促進・対応ステータス別）
 # ======================================================================
 TIMEE_MEMBERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
-DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "早瀬太一"}
+DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "対馬拓人", "早瀬太一"}
 
 
 def fetch_day_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
@@ -899,7 +899,7 @@ def fetch_day_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
         for r in members_rs
     }
     cs_names.discard("")
-    cs_names -= DAY_CALLS_EXCLUDE
+    cs_names = {n for n in cs_names if not any(ex in n for ex in DAY_CALLS_EXCLUDE)}
 
     # 本日のTask集計
     soql = (

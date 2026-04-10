@@ -240,11 +240,30 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             .{css_class} tr:hover {{
                 background: {t['hover_bg']};
             }}
+            @media screen and (max-width: 768px) {{
+                .responsive-table-wrapper {{
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                }}
+                .{css_class} {{
+                    font-size: 0.75rem;
+                    min-width: 600px;
+                }}
+                .{css_class} th {{
+                    padding: 5px 6px;
+                    white-space: nowrap;
+                }}
+                .{css_class} td {{
+                    padding: 4px 6px;
+                    white-space: nowrap;
+                }}
+            }}
             </style>
             """,
             unsafe_allow_html=True,
         )
-        st.markdown(html.replace("<table", f'<table class="{css_class}"', 1), unsafe_allow_html=True)
+        table_html = html.replace("<table", f'<table class="{css_class}"', 1)
+        st.markdown(f'<div class="responsive-table-wrapper">{table_html}</div>', unsafe_allow_html=True)
     st.download_button(
         "CSV ダウンロード",
         df.to_csv(index=False).encode("utf-8-sig"),

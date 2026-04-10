@@ -247,15 +247,13 @@ if selected_key == "ikusei_kpi":
         st.session_state["ikusei_order"] = _IKUSEI_DEFAULT
 
     # メンバーをドラッグ&ドロップで配置
-    st.caption("担当者をドラッグ＆ドロップでカテゴリ間移動できます")
-    new_order = sort_items(
-        st.session_state["ikusei_order"],
-        multi_containers=True,
-        direction="vertical",
-    )
-    st.session_state["ikusei_order"] = new_order
-
-    st.divider()
+    with st.expander("メンバー配置を変更"):
+        new_order = sort_items(
+            st.session_state["ikusei_order"],
+            multi_containers=True,
+            direction="vertical",
+        )
+        st.session_state["ikusei_order"] = new_order
 
     # カテゴリ→メンバータブ
     groups = new_order

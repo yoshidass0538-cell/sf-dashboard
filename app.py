@@ -42,44 +42,35 @@ st.markdown(
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
     /* サイドバー背景グラデーション: ライトモード */
-    @media (prefers-color-scheme: light) {
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #e8eaf6 0%, #c5cae9 30%, #9fa8da 70%, #b39ddb 100%) !important;
-        }
-        [data-testid="stSidebar"] * {
-            color: #1a1a2e !important;
-        }
-        [data-testid="stSidebar"] .stButton button {
-            color: #1a1a2e !important;
-        }
+    html.light-mode [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #e8eaf6 0%, #c5cae9 30%, #9fa8da 70%, #b39ddb 100%) !important;
+    }
+    html.light-mode [data-testid="stSidebar"] *,
+    html.light-mode [data-testid="stSidebar"] button {
+        color: #1a1a2e !important;
     }
     /* サイドバー背景グラデーション: ダークモード */
-    @media (prefers-color-scheme: dark) {
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 30%, #0f3460 70%, #533483 100%) !important;
-        }
-        [data-testid="stSidebar"] * {
-            color: #ffffff !important;
-        }
-        [data-testid="stSidebar"] .stButton button,
-        [data-testid="stSidebar"] button {
-            background: rgba(255, 255, 255, 0.12) !important;
-            color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.25) !important;
-        }
-        [data-testid="stSidebar"] .stButton button:hover,
-        [data-testid="stSidebar"] button:hover {
-            background: rgba(255, 255, 255, 0.22) !important;
-        }
-        [data-testid="stSidebar"] [data-testid="stExpander"] summary,
-        [data-testid="stSidebar"] [data-testid="stExpander"] summary p,
-        [data-testid="stSidebar"] [data-testid="stExpander"] summary svg,
-        [data-testid="stSidebar"] h3,
-        [data-testid="stSidebar"] p,
-        [data-testid="stSidebar"] span,
-        [data-testid="stSidebar"] label {
-            color: #ffffff !important;
-        }
+    html.dark-mode [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 30%, #0f3460 70%, #533483 100%) !important;
+    }
+    html.dark-mode [data-testid="stSidebar"] *,
+    html.dark-mode [data-testid="stSidebar"] button,
+    html.dark-mode [data-testid="stSidebar"] h3,
+    html.dark-mode [data-testid="stSidebar"] p,
+    html.dark-mode [data-testid="stSidebar"] span,
+    html.dark-mode [data-testid="stSidebar"] label,
+    html.dark-mode [data-testid="stSidebar"] summary,
+    html.dark-mode [data-testid="stSidebar"] summary p,
+    html.dark-mode [data-testid="stSidebar"] summary svg {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+    }
+    html.dark-mode [data-testid="stSidebar"] button {
+        background: rgba(255, 255, 255, 0.12) !important;
+        border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    }
+    html.dark-mode [data-testid="stSidebar"] button:hover {
+        background: rgba(255, 255, 255, 0.22) !important;
     }
     /* +タブを右端に寄せる */
     [data-testid="stTabs"] [role="tablist"] {
@@ -245,6 +236,28 @@ function styleCatButtons() {
 styleCatButtons();
 const obs = new MutationObserver(styleCatButtons);
 obs.observe(window.parent.document.body, {childList: true, subtree: true});
+
+// Streamlitのテーマ検出 → html にクラス付与
+function detectTheme() {
+    const doc = window.parent.document;
+    const el = doc.querySelector('[data-testid="stAppViewContainer"]');
+    if (!el) return;
+    const bg = window.getComputedStyle(el).backgroundColor;
+    const match = bg.match(/\d+/g);
+    if (match) {
+        const brightness = (parseInt(match[0]) + parseInt(match[1]) + parseInt(match[2])) / 3;
+        if (brightness < 128) {
+            doc.documentElement.classList.add('dark-mode');
+            doc.documentElement.classList.remove('light-mode');
+        } else {
+            doc.documentElement.classList.add('light-mode');
+            doc.documentElement.classList.remove('dark-mode');
+        }
+    }
+}
+detectTheme();
+const themeObs = new MutationObserver(detectTheme);
+themeObs.observe(window.parent.document.body, {attributes: true, childList: true, subtree: true});
 </script>
 """, height=0)
 

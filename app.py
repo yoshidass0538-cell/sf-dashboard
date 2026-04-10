@@ -44,6 +44,7 @@ st.markdown(
     /* サイドバー背景グラデーション: ライトモード */
     html.light-mode [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #e8eaf6 0%, #c5cae9 30%, #9fa8da 70%, #b39ddb 100%) !important;
+        border-right: 2px solid rgba(0, 0, 0, 0.15) !important;
     }
     html.light-mode [data-testid="stSidebar"] *,
     html.light-mode [data-testid="stSidebar"] button {
@@ -52,6 +53,7 @@ st.markdown(
     /* サイドバー背景グラデーション: ダークモード */
     html.dark-mode [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1a2e 0%, #16213e 30%, #0f3460 70%, #533483 100%) !important;
+        border-right: 2px solid rgba(255, 255, 255, 0.2) !important;
     }
     html.dark-mode [data-testid="stSidebar"] *,
     html.dark-mode [data-testid="stSidebar"] button,

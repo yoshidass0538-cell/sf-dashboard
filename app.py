@@ -282,7 +282,7 @@ if selected_key == "ikusei_kpi":
                             use_container_width=True,
                             hide_index=True,
                             column_config={"進捗": st.column_config.CheckboxColumn("進捗")},
-                            disabled=True,
+                            disabled=False,
                         )
     st.stop()
 

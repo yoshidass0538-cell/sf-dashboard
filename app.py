@@ -19,7 +19,17 @@ from metrics import METRICS, get_metric
 st.set_page_config(page_title="SF 集計ダッシュボード", page_icon="📊", layout="wide")
 
 # ブラウザ自動翻訳を無効化 & フォント設定
-st.markdown('<meta name="google" content="notranslate">', unsafe_allow_html=True)
+st.markdown(
+    """
+    <script>
+    document.documentElement.setAttribute('translate', 'no');
+    document.documentElement.setAttribute('lang', 'ja');
+    document.documentElement.classList.add('notranslate');
+    </script>
+    <meta name="google" content="notranslate">
+    """,
+    unsafe_allow_html=True,
+)
 st.markdown(
     """
     <style>

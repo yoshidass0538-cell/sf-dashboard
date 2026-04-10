@@ -281,7 +281,7 @@ if selected_key == "ikusei_kpi":
                             dummy,
                             use_container_width=True,
                             hide_index=True,
-                            column_config={"進捗": st.column_config.CheckboxColumn("進捗")},
+                            column_config={"進捗": st.column_config.CheckboxColumn("進捗", width=50)},
                             disabled=False,
                         )
     st.stop()

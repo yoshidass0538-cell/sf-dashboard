@@ -37,38 +37,30 @@ st.markdown(
     .ag-theme-balham, .ag-cell, .ag-header-cell-text {
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
-    /* サイドバー expander ラベル共通 */
-    [data-testid="stSidebar"] [data-testid="stExpander"] summary {
-        justify-content: center;
-        font-weight: 700;
-        font-size: 1.05rem;
-        border-radius: 8px;
-        padding: 8px 0;
+    /* カテゴリトグルボタン: 1週間後FC(青) */
+    [data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] div[data-testid="stVerticalBlock"][data-testid-key="cat-fc"]) button,
+    div[data-testid-key="cat-fc"] button {
+        background: #4A6FA5 !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        border: none !important;
+        border-radius: 8px !important;
     }
-    [data-testid="stSidebar"] [data-testid="stExpander"] summary p {
-        font-weight: 700;
+    div[data-testid-key="cat-fc"] button:hover {
+        background: #3A5F95 !important;
     }
-    /* 1週間後FC = 青系 */
-    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(1) summary {
-        background: #4A6FA5;
-        color: #ffffff;
+    /* カテゴリトグルボタン: 促進(緑) */
+    div[data-testid-key="cat-sokusin"] button {
+        background: #2E8B57 !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        border: none !important;
+        border-radius: 8px !important;
     }
-    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(1) summary p {
-        color: #ffffff;
-    }
-    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(1) summary svg {
-        fill: #ffffff;
-    }
-    /* 促進 = 緑系 */
-    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(2) summary {
-        background: #2E8B57;
-        color: #ffffff;
-    }
-    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(2) summary p {
-        color: #ffffff;
-    }
-    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(2) summary svg {
-        fill: #ffffff;
+    div[data-testid-key="cat-sokusin"] button:hover {
+        background: #257A4A !important;
     }
     </style>
     """,
@@ -116,19 +108,37 @@ if "board_order" not in st.session_state:
         for cat, ms in categories.items()
     ]
 
-# サイドバー: TOTAL はそのまま表示、他カテゴリは折りたたみ
+# カテゴリ別配色
+_CAT_COLORS = {
+    "1週間後FC": {"bg": "#4A6FA5", "fg": "#ffffff"},
+    "促進":      {"bg": "#2E8B57", "fg": "#ffffff"},
+}
+
+# サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
 for container in st.session_state["board_order"]:
-    if container["header"] == "TOTAL":
-        st.sidebar.subheader(container["header"])
+    cat = container["header"]
+    if cat == "TOTAL":
+        st.sidebar.subheader(cat)
         for label in container["items"]:
             mkey = label_to_key.get(label)
             if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                 st.session_state["selected"] = mkey
     else:
-        with st.sidebar.expander(container["header"], expanded=False):
+        colors = _CAT_COLORS.get(cat, {"bg": "#555", "fg": "#fff"})
+        toggle_key = f"cat_open_{cat}"
+        if toggle_key not in st.session_state:
+            st.session_state[toggle_key] = False
+        is_open = st.session_state[toggle_key]
+        arrow = "▼" if is_open else "▶"
+        css_id = "cat-fc" if cat == "1週間後FC" else "cat-sokusin"
+        with st.sidebar.container(key=css_id):
+            if st.button(f"{arrow}  {cat}", key=f"toggle_{cat}", use_container_width=True):
+                st.session_state[toggle_key] = not is_open
+                st.rerun()
+        if is_open:
             for label in container["items"]:
                 mkey = label_to_key.get(label)
-                if mkey and st.button(label, key=f"btn_{mkey}", use_container_width=True):
+                if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                     st.session_state["selected"] = mkey
 valid_keys = {m.key for m in METRICS} | {"_master"}
 if st.session_state.get("selected") not in valid_keys:

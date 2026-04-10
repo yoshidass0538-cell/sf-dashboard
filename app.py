@@ -237,13 +237,19 @@ if selected_key == "_master":
 metric = get_metric(selected_key)
 st.markdown(f'<h1 translate="no">{metric.label}</h1>', unsafe_allow_html=True)
 
-# 育成KPI: メンバータブ表示
+# 育成KPI: カテゴリ→メンバータブ表示
 if selected_key == "ikusei_kpi":
-    IKUSEI_MEMBERS = ["堀田 輝斗", "角田 心華", "半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"]
-    tabs = st.tabs(IKUSEI_MEMBERS)
-    for tab, member in zip(tabs, IKUSEI_MEMBERS):
-        with tab:
-            st.info(f"{member}（準備中）")
+    IKUSEI_GROUPS = {
+        "1週間後FC": ["堀田 輝斗", "角田 心華"],
+        "促進": ["半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"],
+    }
+    cat_tabs = st.tabs(list(IKUSEI_GROUPS.keys()))
+    for cat_tab, (cat_name, members) in zip(cat_tabs, IKUSEI_GROUPS.items()):
+        with cat_tab:
+            member_tabs = st.tabs(members)
+            for m_tab, member in zip(member_tabs, members):
+                with m_tab:
+                    st.info(f"{member}（準備中）")
     st.stop()
 
 try:

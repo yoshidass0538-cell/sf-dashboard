@@ -8,10 +8,12 @@ Salesforce クライアント（読み取り専用）
 """
 
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 from simple_salesforce import Salesforce
-
-load_dotenv()
 
 
 def _load_creds() -> dict:

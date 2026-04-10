@@ -161,6 +161,14 @@ if selected_key == "day_calls":
             bargap=0.25,
         )
         st.plotly_chart(fig, use_container_width=True)
+        # 内訳テーブル
+        summary = df_c.pivot_table(
+            index="担当者", columns="対応ステータス", values="コール数",
+            aggfunc="sum", fill_value=0, margins=True, margins_name="合計",
+        ).reset_index()
+        summary = summary.rename(columns={"担当者": ""})
+        st.caption("内訳")
+        st.dataframe(summary, use_container_width=True, hide_index=True)
 
     for chart_title, chart_df in fetched.items():
         _render_bar_chart(chart_title, chart_df)

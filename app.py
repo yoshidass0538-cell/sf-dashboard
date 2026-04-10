@@ -373,6 +373,10 @@ if selected_key == "ikusei_kpi":
                                 else:
                                     st.warning("同じ名前のタブが既にあります")
 
+                        if st.button("💾 保存", key=f"save_{member_key}", use_container_width=True):
+                            save_store()
+                            st.toast("保存しました", icon="✅")
+
                         for p_tab, tab_info in zip(all_tabs[:-1], tabs_info):
                             with p_tab:
                                 tab_name_key = tab_info["name"].replace(" ", "")
@@ -388,9 +392,6 @@ if selected_key == "ikusei_kpi":
                                         placeholder="自由にメモを入力...",
                                     )
                                     store["memo"][memo_key] = val
-                                    if st.button("💾 保存", key=f"save_memo_{member_key}_{tab_name_key}", use_container_width=True):
-                                        save_store()
-                                        st.toast("保存しました", icon="✅")
                                 else:
                                     # フェーズタブ（AgGrid）
                                     data_key = f"ikusei_data_{member_key}_{tab_name_key}"
@@ -510,9 +511,6 @@ if selected_key == "ikusei_kpi":
                                     )
                                     if ag_result and ag_result.data is not None:
                                         store["phase_data"][data_key] = ag_result.data
-                                    if st.button("💾 保存", key=f"save_phase_{member_key}_{tab_name_key}", use_container_width=True):
-                                        save_store()
-                                        st.toast("保存しました", icon="✅")
     st.stop()
 
 try:

@@ -37,15 +37,6 @@ st.markdown(
     .ag-theme-balham, .ag-cell, .ag-header-cell-text {
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
-    /* data_editor セル中央寄せ */
-    [data-testid="stDataEditor"] [role="gridcell"] {
-        text-align: center !important;
-        justify-content: center !important;
-    }
-    [data-testid="stDataEditor"] [role="columnheader"] {
-        text-align: center !important;
-        justify-content: center !important;
-    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -291,7 +282,13 @@ if selected_key == "ikusei_kpi":
                             dummy,
                             use_container_width=True,
                             hide_index=True,
-                            column_config={"進捗": st.column_config.CheckboxColumn("進捗", width=50)},
+                            column_config={
+                                "項目": st.column_config.TextColumn("項目", width="medium"),
+                                "取得したいスキル": st.column_config.TextColumn("取得したいスキル", width="large"),
+                                "進捗": st.column_config.CheckboxColumn("進捗", width="small"),
+                                "完了日": st.column_config.TextColumn("完了日", width="medium"),
+                                "メモ": st.column_config.TextColumn("メモ", width="large"),
+                            },
                             disabled=False,
                             key=f"ikusei_{member_key}",
                         )

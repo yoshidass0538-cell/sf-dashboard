@@ -41,6 +41,16 @@ st.markdown(
     .ag-theme-balham, .ag-cell, .ag-header-cell-text {
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
+    /* サイドバー背景グラデーション */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 30%, #0f3460 70%, #533483 100%) !important;
+    }
+    [data-testid="stSidebar"] * {
+        color: #e0e0e0 !important;
+    }
+    [data-testid="stSidebar"] .stButton button {
+        color: #ffffff !important;
+    }
     /* +タブを右端に寄せる */
     [data-testid="stTabs"] [role="tablist"] {
         display: flex;

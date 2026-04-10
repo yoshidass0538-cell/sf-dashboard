@@ -271,8 +271,8 @@ if selected_key == "ikusei_kpi":
                 for m_tab, member in zip(member_tabs, group["items"]):
                     with m_tab:
                         dummy = pd.DataFrame(
-                            [[""] * 4 for _ in range(20)],
-                            columns=[f"項目{i+1}" for i in range(4)],
+                            [[""] * 5 for _ in range(20)],
+                            columns=["項目", "取得したいスキル", "進捗", "完了日", "メモ"],
                         )
                         st.dataframe(dummy, use_container_width=True, hide_index=True)
     st.stop()

@@ -167,6 +167,7 @@ components.html("""
 const colorMap = {
     '1週間後FC': {bg: '#4A6FA5', hover: '#3A5F95'},
     '促進':      {bg: '#2E8B57', hover: '#257A4A'},
+    '責任者用':  {bg: '#8B5CF6', hover: '#7C3AED'},
 };
 function styleCatButtons() {
     const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
@@ -188,7 +189,7 @@ obs.observe(window.parent.document.body, {childList: true, subtree: true});
 </script>
 """, height=0)
 
-if st.sidebar.button("⚙ マスタ", key="btn_master", width="stretch"):
+if st.sidebar.button("🔒 マスタ", key="btn_master", width="stretch"):
     st.session_state["selected"] = "_master"
 
 
@@ -197,6 +198,15 @@ if st.sidebar.button("⚙ マスタ", key="btn_master", width="stretch"):
 # ----------------------------------------------------------------------
 if selected_key == "_master":
     st.title("⚙ マスタ")
+    if not st.session_state.get("master_auth"):
+        pw = st.text_input("パスワードを入力してください", type="password", key="master_pw")
+        if pw:
+            if pw == "yoshida":
+                st.session_state["master_auth"] = True
+                st.rerun()
+            else:
+                st.error("パスワードが違います")
+        st.stop()
     st.subheader("ボード並び順の変更")
     st.caption("ドラッグ＆ドロップで並び替えてください。変更は即座にサイドバーへ反映されます。")
     new_order = sort_items(

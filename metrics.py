@@ -1018,6 +1018,14 @@ METRICS: list[Metric] = [
         fetch=fetch_daikon_kaitsu,
         category="促進",
     ),
+    # --- 責任者用 ---
+    Metric(
+        key="ikusei_kpi",
+        label="育成KPI",
+        description="育成KPI（準備中）",
+        fetch=lambda sf: pd.DataFrame(),
+        category="責任者用",
+    ),
 ]
 
 

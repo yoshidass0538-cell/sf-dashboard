@@ -129,7 +129,7 @@ if selected_key == "day_calls":
 
     df_chart = fetched.copy()
     # 担当者ごとの合計でソート（多い順を上に）
-    totals = df_chart.groupby("担当者")["コール数"].sum().sort_values()
+    totals = df_chart.groupby("担当者")["コール数"].sum().sort_values(ascending=False)
     owner_order = totals.index.tolist()
 
     fig = px.bar(

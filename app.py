@@ -307,12 +307,12 @@ if selected_key == "ikusei_kpi":
                             cellEditorParams={"maxLength": 500, "rows": 5, "cols": 40},
                             wrapText=True, autoHeight=True,
                             flex=2, minWidth=200,
-                            cellStyle={"textAlign": "left", "whiteSpace": "normal", "lineHeight": "1.4",
+                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4",
                                         "paddingTop": "6px", "paddingBottom": "6px"},
                         )
                         gb.configure_column("取得したいスキル", flex=2, minWidth=150,
                             wrapText=True, autoHeight=True,
-                            cellStyle={"textAlign": "left", "whiteSpace": "normal", "lineHeight": "1.4",
+                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4",
                                         "paddingTop": "6px", "paddingBottom": "6px"},
                         )
                         gb.configure_column("進捗", width=60, editable=True,
@@ -339,7 +339,7 @@ if selected_key == "ikusei_kpi":
                         gb.configure_column("完了日", width=70, editable=False)
                         gb.configure_column("メモ", flex=2, minWidth=150,
                             wrapText=True, autoHeight=True,
-                            cellStyle={"textAlign": "left", "whiteSpace": "normal", "lineHeight": "1.4",
+                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4",
                                         "paddingTop": "6px", "paddingBottom": "6px"},
                         )
 

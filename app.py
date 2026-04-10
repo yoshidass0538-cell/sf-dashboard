@@ -237,6 +237,15 @@ if selected_key == "_master":
 metric = get_metric(selected_key)
 st.markdown(f'<h1 translate="no">{metric.label}</h1>', unsafe_allow_html=True)
 
+# 育成KPI: メンバータブ表示
+if selected_key == "ikusei_kpi":
+    IKUSEI_MEMBERS = ["堀田 輝斗", "角田 心華", "半田 さくら", "菊地 隆真", "栗田 優衣", "高橋 真友香"]
+    tabs = st.tabs(IKUSEI_MEMBERS)
+    for tab, member in zip(tabs, IKUSEI_MEMBERS):
+        with tab:
+            st.info(f"{member}（準備中）")
+    st.stop()
+
 try:
     fetched = _load(selected_key)
 except Exception as e:

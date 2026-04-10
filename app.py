@@ -140,14 +140,18 @@ for container in st.session_state["board_order"]:
         css_id = f"cat-{cat}"
         with st.sidebar.container(key=css_id):
             if st.button(f"{arrow}  {cat}", key=f"toggle_{cat}", use_container_width=True):
-                st.session_state[toggle_key] = not is_open
-                st.rerun()
+                if cat == "責任者用" and not st.session_state.get("responsible_auth"):
+                    st.session_state["selected"] = "_responsible_auth"
+                    st.rerun()
+                else:
+                    st.session_state[toggle_key] = not is_open
+                    st.rerun()
         if is_open:
             for label in container["items"]:
                 mkey = label_to_key.get(label)
                 if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                     st.session_state["selected"] = mkey
-valid_keys = {m.key for m in METRICS} | {"_master"}
+valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth"}
 if st.session_state.get("selected") not in valid_keys:
     st.session_state["selected"] = METRICS[0].key
 
@@ -196,6 +200,19 @@ if st.sidebar.button("🔒 マスタ", key="btn_master", width="stretch"):
 # ----------------------------------------------------------------------
 # メイン
 # ----------------------------------------------------------------------
+if selected_key == "_responsible_auth":
+    st.title("🔒 責任者用")
+    pw = st.text_input("パスワードを入力してください", type="password", key="responsible_pw")
+    if pw:
+        if pw == "yoshida":
+            st.session_state["responsible_auth"] = True
+            st.session_state["cat_open_責任者用"] = True
+            st.session_state["selected"] = METRICS[0].key
+            st.rerun()
+        else:
+            st.error("パスワードが違います")
+    st.stop()
+
 if selected_key == "_master":
     st.title("⚙ マスタ")
     if not st.session_state.get("master_auth"):

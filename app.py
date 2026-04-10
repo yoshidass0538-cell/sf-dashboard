@@ -286,12 +286,14 @@ if selected_key == "ikusei_kpi":
                             "完了日": [""] * 20,
                             "メモ": [""] * 20,
                         })
+                        member_key = member.replace(" ", "").replace("\u3000", "")
                         st.data_editor(
                             dummy,
                             use_container_width=True,
                             hide_index=True,
                             column_config={"進捗": st.column_config.CheckboxColumn("進捗", width=50)},
                             disabled=False,
+                            key=f"ikusei_{member_key}",
                         )
     st.stop()
 

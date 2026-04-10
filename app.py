@@ -137,7 +137,7 @@ for container in st.session_state["board_order"]:
             st.session_state[toggle_key] = False
         is_open = st.session_state[toggle_key]
         arrow = "▼" if is_open else "▶"
-        css_id = "cat-fc" if cat == "1週間後FC" else "cat-sokusin"
+        css_id = f"cat-{cat}"
         with st.sidebar.container(key=css_id):
             if st.button(f"{arrow}  {cat}", key=f"toggle_{cat}", use_container_width=True):
                 st.session_state[toggle_key] = not is_open

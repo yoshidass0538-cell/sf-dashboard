@@ -37,6 +37,39 @@ st.markdown(
     .ag-theme-balham, .ag-cell, .ag-header-cell-text {
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
+    /* サイドバー expander ラベル共通 */
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary {
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.05rem;
+        border-radius: 8px;
+        padding: 8px 0;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+        font-weight: 700;
+    }
+    /* 1週間後FC = 青系 */
+    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(1) summary {
+        background: #4A6FA5;
+        color: #ffffff;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(1) summary p {
+        color: #ffffff;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(1) summary svg {
+        fill: #ffffff;
+    }
+    /* 促進 = 緑系 */
+    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(2) summary {
+        background: #2E8B57;
+        color: #ffffff;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(2) summary p {
+        color: #ffffff;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"]:nth-of-type(2) summary svg {
+        fill: #ffffff;
+    }
     </style>
     """,
     unsafe_allow_html=True,

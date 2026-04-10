@@ -315,6 +315,9 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
             kessai_n = sub["kessai"].notna().sum()
             row["決済登録数"] = int(kessai_n)
             row["決済登録率"] = pct(kessai_n)
+            nyukin_n = int((sub["kaitsu"].notna() & sub["kessai"].notna()).sum())
+            row["入金数"] = nyukin_n
+            row["入金率"] = pct(nyukin_n)
         row["キャンセル数"] = int(cancel_n)
         row["キャンセル率"] = pct(cancel_n)
         row["7日以内キャンセル数"] = int(cancel7_n)

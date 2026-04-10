@@ -270,7 +270,11 @@ if selected_key == "ikusei_kpi":
                 member_tabs = st.tabs(group["items"])
                 for m_tab, member in zip(member_tabs, group["items"]):
                     with m_tab:
-                        st.info(f"{member}（準備中）")
+                        dummy = pd.DataFrame(
+                            [[""] * 20 for _ in range(4)],
+                            columns=[f"項目{i+1}" for i in range(20)],
+                        )
+                        st.dataframe(dummy, use_container_width=True, hide_index=True)
     st.stop()
 
 try:

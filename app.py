@@ -134,9 +134,9 @@ except Exception as e:
 if selected_key == "day_calls":
     import plotly.express as px
 
-    def _render_bar_chart(title: str, df_src: pd.DataFrame):
+    def _render_bar_chart(title: str, df_src):
         st.subheader(title)
-        if df_src is None or df_src.empty:
+        if df_src is None or not isinstance(df_src, pd.DataFrame) or df_src.empty or "担当者" not in df_src.columns:
             st.info("該当データはありません。")
             return
         df_c = df_src.copy()

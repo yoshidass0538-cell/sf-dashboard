@@ -40,6 +40,13 @@ st.markdown(
     .ag-theme-balham, .ag-cell, .ag-header-cell-text {
         font-family: 'メイリオ', Meiryo, 'Hiragino Sans', 'Yu Gothic', sans-serif !important;
     }
+    /* +タブを右端に寄せる */
+    [data-testid="stTabs"] [role="tablist"] {
+        display: flex;
+    }
+    [data-testid="stTabs"] [role="tablist"] button:last-child {
+        margin-left: auto;
+    }
     </style>
     """,
     unsafe_allow_html=True,

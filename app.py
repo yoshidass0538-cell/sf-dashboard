@@ -120,6 +120,56 @@ except Exception as e:
     st.error(f"取得に失敗しました: {e}")
     st.stop()
 
+# DAYコール数: 帯グラフ表示
+if selected_key == "day_calls":
+    if fetched is None or (isinstance(fetched, pd.DataFrame) and fetched.empty):
+        st.info("該当データはありません。")
+        st.stop()
+    import plotly.express as px
+
+    df_chart = fetched.copy()
+    # 担当者ごとの合計でソート（多い順を上に）
+    totals = df_chart.groupby("担当者")["コール数"].sum().sort_values()
+    owner_order = totals.index.tolist()
+
+    fig = px.bar(
+        df_chart,
+        y="担当者",
+        x="コール数",
+        color="対応ステータス",
+        orientation="h",
+        text="コール数",
+        category_orders={"担当者": owner_order},
+    )
+    fig.update_traces(
+        textposition="inside",
+        textfont_size=13,
+        textfont_color="white",
+        insidetextanchor="middle",
+    )
+    fig.update_layout(
+        font=dict(family="メイリオ, Meiryo, sans-serif", size=14),
+        xaxis_title="コール数",
+        yaxis_title="",
+        legend_title_text="対応ステータス",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        height=max(300, 60 * len(owner_order)),
+        margin=dict(l=10, r=10, t=40, b=10),
+        bargap=0.25,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 合計テーブルも表示
+    summary = df_chart.pivot_table(
+        index="担当者", columns="対応ステータス", values="コール数",
+        aggfunc="sum", fill_value=0, margins=True, margins_name="合計",
+    ).reset_index()
+    summary = summary.rename(columns={"担当者": ""})
+    st.subheader("内訳")
+    st.dataframe(summary, use_container_width=True, hide_index=True)
+    st.stop()
+
 # 単一DataFrame → dict に正規化
 if isinstance(fetched, pd.DataFrame):
     tables = {metric.list_label: fetched}

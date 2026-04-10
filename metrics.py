@@ -881,8 +881,55 @@ def fetch_total_calls(sf: Salesforce) -> Dict[str, pd.DataFrame]:
     return {"トータルコール数集計": df}
 
 
+# ======================================================================
+# DAYコール数（本日・CS促進・対応ステータス別）
+# ======================================================================
+def fetch_day_calls(sf: Salesforce) -> pd.DataFrame:
+    """本日のCS促進メンバーの対応ステータス別コール数を集計。"""
+    # CS促進メンバー名を取得
+    members_rs = sf.query_all(
+        "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
+    )["records"]
+    cs_names = {
+        (r.get("Name") or "").replace(" ", "").replace("\u3000", "")
+        for r in members_rs
+    }
+    cs_names.discard("")
+
+    # 本日のTask集計
+    soql = (
+        "SELECT Owner.Name oname, Field2_del__c status, COUNT(Id) cnt "
+        "FROM Task "
+        "WHERE ActivityDate = TODAY "
+        "GROUP BY Owner.Name, Field2_del__c"
+    )
+    rs = sf.query_all(soql)["records"]
+    rows = []
+    for r in rs:
+        owner = (r.get("oname") or "")
+        norm = owner.replace(" ", "").replace("\u3000", "")
+        if norm not in cs_names:
+            continue
+        status = r.get("status") or "(なし)"
+        rows.append({
+            "担当者": owner,
+            "対応ステータス": status,
+            "コール数": int(r["cnt"]),
+        })
+    if not rows:
+        return pd.DataFrame(columns=["担当者", "対応ステータス", "コール数"])
+    return pd.DataFrame(rows)
+
+
 METRICS: list[Metric] = [
     # --- TOTAL ---
+    Metric(
+        key="day_calls",
+        label="DAYコール数",
+        description="本日のCS促進メンバーの対応ステータス別コール数（帯グラフ）",
+        fetch=fetch_day_calls,
+        category="TOTAL",
+    ),
     Metric(
         key="total_calls",
         label="トータルコール数集計",

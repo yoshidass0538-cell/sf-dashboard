@@ -4,3 +4,4 @@ streamlit
 pandas
 streamlit-aggrid
 streamlit-sortables
+plotly

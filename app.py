@@ -246,17 +246,19 @@ if selected_key == "ikusei_kpi":
     if "ikusei_order" not in st.session_state:
         st.session_state["ikusei_order"] = _IKUSEI_DEFAULT
 
-    # メンバー配置の編集モード
-    with st.expander("メンバー配置を編集（ドラッグ＆ドロップ）"):
-        new_order = sort_items(
-            st.session_state["ikusei_order"],
-            multi_containers=True,
-            direction="vertical",
-        )
-        st.session_state["ikusei_order"] = new_order
+    # メンバーをドラッグ&ドロップで配置
+    st.caption("担当者をドラッグ＆ドロップでカテゴリ間移動できます")
+    new_order = sort_items(
+        st.session_state["ikusei_order"],
+        multi_containers=True,
+        direction="vertical",
+    )
+    st.session_state["ikusei_order"] = new_order
+
+    st.divider()
 
     # カテゴリ→メンバータブ
-    groups = st.session_state["ikusei_order"]
+    groups = new_order
     cat_names = [g["header"] for g in groups if g["items"]]
     if cat_names:
         cat_tabs = st.tabs(cat_names)

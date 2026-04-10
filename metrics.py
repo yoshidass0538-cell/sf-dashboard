@@ -262,15 +262,20 @@ def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH"
 # ----------------------------------------------------------------------
 # 指標レジストリ
 # ----------------------------------------------------------------------
-PROGRESS_START = "2026-02-01"  # エントリ日 >= この日付
+def _progress_start() -> str:
+    """6ヶ月前の1日を YYYY-MM-DD で返す。"""
+    today = pd.Timestamp.today()
+    dt = today - pd.DateOffset(months=6)
+    return dt.replace(day=1).strftime("%Y-%m-%d")
 
 
 def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_settlement: bool) -> pd.DataFrame:
+    start = _progress_start()
     soql = (
         "SELECT Field156__c, Field130__c, Field128__c, Field131__c, Field119__c "
         "FROM Account "
         f"WHERE Field76__r.Name LIKE '%{product_keyword}%' "
-        f"AND Field156__c >= {PROGRESS_START}"
+        f"AND Field156__c >= {start}"
     )
     rs = sf.query_all(soql)["records"]
     if not rs:
@@ -324,7 +329,8 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
         row["7日以内キャンセル率"] = pct(cancel7_n)
         out_rows.append(row)
 
-    return pd.DataFrame(out_rows)
+    result = pd.DataFrame(out_rows)
+    return result.iloc[::-1].reset_index(drop=True) if not result.empty else result
 
 
 def fetch_progress(sf: Salesforce) -> Dict[str, pd.DataFrame]:

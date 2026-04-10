@@ -273,28 +273,57 @@ if selected_key == "ikusei_kpi":
                 member_tabs = st.tabs(group["items"])
                 for m_tab, member in zip(member_tabs, group["items"]):
                     with m_tab:
-                        dummy = pd.DataFrame({
-                            "項目": [""] * 20,
-                            "取得したいスキル": [""] * 20,
-                            "進捗": [False] * 20,
-                            "完了日": [""] * 20,
-                            "メモ": [""] * 20,
-                        })
                         member_key = member.replace(" ", "").replace("\u3000", "")
-                        st.data_editor(
-                            dummy,
+                        data_key = f"ikusei_data_{member_key}"
+                        prev_key = f"ikusei_prev_{member_key}"
+
+                        # 初期データ
+                        if data_key not in st.session_state:
+                            st.session_state[data_key] = pd.DataFrame({
+                                "項目": [""] * 20,
+                                "取得したいスキル": [""] * 20,
+                                "進捗": [False] * 20,
+                                "完了日": [""] * 20,
+                                "メモ": [""] * 20,
+                            })
+                        if prev_key not in st.session_state:
+                            st.session_state[prev_key] = [False] * 20
+
+                        edited = st.data_editor(
+                            st.session_state[data_key],
                             use_container_width=True,
                             hide_index=True,
                             column_config={
-                                "項目": st.column_config.TextColumn("項目", width="medium"),
+                                "項目": st.column_config.TextColumn("項目", width="large"),
                                 "取得したいスキル": st.column_config.TextColumn("取得したいスキル", width="large"),
                                 "進捗": st.column_config.CheckboxColumn("進捗", width="small"),
-                                "完了日": st.column_config.TextColumn("完了日", width="medium"),
+                                "完了日": st.column_config.TextColumn("完了日", width="small"),
                                 "メモ": st.column_config.TextColumn("メモ", width="large"),
                             },
-                            disabled=False,
-                            key=f"ikusei_{member_key}",
+                            disabled=["完了日"],
+                            key=f"ikusei_editor_{member_key}",
                         )
+
+                        # チェック変更を検知して完了日を自動設定
+                        from datetime import datetime, timezone, timedelta
+                        jst = timezone(timedelta(hours=9))
+                        now = datetime.now(jst)
+                        today_str = f"{now.month}/{now.day}"
+                        prev = st.session_state[prev_key]
+                        changed = False
+                        for i in range(len(edited)):
+                            cur = bool(edited.at[i, "進捗"])
+                            was = bool(prev[i]) if i < len(prev) else False
+                            if cur and not was:
+                                edited.at[i, "完了日"] = today_str
+                                changed = True
+                            elif not cur and was:
+                                edited.at[i, "完了日"] = ""
+                                changed = True
+                        st.session_state[prev_key] = edited["進捗"].tolist()
+                        st.session_state[data_key] = edited
+                        if changed:
+                            st.rerun()
     st.stop()
 
 try:

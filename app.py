@@ -59,10 +59,15 @@ st.markdown(
             background: linear-gradient(180deg, #1a1a2e 0%, #16213e 30%, #0f3460 70%, #533483 100%) !important;
         }
         [data-testid="stSidebar"] * {
-            color: #e0e0e0 !important;
+            color: #ffffff !important;
         }
         [data-testid="stSidebar"] .stButton button {
+            background: rgba(255, 255, 255, 0.12) !important;
             color: #ffffff !important;
+            border: 1px solid rgba(255, 255, 255, 0.25) !important;
+        }
+        [data-testid="stSidebar"] .stButton button:hover {
+            background: rgba(255, 255, 255, 0.22) !important;
         }
     }
     /* +タブを右端に寄せる */

@@ -256,7 +256,7 @@ if selected_key == "ikusei_kpi":
         st.session_state["ikusei_order"] = new_order
 
     # カテゴリ→メンバータブ
-    groups = new_order
+    groups = st.session_state["ikusei_order"]
     cat_names = [g["header"] for g in groups if g["items"]]
     if cat_names:
         cat_tabs = st.tabs(cat_names)

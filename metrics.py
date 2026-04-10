@@ -896,6 +896,10 @@ def fetch_day_calls(sf: Salesforce) -> pd.DataFrame:
     }
     cs_names.discard("")
 
+    # 除外メンバー
+    DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "早瀬太一"}
+    cs_names -= DAY_CALLS_EXCLUDE
+
     # 本日のTask集計
     soql = (
         "SELECT Owner.Name oname, Field2_del__c status, COUNT(Id) cnt "

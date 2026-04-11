@@ -386,7 +386,19 @@ if selected_key == "_master":
             st.toast(msg, icon="✅" if ok else "⚠️")
 
     with st.expander("📞 トークスクリプト編集", expanded=False):
-        st.caption("セクションごとにトークの本文を編集できます。「保存」を押すとGoogle Sheetsに即時保存され、全ユーザーに反映されます。")
+        # 編集するトークスクリプトの種別を選択
+        _talk_script_options = ["（選択してください）", "1週間後FCトーク"]
+        _selected_script = st.selectbox(
+            "編集するトークスクリプトを選択",
+            _talk_script_options,
+            key="master_talk_script_select",
+        )
+
+        if _selected_script == "（選択してください）":
+            st.info("編集したいトークスクリプトを上のプルダウンから選択してください。")
+            st.stop()
+
+        st.caption(f"【{_selected_script}】セクションごとに本文を編集できます。「保存」を押すとGoogle Sheetsに即時保存され、全ユーザーに反映されます。")
         from talk_template_store import (
             get_templates,
             save_templates,

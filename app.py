@@ -193,7 +193,8 @@ else:
     _bo = st.session_state["board_order"]
     _tool_entry = next((c for c in _bo if c.get("header") == "ツール"), None)
     if _tool_entry is None or not _tool_entry.get("items"):
-        st.session_state["board_order"] = build_initial_board_order(METRICS)
+        del st.session_state["board_order"]
+        st.rerun()
 
 # カテゴリ別配色
 _CAT_COLORS = {
@@ -385,10 +386,16 @@ if selected_key == "_master":
         st.stop()
     with st.expander("📋 ボード並び順の変更", expanded=False):
         st.caption("ドラッグ＆ドロップで並び替えてください。「💾 並び順を保存」で全ユーザーに反映されます。")
+        # データ構造のシグネチャでキー生成 → 構造が変わったら自動リマウント
+        _sig = "_".join(
+            f"{c['header']}:{len(c.get('items', []))}"
+            for c in st.session_state["board_order"]
+        )
         new_order = sort_items(
             st.session_state["board_order"],
             multi_containers=True,
             direction="vertical",
+            key=f"board_sort_{_sig}",
         )
         st.session_state["board_order"] = new_order
         if st.button("💾 並び順を保存", key="save_board_order", type="primary"):

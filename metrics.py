@@ -1035,7 +1035,7 @@ def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
 
     def _build_df(kind: str) -> pd.DataFrame:
         rows = []
-        for month_key in sorted(stats[kind].keys()):
+        for month_key in sorted(stats[kind].keys(), reverse=True):
             s = stats[kind][month_key]
             ct, rt = s["complete_total"], s["rusu_total"]
             rows.append({

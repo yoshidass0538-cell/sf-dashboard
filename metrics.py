@@ -1029,6 +1029,63 @@ METRICS: list[Metric] = [
 ]
 
 
+# --- ツール: メンバー別トークスクリプト（14名 × 各ボード） ---
+TALK_SCRIPT_MEMBERS = [
+    "室谷 慧",
+    "原田 綾子",
+    "金澤 駿平",
+    "吉本 将吾",
+    "大滝 紀香",
+    "堀田 輝斗",
+    "角田 心華",
+    "佐々木 彩乃",
+    "葛西 翼",
+    "雨貝 一生",
+    "半田 さくら",
+    "菊地 隆真",
+    "栗田 優衣",
+    "高橋 真友香",
+]
+
+# 各メンバーが持つボード一覧（将来複数追加可）
+# (suffix, label) のタプルリスト
+TALK_SCRIPT_BOARDS = [
+    ("fc1week", "1週間後FCトーク"),
+]
+
+for _i, _member in enumerate(TALK_SCRIPT_MEMBERS):
+    for _suffix, _board_label in TALK_SCRIPT_BOARDS:
+        METRICS.append(Metric(
+            key=f"talk_script_{_i:02d}_{_suffix}",
+            label=_board_label,
+            description=f"{_member} の {_board_label}",
+            fetch=lambda sf: pd.DataFrame(),
+            category="ツール",
+        ))
+
+
+def parse_talk_script_key(key: str) -> tuple[str, str] | None:
+    """
+    talk_script_NN_xxx 形式のキーから (メンバー名, ボードラベル) を返す。
+    パースできなければ None。
+    """
+    if not key.startswith("talk_script_"):
+        return None
+    parts = key.split("_", 3)
+    # ['talk', 'script', 'NN', 'suffix']
+    if len(parts) < 4:
+        return None
+    try:
+        idx = int(parts[2])
+    except ValueError:
+        return None
+    if idx >= len(TALK_SCRIPT_MEMBERS):
+        return None
+    suffix = parts[3]
+    label = next((lbl for sfx, lbl in TALK_SCRIPT_BOARDS if sfx == suffix), suffix)
+    return TALK_SCRIPT_MEMBERS[idx], label
+
+
 def get_metric(key: str) -> Metric:
     for m in METRICS:
         if m.key == key:

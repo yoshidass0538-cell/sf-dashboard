@@ -17,7 +17,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from streamlit_sortables import sort_items
 
 from sf_client import get_sf
-from metrics import METRICS, get_metric
+from metrics import METRICS, get_metric, TALK_SCRIPT_MEMBERS, TALK_SCRIPT_BOARDS, parse_talk_script_key
 from ikusei_store import get_store, save_store
 
 st.set_page_config(page_title="SF 集計ダッシュボード", page_icon="📊", layout="wide")
@@ -173,22 +173,27 @@ st.sidebar.markdown(
 )
 
 # カテゴリでグルーピング
+# ツール配下の talk_script_* メトリクスは「サイドバーでネスト描画」するため、
+# board_order の通常アイテムからは除外する
 categories: dict[str, list] = {}
 for m in METRICS:
+    if m.category == "ツール" and m.key.startswith("talk_script_"):
+        continue
     categories.setdefault(m.category, []).append(m)
+categories.setdefault("ツール", [])  # 空でも存在を保証
+
 label_to_key = {m.label: m.key for m in METRICS}
 
-# セッションに並び順を保持
+# セッションに並び順を保持（Google Sheetsから読み込み、無ければデフォルト）
+from ui_order_store import build_initial_board_order, save_order as _save_board_order
 if "board_order" not in st.session_state:
-    st.session_state["board_order"] = [
-        {"header": cat, "items": [m.label for m in ms]}
-        for cat, ms in categories.items()
-    ]
+    st.session_state["board_order"] = build_initial_board_order(METRICS)
 
 # カテゴリ別配色
 _CAT_COLORS = {
     "1週間後FC": {"bg": "#4A6FA5", "fg": "#ffffff"},
     "促進":      {"bg": "#2E8B57", "fg": "#ffffff"},
+    "ツール":    {"bg": "#D4850A", "fg": "#ffffff"},
 }
 
 # サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
@@ -217,10 +222,35 @@ for container in st.session_state["board_order"]:
                     st.session_state[toggle_key] = not is_open
                     st.rerun()
         if is_open:
-            for label in container["items"]:
-                mkey = label_to_key.get(label)
-                if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
-                    st.session_state["selected"] = mkey
+            # ツールは「メンバー → ボード」の2階層ネスト描画
+            if cat == "ツール":
+                for _mem_idx, _member_name in enumerate(TALK_SCRIPT_MEMBERS):
+                    _mem_toggle_key = f"_member_open_{_mem_idx}"
+                    if _mem_toggle_key not in st.session_state:
+                        st.session_state[_mem_toggle_key] = False
+                    _mem_open = st.session_state[_mem_toggle_key]
+                    _mem_arrow = "▼" if _mem_open else "▶"
+                    if st.sidebar.button(
+                        f"　{_mem_arrow} {_member_name}",
+                        key=f"toggle_member_{_mem_idx}",
+                        use_container_width=True,
+                    ):
+                        st.session_state[_mem_toggle_key] = not _mem_open
+                        st.rerun()
+                    if _mem_open:
+                        for _suffix, _board_label in TALK_SCRIPT_BOARDS:
+                            _bkey = f"talk_script_{_mem_idx:02d}_{_suffix}"
+                            if st.sidebar.button(
+                                f"　　📋 {_board_label}",
+                                key=f"btn_{_bkey}",
+                                use_container_width=True,
+                            ):
+                                st.session_state["selected"] = _bkey
+            else:
+                for label in container["items"]:
+                    mkey = label_to_key.get(label)
+                    if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
+                        st.session_state["selected"] = mkey
 valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth"}
 if st.session_state.get("selected") not in valid_keys:
     st.session_state["selected"] = METRICS[0].key
@@ -238,10 +268,36 @@ st.sidebar.caption("データは5分間キャッシュされます")
 import streamlit.components.v1 as components
 components.html("""
 <script>
+// 親ドキュメント側の自動翻訳を無効化（components.html内で確実に実行）
+try {
+    const pdoc = window.parent.document;
+    pdoc.documentElement.setAttribute('translate', 'no');
+    pdoc.documentElement.setAttribute('lang', 'ja');
+    pdoc.documentElement.classList.add('notranslate');
+    if (!pdoc.querySelector('meta[name="google"][content="notranslate"]')) {
+        const m = pdoc.createElement('meta');
+        m.name = 'google';
+        m.content = 'notranslate';
+        pdoc.head.appendChild(m);
+    }
+    // 描画後の動的要素にも notranslate を強制付与
+    function forceNoTranslate() {
+        pdoc.querySelectorAll('body, body *').forEach(el => {
+            if (!el.classList.contains('notranslate')) {
+                el.classList.add('notranslate');
+                el.setAttribute('translate', 'no');
+            }
+        });
+    }
+    forceNoTranslate();
+    new MutationObserver(forceNoTranslate).observe(pdoc.body, {childList: true, subtree: true});
+} catch (e) {}
+
 const colorMap = {
     '1週間後FC': {bg: '#4A6FA5', hover: '#3A5F95'},
     '促進':      {bg: '#2E8B57', hover: '#257A4A'},
     '責任者用':  {bg: '#8B5CF6', hover: '#7C3AED'},
+    'ツール':    {bg: '#D4850A', hover: '#B8730A'},
 };
 function styleCatButtons() {
     const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
@@ -316,18 +372,356 @@ if selected_key == "_master":
             else:
                 st.error("パスワードが違います")
         st.stop()
-    st.subheader("ボード並び順の変更")
-    st.caption("ドラッグ＆ドロップで並び替えてください。変更は即座にサイドバーへ反映されます。")
-    new_order = sort_items(
-        st.session_state["board_order"],
-        multi_containers=True,
-        direction="vertical",
-    )
-    st.session_state["board_order"] = new_order
+    with st.expander("📋 ボード並び順の変更", expanded=False):
+        st.caption("ドラッグ＆ドロップで並び替えてください。「💾 並び順を保存」で全ユーザーに反映されます。")
+        new_order = sort_items(
+            st.session_state["board_order"],
+            multi_containers=True,
+            direction="vertical",
+        )
+        st.session_state["board_order"] = new_order
+        if st.button("💾 並び順を保存", key="save_board_order", type="primary"):
+            ok, msg = _save_board_order(new_order)
+            st.session_state["selected"] = "_master"
+            st.toast(msg, icon="✅" if ok else "⚠️")
+
+    with st.expander("📞 トークスクリプト編集", expanded=False):
+        st.caption("セクションごとにトークの本文を編集できます。「保存」を押すとGoogle Sheetsに即時保存され、全ユーザーに反映されます。")
+        from talk_template_store import (
+            get_templates,
+            save_templates,
+            reset_to_default,
+            SECTIONS_BY_KIND,
+            SONET_FUBI_KEYS,
+            SONET_CLOSING_KEYS,
+            LINE_TEMPLATE_KEYS,
+            clear_template_cache,
+        )
+
+        templates = get_templates()
+        talk_kind_tabs = st.tabs(["So-net光", "NURO光"])
+        _kind_meta = [
+            ("Sonet", "So-net光", "#1976D2"),
+            ("NURO", "NURO光", "#7B1FA2"),
+        ]
+        for tab, (kind, label, color) in zip(talk_kind_tabs, _kind_meta):
+            with tab:
+                kind_templates = templates.setdefault(kind, {})
+                for sec_name in SECTIONS_BY_KIND[kind]:
+                    # 不備解消(Sonet)は9種テンプレに展開
+                    if sec_name == "不備解消" and kind == "Sonet":
+                        fubi_templates = templates.setdefault("Sonet_fubi", {})
+                        st.markdown(
+                            f'<div style="background:{color};color:#fff;padding:8px 14px;'
+                            f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
+                            f'【不備解消】テンプレート（ダイコンステータス別 9種）</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.caption("ダイコンステータスから自動選択されます。「工事日調整希望」は「工事取得」に変換されます。")
+                        for fkey in SONET_FUBI_KEYS:
+                            with st.expander(f"📋 {fkey}", expanded=False):
+                                current = fubi_templates.get(fkey, "")
+                                new_val = st.text_area(
+                                    fkey,
+                                    value=current,
+                                    height=300,
+                                    key=f"talk_edit_fubi_{fkey}",
+                                    label_visibility="collapsed",
+                                )
+                                if new_val != current:
+                                    fubi_templates[fkey] = new_val
+                        continue
+
+                    # 締め(Sonet)は2種テンプレに展開
+                    if sec_name == "締め" and kind == "Sonet":
+                        closing_templates = templates.setdefault("Sonet_closing", {})
+                        st.markdown(
+                            f'<div style="background:{color};color:#fff;padding:8px 14px;'
+                            f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
+                            f'【締め】テンプレート（利用回線あり/不明 2種）</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.caption("お客様の利用回線が「あり」「不明 or 空欄」のどちらかで自動選択されます。")
+                        for ckey in SONET_CLOSING_KEYS:
+                            with st.expander(f"📋 {ckey}", expanded=False):
+                                current = closing_templates.get(ckey, "")
+                                new_val = st.text_area(
+                                    ckey,
+                                    value=current,
+                                    height=240,
+                                    key=f"talk_edit_closing_{ckey}",
+                                    label_visibility="collapsed",
+                                )
+                                if new_val != current:
+                                    closing_templates[ckey] = new_val
+                        continue
+
+                    with st.expander(f"【{sec_name}】", expanded=False):
+                        current = kind_templates.get(sec_name, "")
+                        new_val = st.text_area(
+                            sec_name,
+                            value=current,
+                            height=240,
+                            key=f"talk_edit_{kind}_{sec_name}",
+                            label_visibility="collapsed",
+                        )
+                        if new_val != current:
+                            kind_templates[sec_name] = new_val
+
+                # LINEテンプレ編集セクション（Sonet/NURO共通）
+                line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
+                line_store = templates.setdefault(line_store_key, {})
+                st.markdown(
+                    f'<div style="background:#06C755;color:#fff;padding:8px 14px;'
+                    f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
+                    f'💬 LINEテンプレ（3種）</div>',
+                    unsafe_allow_html=True,
+                )
+                for lkey in LINE_TEMPLATE_KEYS:
+                    with st.expander(f"💬 {lkey}", expanded=False):
+                        current = line_store.get(lkey, "")
+                        new_val = st.text_area(
+                            lkey,
+                            value=current,
+                            height=240,
+                            key=f"talk_edit_line_{kind}_{lkey}",
+                            label_visibility="collapsed",
+                        )
+                        if new_val != current:
+                            line_store[lkey] = new_val
+
+                col_save, col_reload = st.columns([1, 1])
+                if col_save.button(f"💾 {label} を保存", key=f"talk_save_{kind}", use_container_width=True, type="primary"):
+                    ok, msg = save_templates()
+                    st.session_state["selected"] = "_master"
+                    st.toast(msg, icon="✅" if ok else "⚠️")
+                if col_reload.button(f"⟳ 再読み込み", key=f"talk_reload_{kind}", use_container_width=True):
+                    clear_template_cache()
+                    st.session_state["selected"] = "_master"
+                    st.rerun()
     st.stop()
 
 metric = get_metric(selected_key)
-st.markdown(f'<h1 translate="no">{metric.label}</h1>', unsafe_allow_html=True)
+# talk_script_NN_xxx の場合はメンバー名 / ボード名 を見出しに反映
+_parsed_title = parse_talk_script_key(selected_key)
+if _parsed_title:
+    _title = f"{_parsed_title[0]} ／ {_parsed_title[1]}"
+else:
+    _title = metric.label
+st.markdown(f'<h1 translate="no">{_title}</h1>', unsafe_allow_html=True)
+
+# トークスクリプト（テスト）: 電話番号で顧客情報引き当て
+# selected_key が "talk_script_NN" 形式（メンバー別の独立ボード）
+if selected_key.startswith("talk_script_"):
+    from talk_script_store import (
+        lookup_customer,
+        load_talk_script,
+        detect_kind,
+        normalize_phone,
+        clear_caches,
+    )
+
+    # メンバー別ユニーク接尾辞 → session_state を独立化
+    _board_id = selected_key  # 例: talk_script_00_fc1week
+    _parsed = parse_talk_script_key(selected_key)
+    _member_name = _parsed[0] if _parsed else ""
+    _board_label = _parsed[1] if _parsed else metric.label
+
+    st.caption(f"電話番号を貼り付けると顧客情報を引き当て、商材に応じたトークスクリプトを表示します。（{_member_name} 専用ボード）")
+
+    col_in, col_btn = st.columns([4, 1])
+    with col_in:
+        phone_input = st.text_input(
+            "電話番号",
+            placeholder="例: 080-4200-2238 / 08042002238",
+            key=f"talk_phone_{_board_id}",
+            label_visibility="collapsed",
+        )
+    with col_btn:
+        if st.button("🔄 データ更新", key=f"talk_refresh_{_board_id}", use_container_width=True):
+            clear_caches()
+            st.rerun()
+
+    phone_clean = normalize_phone(phone_input)
+
+    if not phone_clean:
+        st.info("電話番号を入力してください。")
+        st.stop()
+
+    info = lookup_customer(phone_clean)
+    if info is None:
+        st.warning(f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。")
+        st.stop()
+
+    # --- 顧客情報カード ---
+    def _v(key: str) -> str:
+        v = info.get(key, "")
+        return str(v) if v not in (None, "") else "—"
+
+    shozai = _v("取次商材情報")
+    kind = detect_kind(shozai)
+    kind_label = "NURO光" if kind == "NURO" else "So-net光"
+    kind_color = "#7B1FA2" if kind == "NURO" else "#1976D2"
+
+    kessai_raw = info.get("決済登録日（引用）", "")
+    kessai_status = "✅ 登録済み" if kessai_raw not in (None, "") else "❌ 未登録"
+
+    st.markdown(
+        f"""
+        <div style="
+            background: rgba(255,255,255,0.85);
+            border-left: 6px solid {kind_color};
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin: 12px 0 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        ">
+        <div style="font-size:1.1rem;font-weight:700;color:{kind_color};margin-bottom:8px;">
+            {kind_label}　|　{_v("申込者氏名")}（{_v("申込者氏名（フリガナ）")}）
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.95rem;color:#222;">
+            <tr>
+                <td style="padding:4px 8px;width:25%;color:#666;">エントリ日</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("案件進捗管理: エントリ日")}</td>
+                <td style="padding:4px 8px;width:25%;color:#666;">工事予定日</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("工事予定日（引用）")}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">開通日</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("開通日（引用）")}</td>
+                <td style="padding:4px 8px;color:#666;">ST大区分</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("status大区分（引用）")}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">利用回線</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("利用回線")}</td>
+                <td style="padding:4px 8px;color:#666;">LINE登録(突合)</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("【Lｽﾃｯﾌﾟ】突合完了日（引用）")}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">決済登録</td>
+                <td style="padding:4px 8px;font-weight:600;">{kessai_status}</td>
+                <td style="padding:4px 8px;color:#666;">取次商材</td>
+                <td style="padding:4px 8px;font-weight:600;">{shozai}</td>
+            </tr>
+        </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --- LINEテンプレ（折りたたみ） ---
+    import html as _html
+    from talk_template_store import get_templates as _get_tpl_for_line, LINE_TEMPLATE_KEYS
+    _all_templates_for_line = _get_tpl_for_line()
+    _line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
+    line_templates = _all_templates_for_line.get(_line_store_key, {})
+    if any(line_templates.values()):
+        with st.expander("💬 LINEテンプレ", expanded=False):
+            line_tabs = st.tabs(LINE_TEMPLATE_KEYS)
+            for tab, lkey in zip(line_tabs, LINE_TEMPLATE_KEYS):
+                with tab:
+                    body = line_templates.get(lkey, "")
+                    if not body:
+                        st.info("（テンプレなし）")
+                        continue
+                    safe = _html.escape(body).replace("\n", "<br>").replace(" ", "&nbsp;")
+                    st.markdown(
+                        f'<div style="background:rgba(255,255,255,0.9);border-left:4px solid #06C755;'
+                        f'border-radius:6px;padding:14px 20px;font-size:0.92rem;line-height:1.7;'
+                        f'color:#1a1a1a;box-shadow:0 1px 4px rgba(0,0,0,0.06);white-space:pre-wrap;">'
+                        f'{safe}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    # --- トークスクリプト本文（セクション別テンプレ + 動的処理） ---
+    from talk_template_store import (
+        get_templates,
+        SECTIONS_BY_KIND,
+        select_fubi_key,
+        apply_dynamic_processing,
+    )
+
+    st.subheader(f"📞 トークスクリプト（{kind_label}）")
+    templates = get_templates()
+    sections = SECTIONS_BY_KIND.get(kind, [])
+    kind_templates = templates.get(kind, {})
+
+    # 決済登録日が入っていれば「決済未登録」セクションはスキップ
+    skip_kessai = bool(kessai_raw)
+
+    # Sonetの場合、不備解消セクションは9種テンプレから動的選択
+    fubi_key_selected = None
+    closing_key_selected = None
+    if kind == "Sonet":
+        fubi_key_selected = select_fubi_key(
+            info.get("ダイコンステータス", ""),
+            info.get("工事予定日（引用）", ""),
+        )
+        # 締め: 利用回線の有無で2種から選択
+        _kaisen_val = (info.get("利用回線") or "").strip()
+        closing_key_selected = "利用回線あり" if (_kaisen_val and _kaisen_val != "不明") else "利用回線不明"
+
+    def _render_section_body(body: str) -> str:
+        """セクション本文を行単位でHTML化（見出し/注釈をスタイリング）。"""
+        if not body:
+            return '<div style="color:#999;font-style:italic;">（空のセクション）</div>'
+        out = []
+        for raw in body.split("\n"):
+            text = raw.rstrip()
+            if not text.strip():
+                out.append('<div style="height:8px;"></div>')
+                continue
+            safe = _html.escape(text).replace(" ", "&nbsp;")
+            stripped = text.strip()
+            if stripped.startswith("■") or stripped.startswith("★") or stripped.startswith("・"):
+                out.append(
+                    f'<div style="font-weight:700;color:{kind_color};margin:6px 0 2px 0;">{safe}</div>'
+                )
+            elif stripped.startswith("※") or stripped.startswith("→"):
+                out.append(
+                    f'<div style="color:#888;font-size:0.85rem;margin-left:8px;">{safe}</div>'
+                )
+            else:
+                out.append(f'<div>{safe}</div>')
+        return "".join(out)
+
+    for sec_name in sections:
+        if sec_name == "決済未登録" and skip_kessai:
+            continue
+
+        # 不備解消セクションは動的に9種から選択（Sonetのみ）
+        if sec_name == "不備解消" and kind == "Sonet":
+            fubi_templates = templates.get("Sonet_fubi", {})
+            body = fubi_templates.get(fubi_key_selected, "")
+            section_label = f"【不備解消】　🎯 {fubi_key_selected}"
+        # 締めセクションは利用回線の有無で2種から選択（Sonetのみ）
+        elif sec_name == "締め" and kind == "Sonet":
+            closing_templates = templates.get("Sonet_closing", {})
+            body = closing_templates.get(closing_key_selected, "")
+            section_label = f"【締め】　🎯 {closing_key_selected}"
+        else:
+            body = kind_templates.get(sec_name, "")
+            section_label = f"【{sec_name}】"
+
+        # Sonet の動的処理を適用
+        if kind == "Sonet":
+            body = apply_dynamic_processing(body, info)
+
+        st.markdown(
+            f'<div style="background:{kind_color};color:#fff;padding:8px 14px;'
+            f'border-radius:6px;font-weight:700;margin:18px 0 6px 0;font-size:1.05rem;">'
+            f'{section_label}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div style="background:rgba(255,255,255,0.85);border-radius:6px;'
+            f'padding:14px 20px;font-size:0.95rem;line-height:1.7;color:#1a1a1a;'
+            f'box-shadow:0 1px 4px rgba(0,0,0,0.06);">{_render_section_body(body)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.stop()
 
 # 育成KPI: カテゴリ→メンバータブ表示
 if selected_key == "ikusei_kpi":

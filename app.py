@@ -188,6 +188,12 @@ label_to_key = {m.label: m.key for m in METRICS}
 from ui_order_store import build_initial_board_order, save_order as _save_board_order
 if "board_order" not in st.session_state:
     st.session_state["board_order"] = build_initial_board_order(METRICS)
+else:
+    # 旧形式（ツールカテゴリが空 or 存在しない）を検出して再構築
+    _bo = st.session_state["board_order"]
+    _tool_entry = next((c for c in _bo if c.get("header") == "ツール"), None)
+    if _tool_entry is None or not _tool_entry.get("items"):
+        st.session_state["board_order"] = build_initial_board_order(METRICS)
 
 # カテゴリ別配色
 _CAT_COLORS = {

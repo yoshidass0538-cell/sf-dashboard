@@ -936,6 +936,127 @@ def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
     }
 
 
+def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """
+    仮計算: 2025/12以降の月別で、商材別(ソネット/NURO)に
+    [1週間後FC完了フラグ=true] vs [留守 + 完了フラグ=false] の
+    開通率・CX率を比較するための表を構築する。
+
+    集計仕様:
+      - 期間: Field156__c (エントリ日) >= 2025-12-01
+      - 商材: Field232__c LIKE 'So-net光_%' / 'NURO光_%'
+      - 完了グループ: Field233__c = true
+      - 留守グループ: Field233__c = false AND 任意のTask(Field2_del__c IN
+        ['フォローコール（1週間後FC）','フォローコール（その他）'] AND
+        Field4_del__c='留守') がそのアカウントに存在
+      - 開通: Field130__c (開通日) が入っている
+      - CX:  Field130__c (開通日) が空 AND Field119__c (キャンセル日) に日付あり
+    """
+    from collections import defaultdict
+    from datetime import datetime
+
+    PERIOD_START = "2025-12-01"
+
+    # 1) 1週間後FC系 留守タスクを持つアカウントID集合
+    task_query = (
+        "SELECT WhatId FROM Task "
+        "WHERE Field2_del__c IN ('フォローコール（1週間後FC）', 'フォローコール（その他）') "
+        "AND Field4_del__c = '留守'"
+    )
+    try:
+        task_records = sf.query_all(task_query)["records"]
+    except Exception as e:
+        return {"エラー": pd.DataFrame({"メッセージ": [f"Task取得失敗: {e}"]})}
+    rusu_account_ids = {r["WhatId"] for r in task_records if r.get("WhatId")}
+
+    # 2) 対象期間の Sonet/NURO アカウント
+    account_query = (
+        "SELECT Id, Field156__c, Field130__c, Field119__c, Field232__c, Field233__c "
+        "FROM Account "
+        f"WHERE Field156__c >= {PERIOD_START} "
+        "AND (Field232__c LIKE 'NURO光_%' OR Field232__c LIKE 'So-net光_%')"
+    )
+    try:
+        account_records = sf.query_all(account_query)["records"]
+    except Exception as e:
+        return {"エラー": pd.DataFrame({"メッセージ": [f"Account取得失敗: {e}"]})}
+
+    # 3) 集計
+    def _new_stat():
+        return {
+            "complete_total": 0, "complete_kaitsu": 0, "complete_cx": 0,
+            "rusu_total": 0, "rusu_kaitsu": 0, "rusu_cx": 0,
+        }
+    stats: dict[str, dict] = {
+        "ソネット": defaultdict(_new_stat),
+        "NURO": defaultdict(_new_stat),
+    }
+
+    for r in account_records:
+        entry_date_str = r.get("Field156__c")
+        if not entry_date_str:
+            continue
+        try:
+            d = datetime.strptime(entry_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+        month_key = f"{d.year}/{d.month:02d}"
+
+        shozai = r.get("Field232__c") or ""
+        if shozai.startswith("NURO光_"):
+            kind = "NURO"
+        elif shozai.startswith("So-net光_"):
+            kind = "ソネット"
+        else:
+            continue
+
+        flag = r.get("Field233__c")
+        is_kaitsu = bool(r.get("Field130__c"))
+        # CX = 開通日が空 かつ キャンセル日に日付あり
+        is_cancel = (not is_kaitsu) and bool(r.get("Field119__c"))
+
+        if flag is True:
+            s = stats[kind][month_key]
+            s["complete_total"] += 1
+            if is_kaitsu:
+                s["complete_kaitsu"] += 1
+            if is_cancel:
+                s["complete_cx"] += 1
+        elif r.get("Id") in rusu_account_ids:
+            s = stats[kind][month_key]
+            s["rusu_total"] += 1
+            if is_kaitsu:
+                s["rusu_kaitsu"] += 1
+            if is_cancel:
+                s["rusu_cx"] += 1
+
+    def _pct(num: int, denom: int) -> str:
+        return f"{num * 100 / denom:.1f}%" if denom else "—"
+
+    def _build_df(kind: str) -> pd.DataFrame:
+        rows = []
+        for month_key in sorted(stats[kind].keys()):
+            s = stats[kind][month_key]
+            ct, rt = s["complete_total"], s["rusu_total"]
+            rows.append({
+                "月": month_key,
+                "完了件数": ct,
+                "完了開通率": _pct(s["complete_kaitsu"], ct),
+                "完了CX率": _pct(s["complete_cx"], ct),
+                "留守件数": rt,
+                "留守開通率": _pct(s["rusu_kaitsu"], rt),
+                "留守CX率": _pct(s["rusu_cx"], rt),
+            })
+        if not rows:
+            return pd.DataFrame({"月": ["—"], "完了件数": ["データなし"]})
+        return pd.DataFrame(rows)
+
+    return {
+        "ソネット": _build_df("ソネット"),
+        "NURO": _build_df("NURO"),
+    }
+
+
 def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """
     後確待ち確認用スプレッドシートから、最新の BY用_* シートを読んで
@@ -1077,6 +1198,13 @@ METRICS: list[Metric] = [
         label="折返し件数",
         description="後確待ち管理シートから今日と明日の時間別折返件数を表示",
         fetch=fetch_orikaeshi_kensu,
+        category="TOTAL",
+    ),
+    Metric(
+        key="kari_keisan",
+        label="仮計算",
+        description="2025/12以降の月別 1週間後FC完了 vs 留守(完了フラグなし) の開通率・CX率比較",
+        fetch=fetch_kari_keisan,
         category="TOTAL",
     ),
     # --- 1週間後FC ---

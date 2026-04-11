@@ -1002,9 +1002,22 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
     if not data_by_date:
         return {"エラー": pd.DataFrame({"メッセージ": ["対象種別のデータがありません"]})}
 
-    # 日付昇順で先頭2日分（今日と明日想定）
-    sorted_dates = sorted(data_by_date.keys())
-    target_dates = sorted_dates[:2]
+    # JST 今日 〜 1週間後 の範囲のみ表示
+    from datetime import datetime, timezone, timedelta
+    jst = timezone(timedelta(hours=9))
+    today = datetime.now(jst).date()
+    one_week_later = today + timedelta(days=7)
+    target_dates: list[str] = []
+    for date_str in sorted(data_by_date.keys()):
+        try:
+            d = datetime.strptime(date_str, "%Y/%m/%d").date()
+        except ValueError:
+            continue
+        if today <= d <= one_week_later:
+            target_dates.append(date_str)
+    if not target_dates:
+        # 範囲内に無ければとりあえず先頭から最大8日分
+        target_dates = sorted(data_by_date.keys())[:8]
 
     # 表示順（ユーザー指定の4種類）
     display_order = [

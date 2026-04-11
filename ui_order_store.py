@@ -62,14 +62,18 @@ def build_initial_board_order(metrics_list) -> list:
     現在のMETRICSから board_order を構築。
     保存済み順があればそれを尊重し、不足分はデフォルトで補完する。
     metrics_list: METRICS のリスト (Metric オブジェクト)
+    ※ ツール カテゴリの items は メンバー名 一覧として扱う（並び替え対象）
     """
+    from metrics import TALK_SCRIPT_MEMBERS  # 循環import回避のため遅延import
+
     # 現在のカテゴリ→ラベル一覧
     current_cats: dict[str, list[str]] = {}
     for m in metrics_list:
         if m.category == "ツール" and m.key.startswith("talk_script_"):
             continue  # ツール配下のメンバー別ボードは別管理
         current_cats.setdefault(m.category, []).append(m.label)
-    current_cats.setdefault("ツール", [])
+    # ツールはメンバー名一覧で管理
+    current_cats["ツール"] = list(TALK_SCRIPT_MEMBERS)
 
     saved = get_saved_order()
 

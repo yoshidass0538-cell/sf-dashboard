@@ -223,8 +223,13 @@ for container in st.session_state["board_order"]:
                     st.rerun()
         if is_open:
             # ツールは「メンバー → ボード」の2階層ネスト描画
+            # メンバー順は board_order の保存済みitemsを使用
             if cat == "ツール":
-                for _mem_idx, _member_name in enumerate(TALK_SCRIPT_MEMBERS):
+                for _member_name in container["items"]:
+                    try:
+                        _mem_idx = TALK_SCRIPT_MEMBERS.index(_member_name)
+                    except ValueError:
+                        continue
                     _mem_toggle_key = f"_member_open_{_mem_idx}"
                     if _mem_toggle_key not in st.session_state:
                         st.session_state[_mem_toggle_key] = False

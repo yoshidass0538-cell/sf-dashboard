@@ -1014,6 +1014,12 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
         "折り返し希望(新設FC)",
     ]
 
+    def _to_int(v: str) -> int:
+        try:
+            return int((v or "0").strip() or "0")
+        except ValueError:
+            return 0
+
     result: dict[str, pd.DataFrame] = {}
     for d in target_dates:
         rows = []
@@ -1021,14 +1027,13 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
             if cat_label not in data_by_date[d]:
                 continue
             src_row = data_by_date[d][cat_label]
-            row_dict: dict[str, str] = {"種別": cat_label}
+            row_dict: dict[str, int] = {"種別": cat_label}
             for col_idx, time_label in time_slots:
-                shinki = src_row[col_idx] if col_idx < len(src_row) else ""
-                arata = src_row[col_idx + 1] if col_idx + 1 < len(src_row) else ""
-                rusu = src_row[col_idx + 2] if col_idx + 2 < len(src_row) else ""
-                row_dict[f"{time_label} 新規"] = shinki or "0"
-                row_dict[f"{time_label} 改め"] = arata or "0"
-                row_dict[f"{time_label} 留守"] = rusu or "0"
+                # 新規/改め/留守 の3列を合算
+                shinki = _to_int(src_row[col_idx]) if col_idx < len(src_row) else 0
+                arata = _to_int(src_row[col_idx + 1]) if col_idx + 1 < len(src_row) else 0
+                rusu = _to_int(src_row[col_idx + 2]) if col_idx + 2 < len(src_row) else 0
+                row_dict[time_label] = shinki + arata + rusu
             rows.append(row_dict)
         if rows:
             result[d] = pd.DataFrame(rows)

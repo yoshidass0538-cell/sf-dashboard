@@ -1202,10 +1202,10 @@ METRICS: list[Metric] = [
     ),
     Metric(
         key="kari_keisan",
-        label="仮計算",
+        label="FC完了CX率",
         description="2025/12以降の月別 1週間後FC完了 vs 留守(完了フラグなし) の開通率・CX率比較",
         fetch=fetch_kari_keisan,
-        category="TOTAL",
+        category="1週間後FC",
     ),
     # --- 1週間後FC ---
     Metric(

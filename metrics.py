@@ -936,6 +936,108 @@ def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
     }
 
 
+def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """
+    後確待ち確認用スプレッドシートから、最新の BY用_* シートを読んで
+    今日と明日の時間帯×種別の折返件数を表示用に整形する。
+    対象種別:
+      - 折返CS開通前 → 折り返し希望(開通前)
+      - 折返新設FC → 折り返し希望(新設FC)
+      - 折返１週間FC → 折り返し希望(1週間後)
+      - 折返工事取得 → 折り返し希望(工事取得)
+    """
+    from talk_script_store import _get_gspread_client
+    BY_SHEET_ID = "1Xg2oxrIrXy3oju8s9POm8RRHW6RWqqbj7ALTBjAzkvA"
+
+    TARGET_CATEGORIES = {
+        "折返CS開通前": "折り返し希望(開通前)",
+        "折返新設FC": "折り返し希望(新設FC)",
+        "折返１週間FC": "折り返し希望(1週間後)",
+        "折返工事取得": "折り返し希望(工事取得)",
+    }
+
+    try:
+        client = _get_gspread_client()
+        sh = client.open_by_key(BY_SHEET_ID)
+    except Exception as e:
+        return {"エラー": pd.DataFrame({"メッセージ": [f"シート取得失敗: {e}"]})}
+
+    # BY用_NNNNNNNN 形式の最新シートを取得
+    by_titles = [
+        ws.title for ws in sh.worksheets()
+        if ws.title.startswith("BY用_") and ws.title[4:].lstrip("_").isdigit()
+    ]
+    if not by_titles:
+        return {"エラー": pd.DataFrame({"メッセージ": ["BY用_* シートが見つかりません"]})}
+    by_titles.sort(reverse=True)
+    target_ws = sh.worksheet(by_titles[0])
+    all_vals = target_ws.get_all_values()
+    if len(all_vals) < 2:
+        return {"エラー": pd.DataFrame({"メッセージ": ["データがありません"]})}
+
+    # R1: 時間帯ヘッダー（F=合計、I=10:00、L=11:00、...と3列ずつ）
+    time_header = all_vals[0]
+    time_slots: list[tuple[int, str]] = []  # (start_col_idx, label)
+    for col_idx in range(5, len(time_header), 3):
+        label = (time_header[col_idx] or "").strip()
+        if not label:
+            continue
+        # "10:00:00" → "10:00"
+        if ":" in label:
+            parts = label.split(":")
+            label = f"{parts[0]}:{parts[1]}"
+        time_slots.append((col_idx, label))
+
+    # 日付別に対象種別の行を収集
+    data_by_date: dict[str, dict[str, list[str]]] = {}
+    for row in all_vals:
+        if len(row) < 5:
+            continue
+        date_str = (row[3] or "").strip()
+        cat_str = (row[4] or "").strip()
+        if not date_str or cat_str not in TARGET_CATEGORIES:
+            continue
+        data_by_date.setdefault(date_str, {})[TARGET_CATEGORIES[cat_str]] = row
+
+    if not data_by_date:
+        return {"エラー": pd.DataFrame({"メッセージ": ["対象種別のデータがありません"]})}
+
+    # 日付昇順で先頭2日分（今日と明日想定）
+    sorted_dates = sorted(data_by_date.keys())
+    target_dates = sorted_dates[:2]
+
+    # 表示順（ユーザー指定の4種類）
+    display_order = [
+        "折り返し希望(開通前)",
+        "折り返し希望(1週間後)",
+        "折り返し希望(工事取得)",
+        "折り返し希望(新設FC)",
+    ]
+
+    result: dict[str, pd.DataFrame] = {}
+    for d in target_dates:
+        rows = []
+        for cat_label in display_order:
+            if cat_label not in data_by_date[d]:
+                continue
+            src_row = data_by_date[d][cat_label]
+            row_dict: dict[str, str] = {"種別": cat_label}
+            for col_idx, time_label in time_slots:
+                shinki = src_row[col_idx] if col_idx < len(src_row) else ""
+                arata = src_row[col_idx + 1] if col_idx + 1 < len(src_row) else ""
+                rusu = src_row[col_idx + 2] if col_idx + 2 < len(src_row) else ""
+                row_dict[f"{time_label} 新規"] = shinki or "0"
+                row_dict[f"{time_label} 改め"] = arata or "0"
+                row_dict[f"{time_label} 留守"] = rusu or "0"
+            rows.append(row_dict)
+        if rows:
+            result[d] = pd.DataFrame(rows)
+
+    if not result:
+        return {"エラー": pd.DataFrame({"メッセージ": ["表示可能なデータがありません"]})}
+    return result
+
+
 METRICS: list[Metric] = [
     # --- TOTAL ---
     Metric(
@@ -950,6 +1052,13 @@ METRICS: list[Metric] = [
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",
         fetch=fetch_total_calls,
+        category="TOTAL",
+    ),
+    Metric(
+        key="orikaeshi_kensu",
+        label="折返し件数",
+        description="後確待ち管理シートから今日と明日の時間別折返件数を表示",
+        fetch=fetch_orikaeshi_kensu,
         category="TOTAL",
     ),
     # --- 1週間後FC ---

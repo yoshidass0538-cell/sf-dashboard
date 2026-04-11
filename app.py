@@ -123,6 +123,8 @@ def _sf():
 
 # ボードを開くたびに毎回取得（キャッシュなし）
 _REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift"}
+# 5分キャッシュ
+_CACHE_5MIN_KEYS = {"orikaeshi_kensu"}
 # 2時間キャッシュ
 _CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly"}
 # 毎日11:00更新（日次キャッシュ）
@@ -139,6 +141,11 @@ def _daily_cache_key() -> str:
     return now.strftime("%Y-%m-%d")
 
 
+@st.cache_data(ttl=300, show_spinner="取得中...")
+def _load_5min(metric_key: str) -> pd.DataFrame:
+    return get_metric(metric_key).fetch(_sf())
+
+
 @st.cache_data(ttl=7200, show_spinner="Salesforce から取得中...")
 def _load_2h(metric_key: str) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
@@ -150,6 +157,8 @@ def _load_daily(metric_key: str, _cache_day: str) -> pd.DataFrame:
 
 
 def _load(metric_key: str):
+    if metric_key in _CACHE_5MIN_KEYS:
+        return _load_5min(metric_key)
     if metric_key in _CACHE_2H_KEYS:
         return _load_2h(metric_key)
     if metric_key in _CACHE_DAILY_KEYS:
@@ -270,6 +279,7 @@ if st.session_state.get("selected") not in valid_keys:
 selected_key = st.session_state["selected"]
 
 if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
+    _load_5min.clear()
     _load_2h.clear()
     _load_daily.clear()
     st.rerun()

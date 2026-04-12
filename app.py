@@ -1126,69 +1126,124 @@ if selected_key == "orikaeshi_kensu":
         table_html = html.replace("<table", f'<table class="{css_cls}"', 1)
         st.markdown(f'<div class="responsive-table-wrapper">{table_html}</div>', unsafe_allow_html=True)
 
-        # --- ALL ストップボタン（種別ごと） ---
+        # --- チェックボックス (AgGrid: ALL列強調) ---
         check_time_cols = [c for c in time_cols if c != "合計"]
 
-        for row_idx, (_, row) in enumerate(df.iterrows()):
-            cat = row["種別"]
-            all_val = all(checks.get(f"{date_str}|{cat}|{tc}", False) for tc in check_time_cols)
-            c_label, c_btn = st.columns([5, 1.5])
-            c_label.markdown(
-                f'<span style="font-size:0.85rem;font-weight:bold;color:{t["td_color"]};">{cat}</span>',
-                unsafe_allow_html=True,
-            )
-            btn_label = "⛔ ALL ON" if all_val else "ALL"
-            btn_type = "primary" if all_val else "secondary"
-            if c_btn.button(btn_label, key=f"all_{i}_{row_idx}", type=btn_type, use_container_width=True):
-                for tc in check_time_cols:
-                    key = f"{date_str}|{cat}|{tc}"
-                    if not all_val:
-                        checks[key] = True
-                    else:
-                        checks.pop(key, None)
-                save_checks(checks)
-                editor_key = f"orikaeshi_chk_{i}"
-                if editor_key in st.session_state:
-                    del st.session_state[editor_key]
-                st.rerun()
-
-        # --- 時間帯別チェックボックス (data_editor) ---
         check_rows = []
         for _, row in df.iterrows():
             cat = row["種別"]
-            r = {"種別": cat}
+            time_vals = {}
             for tc in check_time_cols:
                 key = f"{date_str}|{cat}|{tc}"
-                r[tc] = checks.get(key, False)
+                time_vals[tc] = checks.get(key, False)
+            all_val = all(time_vals.values()) if time_vals else False
+            r = {"種別": cat, "ALL": all_val}
+            r.update(time_vals)
             check_rows.append(r)
         check_df = pd.DataFrame(check_rows)
 
-        col_config = {"種別": st.column_config.TextColumn("種別", disabled=True, width="medium")}
-        for tc in check_time_cols:
-            col_config[tc] = st.column_config.CheckboxColumn(tc, width="small")
+        # チェックボックスレンダラー
+        _cb_renderer = JsCode("""
+        class CbR{
+            init(p){
+                this.p=p;
+                this.g=document.createElement('input');
+                this.g.type='checkbox';
+                this.g.checked=p.value===true;
+                this.g.style.cursor='pointer';
+                this.g.style.width='16px';
+                this.g.style.height='16px';
+                this.h=e=>{p.node.setDataValue(p.column.colId,e.target.checked);};
+                this.g.addEventListener('click',this.h);
+            }
+            getGui(){return this.g;}
+            refresh(p){this.g.checked=p.value===true;return true;}
+            destroy(){this.g.removeEventListener('click',this.h);}
+        }
+        """)
 
-        editor_key = f"orikaeshi_chk_{i}"
-        edited = st.data_editor(
+        # ALL切替時に全時間帯を連動
+        import json as _json
+        _tc_json = _json.dumps(check_time_cols, ensure_ascii=False)
+        _all_toggle = JsCode(
+            "function(p){"
+            "  if(p.column.colId==='ALL'){"
+            f"    var tc={_tc_json};"
+            "    tc.forEach(function(c){p.node.setDataValue(c,p.newValue);});"
+            "  }"
+            "}"
+        )
+
+        gb = GridOptionsBuilder.from_dataframe(check_df)
+        gb.configure_default_column(
+            resizable=False, sortable=False, filter=False,
+            cellRenderer=_cb_renderer,
+            suppressSizeToFit=True,
+        )
+        gb.configure_column("種別",
+            cellRenderer=None, editable=False, pinned="left",
+            width=180, suppressSizeToFit=True,
+            cellStyle={"fontWeight": "bold", "textAlign": "left",
+                       "display": "flex", "alignItems": "center"})
+        gb.configure_column("ALL",
+            width=70, suppressSizeToFit=True,
+            headerClass="orikaeshi-all-hdr",
+            cellStyle={"backgroundColor": "rgba(212,133,10,0.25)",
+                       "display": "flex", "alignItems": "center",
+                       "justifyContent": "center"})
+        for tc in check_time_cols:
+            gb.configure_column(tc, width=65, suppressSizeToFit=True,
+                cellStyle={"display": "flex", "alignItems": "center",
+                           "justifyContent": "center"})
+        gb.configure_grid_options(
+            onCellValueChanged=_all_toggle,
+            suppressHorizontalScroll=False,
+            alwaysShowHorizontalScroll=True,
+        )
+
+        _ag_css = {
+            ".ag-header-cell": {
+                "background-color": "#555",
+                "color": "#fff",
+                "font-weight": "bold",
+                "text-align": "center",
+            },
+            ".ag-header-cell-label": {"justify-content": "center"},
+            ".orikaeshi-all-hdr": {
+                "background-color": "#D4850A !important",
+                "color": "#fff !important",
+                "font-weight": "900 !important",
+                "font-size": "0.95rem !important",
+            },
+            ".ag-row-odd": {"background-color": "#ffffff"},
+            ".ag-row-even": {"background-color": "#fdf5e9"},
+        }
+
+        ag_result = AgGrid(
             check_df,
-            column_config=col_config,
-            hide_index=True,
-            use_container_width=True,
-            key=editor_key,
+            gridOptions=gb.build(),
+            height=max(120, 42 + 35 * len(check_df)),
+            theme="balham",
+            allow_unsafe_jscode=True,
+            custom_css=_ag_css,
+            update_mode="VALUE_CHANGED",
+            key=f"orikaeshi_chk_{i}",
         )
 
         # 変更検知 → 共有ストアに反映
-        for row_idx, row in edited.iterrows():
-            cat = row["種別"]
-            for tc in check_time_cols:
-                key = f"{date_str}|{cat}|{tc}"
-                val = bool(row[tc])
-                old_val = checks.get(key, False)
-                if val != old_val:
-                    if val:
-                        checks[key] = True
-                    else:
-                        checks.pop(key, None)
-                    changed = True
+        if ag_result and ag_result.data is not None:
+            for _, row in ag_result.data.iterrows():
+                cat = row["種別"]
+                for tc in check_time_cols:
+                    key = f"{date_str}|{cat}|{tc}"
+                    val = bool(row[tc])
+                    old_val = checks.get(key, False)
+                    if val != old_val:
+                        if val:
+                            checks[key] = True
+                        else:
+                            checks.pop(key, None)
+                        changed = True
 
         st.download_button(
             "CSV ダウンロード",

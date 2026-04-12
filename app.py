@@ -1131,38 +1131,69 @@ if selected_key == "orikaeshi_kensu":
         check_rows = []
         for _, row in df.iterrows():
             cat = row["種別"]
-            r = {"種別": cat}
+            time_vals = {}
             for tc in check_time_cols:
                 key = f"{date_str}|{cat}|{tc}"
-                r[tc] = checks.get(key, False)
+                time_vals[tc] = checks.get(key, False)
+            # ALL = 全時間帯がTrueならTrue
+            all_val = all(time_vals.values()) if time_vals else False
+            r = {"種別": cat, "ALL": all_val}
+            r.update(time_vals)
             check_rows.append(r)
         check_df = pd.DataFrame(check_rows)
 
-        col_config = {"種別": st.column_config.TextColumn("種別", disabled=True, width="medium")}
+        col_config = {
+            "種別": st.column_config.TextColumn("種別", disabled=True, width="medium"),
+            "ALL": st.column_config.CheckboxColumn("ALL", width="small"),
+        }
         for tc in check_time_cols:
             col_config[tc] = st.column_config.CheckboxColumn(tc, width="small")
 
+        editor_key = f"orikaeshi_chk_{i}"
         edited = st.data_editor(
             check_df,
             column_config=col_config,
             hide_index=True,
             use_container_width=True,
-            key=f"orikaeshi_chk_{i}",
+            key=editor_key,
         )
 
         # 変更検知 → 共有ストアに反映
-        for _, row in edited.iterrows():
+        all_toggled = False
+        for row_idx, row in edited.iterrows():
             cat = row["種別"]
-            for tc in check_time_cols:
-                key = f"{date_str}|{cat}|{tc}"
-                val = bool(row[tc])
-                old_val = checks.get(key, False)
-                if val != old_val:
-                    if val:
+            orig_all = check_df.loc[row_idx, "ALL"]
+            new_all = bool(row["ALL"])
+
+            if new_all != orig_all:
+                # ALL が切り替わった → 全時間帯を一括変更
+                all_toggled = True
+                for tc in check_time_cols:
+                    key = f"{date_str}|{cat}|{tc}"
+                    if new_all:
                         checks[key] = True
                     else:
                         checks.pop(key, None)
-                    changed = True
+                changed = True
+            else:
+                # 個別の時間帯チェック変更
+                for tc in check_time_cols:
+                    key = f"{date_str}|{cat}|{tc}"
+                    val = bool(row[tc])
+                    old_val = checks.get(key, False)
+                    if val != old_val:
+                        if val:
+                            checks[key] = True
+                        else:
+                            checks.pop(key, None)
+                        changed = True
+
+        # ALL切替時は保存して即rerun（個別チェックも連動表示させる）
+        if all_toggled:
+            save_checks(checks)
+            if editor_key in st.session_state:
+                del st.session_state[editor_key]
+            st.rerun()
 
         st.download_button(
             "CSV ダウンロード",

@@ -64,7 +64,7 @@ def build_initial_board_order(metrics_list) -> list:
     metrics_list: METRICS のリスト (Metric オブジェクト)
     ※ ツール カテゴリの items は メンバー名 一覧として扱う（並び替え対象）
     """
-    from metrics import TALK_SCRIPT_MEMBERS  # 循環import回避のため遅延import
+    from tool_members_store import get_member_names  # 動的メンバー名
 
     # 現在のカテゴリ→ラベル一覧
     current_cats: dict[str, list[str]] = {}
@@ -72,8 +72,8 @@ def build_initial_board_order(metrics_list) -> list:
         if m.category == "ツール" and m.key.startswith("talk_script_"):
             continue  # ツール配下のメンバー別ボードは別管理
         current_cats.setdefault(m.category, []).append(m.label)
-    # ツールはメンバー名一覧で管理
-    current_cats["ツール"] = list(TALK_SCRIPT_MEMBERS)
+    # ツールはアクティブなメンバー名一覧で管理
+    current_cats["ツール"] = get_member_names()
 
     saved = get_saved_order()
 

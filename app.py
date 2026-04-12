@@ -17,7 +17,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from streamlit_sortables import sort_items
 
 from sf_client import get_sf
-from metrics import METRICS, get_metric, TALK_SCRIPT_MEMBERS, TALK_SCRIPT_BOARDS, parse_talk_script_key
+from metrics import METRICS, get_metric, TALK_SCRIPT_MEMBERS, TALK_SCRIPT_BOARDS, parse_talk_script_key, reload_talk_script_metrics
 from ikusei_store import get_store, save_store
 
 st.set_page_config(page_title="SF 集計ダッシュボード", page_icon="📊", layout="wide")
@@ -241,11 +241,15 @@ for container in st.session_state["board_order"]:
             # ツールは「メンバー → ボード」の2階層ネスト描画
             # メンバー順は board_order の保存済みitemsを使用
             if cat == "ツール":
+                from tool_members_store import get_member_assignments, get_all_member_names
+                _all_names = get_all_member_names()
                 for _member_name in container["items"]:
-                    try:
-                        _mem_idx = TALK_SCRIPT_MEMBERS.index(_member_name)
-                    except ValueError:
+                    if _member_name not in _all_names:
                         continue
+                    _mem_idx = _all_names.index(_member_name)
+                    _mem_assignments = get_member_assignments(_member_name)
+                    if not _mem_assignments:
+                        continue  # トーク割当なし → 非表示
                     _mem_toggle_key = f"_member_open_{_mem_idx}"
                     if _mem_toggle_key not in st.session_state:
                         st.session_state[_mem_toggle_key] = False
@@ -260,6 +264,8 @@ for container in st.session_state["board_order"]:
                         st.rerun()
                     if _mem_open:
                         for _suffix, _board_label in TALK_SCRIPT_BOARDS:
+                            if _suffix not in _mem_assignments:
+                                continue  # 未割当のトークはスキップ
                             _bkey = f"talk_script_{_mem_idx:02d}_{_suffix}"
                             if st.sidebar.button(
                                 f"　　📋 {_board_label}",
@@ -283,7 +289,9 @@ if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     _load_2h.clear()
     _load_daily.clear()
     from orikaeshi_check_store import clear_check_cache
+    from tool_members_store import clear_members_cache
     clear_check_cache()
+    clear_members_cache()
     st.rerun()
 
 st.sidebar.caption("データは5分間キャッシュされます")
@@ -396,9 +404,15 @@ if selected_key == "_master":
             else:
                 st.error("パスワードが違います")
         st.stop()
-    with st.expander("📋 ボード並び順の変更", expanded=False):
+    # --- 📋 ボード並び順の変更（トグル方式：sort_itemsはexpander非対応） ---
+    if "master_order_open" not in st.session_state:
+        st.session_state["master_order_open"] = False
+    _order_arrow = "▼" if st.session_state["master_order_open"] else "▶"
+    if st.button(f"{_order_arrow}  📋 ボード並び順の変更", key="toggle_master_order", use_container_width=True):
+        st.session_state["master_order_open"] = not st.session_state["master_order_open"]
+        st.rerun()
+    if st.session_state["master_order_open"]:
         st.caption("ドラッグ＆ドロップで並び替えてください。「💾 並び順を保存」で全ユーザーに反映されます。")
-        # データ構造のシグネチャでキー生成 → 構造が変わったら自動リマウント
         _sig = "_".join(
             f"{c['header']}:{len(c.get('items', []))}"
             for c in st.session_state["board_order"]
@@ -414,6 +428,99 @@ if selected_key == "_master":
             ok, msg = _save_board_order(new_order)
             st.session_state["selected"] = "_master"
             st.toast(msg, icon="✅" if ok else "⚠️")
+
+    st.divider()
+
+    # --- 👥 ツールメンバー管理 ---
+    with st.expander("👥 ツールメンバー管理", expanded=False):
+        from tool_members_store import get_members, save_members, clear_members_cache
+
+        _tool_members = get_members()
+
+        st.caption("メンバーの追加・削除、トーク割当の変更ができます。変更後は「💾 保存」を押してください。")
+
+        # --- メンバー追加 ---
+        _add_col1, _add_col2 = st.columns([4, 1])
+        _new_name = _add_col1.text_input("新しいメンバー名", key="master_new_member", placeholder="例: 山田 太郎")
+        if _add_col2.button("➕ 追加", key="master_add_member", use_container_width=True):
+            _new_name = _new_name.strip()
+            if not _new_name:
+                st.warning("名前を入力してください。")
+            elif any(m["name"] == _new_name for m in _tool_members):
+                st.warning("同名のメンバーが既に存在します。")
+            else:
+                # 非アクティブで同名がいれば再有効化
+                _reactivated = False
+                for m in _tool_members:
+                    if m["name"] == _new_name and not m.get("active", True):
+                        m["active"] = True
+                        m["assignments"] = [s for s, _ in TALK_SCRIPT_BOARDS]
+                        _reactivated = True
+                        break
+                if not _reactivated:
+                    _tool_members.append({
+                        "name": _new_name,
+                        "assignments": [s for s, _ in TALK_SCRIPT_BOARDS],
+                        "active": True,
+                    })
+                ok, msg = save_members(_tool_members)
+                reload_talk_script_metrics()
+                # board_orderにも新メンバーを追加
+                for entry in st.session_state.get("board_order", []):
+                    if entry.get("header") == "ツール":
+                        if _new_name not in entry.get("items", []):
+                            entry["items"].append(_new_name)
+                            _save_board_order(st.session_state["board_order"])
+                st.toast(f"「{_new_name}」を追加しました", icon="✅")
+                st.rerun()
+
+        # --- メンバー一覧＋トーク割当＋削除 ---
+        _member_changed = False
+        for _mi, _m in enumerate(_tool_members):
+            if not _m.get("active", True):
+                continue
+            _c_name, _c_talks, _c_del = st.columns([3, 4, 1])
+            _c_name.markdown(f"**{_m['name']}**")
+
+            # トーク割当チェックボックス
+            _current_assigns = _m.get("assignments", [])
+            _new_assigns = []
+            _talk_cols = _c_talks.columns(len(TALK_SCRIPT_BOARDS))
+            for _ti, (_suffix, _label) in enumerate(TALK_SCRIPT_BOARDS):
+                _checked = _talk_cols[_ti].checkbox(
+                    _label, value=(_suffix in _current_assigns),
+                    key=f"assign_{_mi}_{_suffix}",
+                )
+                if _checked:
+                    _new_assigns.append(_suffix)
+            if sorted(_new_assigns) != sorted(_current_assigns):
+                _m["assignments"] = _new_assigns
+                _member_changed = True
+
+            # 削除ボタン
+            if _c_del.button("✕", key=f"del_member_{_mi}", help=f"{_m['name']} を削除"):
+                _m["active"] = False
+                _m["assignments"] = []
+                ok, msg = save_members(_tool_members)
+                reload_talk_script_metrics()
+                # board_orderからも除去
+                for entry in st.session_state.get("board_order", []):
+                    if entry.get("header") == "ツール":
+                        items = entry.get("items", [])
+                        if _m["name"] in items:
+                            items.remove(_m["name"])
+                            _save_board_order(st.session_state["board_order"])
+                st.toast(f"「{_m['name']}」を削除しました", icon="✅")
+                st.rerun()
+
+        # 保存ボタン（トーク割当変更時）
+        if st.button("💾 メンバー設定を保存", key="save_tool_members", type="primary"):
+            ok, msg = save_members(_tool_members)
+            if ok:
+                reload_talk_script_metrics()
+            st.toast(msg, icon="✅" if ok else "⚠️")
+
+    st.divider()
 
     with st.expander("📞 トークスクリプト編集", expanded=False):
         # 編集するトークスクリプトの種別を選択

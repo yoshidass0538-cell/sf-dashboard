@@ -1284,39 +1284,50 @@ METRICS: list[Metric] = [
 ]
 
 
-# --- ツール: メンバー別トークスクリプト（14名 × 各ボード） ---
-TALK_SCRIPT_MEMBERS = [
-    "室谷 慧",
-    "原田 綾子",
-    "金澤 駿平",
-    "吉本 将吾",
-    "大滝 紀香",
-    "堀田 輝斗",
-    "角田 心華",
-    "佐々木 彩乃",
-    "葛西 翼",
-    "雨貝 一生",
-    "半田 さくら",
-    "菊地 隆真",
-    "栗田 優衣",
-    "高橋 真友香",
-]
+# --- ツール: メンバー別トークスクリプト（動的管理） ---
+from tool_members_store import get_members, get_all_member_names, get_member_names
 
-# 各メンバーが持つボード一覧（将来複数追加可）
+# 全メンバー名（非アクティブ含む、インデックス安定用）
+TALK_SCRIPT_MEMBERS_ALL: list[str] = get_all_member_names()
+# アクティブメンバー名（サイドバー表示用）
+TALK_SCRIPT_MEMBERS: list[str] = get_member_names()
+
+# 各メンバーが持てるボード一覧（将来複数追加可）
 # (suffix, label) のタプルリスト
 TALK_SCRIPT_BOARDS = [
     ("fc1week", "1週間後FCトーク"),
 ]
 
-for _i, _member in enumerate(TALK_SCRIPT_MEMBERS):
-    for _suffix, _board_label in TALK_SCRIPT_BOARDS:
-        METRICS.append(Metric(
-            key=f"talk_script_{_i:02d}_{_suffix}",
-            label=_board_label,
-            description=f"{_member} の {_board_label}",
-            fetch=lambda sf: pd.DataFrame(),
-            category="ツール",
-        ))
+def _build_talk_script_metrics() -> list[Metric]:
+    """メンバー×割当済みボードから Metric リストを動的生成。"""
+    result = []
+    for _i, _m in enumerate(get_members()):
+        if not _m.get("active", True):
+            continue
+        for _suffix, _board_label in TALK_SCRIPT_BOARDS:
+            if _suffix in _m.get("assignments", []):
+                result.append(Metric(
+                    key=f"talk_script_{_i:02d}_{_suffix}",
+                    label=_board_label,
+                    description=f"{_m['name']} の {_board_label}",
+                    fetch=lambda sf: pd.DataFrame(),
+                    category="ツール",
+                ))
+    return result
+
+METRICS.extend(_build_talk_script_metrics())
+
+
+def reload_talk_script_metrics():
+    """メンバー変更後にMETRICSを再構築（マスタ画面から呼ばれる）。"""
+    global TALK_SCRIPT_MEMBERS, TALK_SCRIPT_MEMBERS_ALL
+    from tool_members_store import clear_members_cache
+    clear_members_cache()
+    TALK_SCRIPT_MEMBERS_ALL = get_all_member_names()
+    TALK_SCRIPT_MEMBERS = get_member_names()
+    # 既存の talk_script_* を除去して再生成
+    METRICS[:] = [m for m in METRICS if not m.key.startswith("talk_script_")]
+    METRICS.extend(_build_talk_script_metrics())
 
 
 def parse_talk_script_key(key: str) -> tuple[str, str] | None:
@@ -1334,11 +1345,11 @@ def parse_talk_script_key(key: str) -> tuple[str, str] | None:
         idx = int(parts[2])
     except ValueError:
         return None
-    if idx >= len(TALK_SCRIPT_MEMBERS):
+    if idx >= len(TALK_SCRIPT_MEMBERS_ALL):
         return None
     suffix = parts[3]
     label = next((lbl for sfx, lbl in TALK_SCRIPT_BOARDS if sfx == suffix), suffix)
-    return TALK_SCRIPT_MEMBERS[idx], label
+    return TALK_SCRIPT_MEMBERS_ALL[idx], label
 
 
 def get_metric(key: str) -> Metric:

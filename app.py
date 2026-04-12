@@ -1335,6 +1335,7 @@ if selected_key == "orikaeshi_kensu":
         gb = GridOptionsBuilder.from_dataframe(check_df)
         gb.configure_default_column(
             resizable=False, sortable=False, filter=False,
+            editable=True,
             cellRenderer=_cb_renderer,
             suppressSizeToFit=True,
         )
@@ -1344,13 +1345,13 @@ if selected_key == "orikaeshi_kensu":
             cellStyle={"fontWeight": "bold", "textAlign": "left",
                        "display": "flex", "alignItems": "center"})
         gb.configure_column("ALL",
-            width=70, suppressSizeToFit=True,
+            editable=True, width=70, suppressSizeToFit=True,
             headerClass="orikaeshi-all-hdr",
             cellStyle={"backgroundColor": "rgba(212,133,10,0.25)",
                        "display": "flex", "alignItems": "center",
                        "justifyContent": "center"})
         for tc in check_time_cols:
-            gb.configure_column(tc, width=90, minWidth=80, suppressSizeToFit=True,
+            gb.configure_column(tc, editable=True, width=90, minWidth=80, suppressSizeToFit=True,
                 cellStyle={"display": "flex", "alignItems": "center",
                            "justifyContent": "center"})
         gb.configure_grid_options(

@@ -282,6 +282,8 @@ if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     _load_5min.clear()
     _load_2h.clear()
     _load_daily.clear()
+    from orikaeshi_check_store import clear_check_cache
+    clear_check_cache()
     st.rerun()
 
 st.sidebar.caption("データは5分間キャッシュされます")
@@ -1073,6 +1075,106 @@ if selected_key == "day_calls":
     for chart_title, chart_df in fetched.items():
         _render_bar_chart(chart_title, chart_df)
         st.divider()
+    st.stop()
+
+# 折返し件数: 件数テーブル＋セルごとチェックボックス
+if selected_key == "orikaeshi_kensu":
+    from orikaeshi_check_store import get_checks, save_checks
+
+    checks = get_checks()
+    changed = False
+
+    # TOTAL配色
+    t = {
+        "th_bg": "#D4850A", "th_border": "#B8730A", "th_color": "#ffffff",
+        "even_bg": "#fdf5e9", "odd_bg": "#ffffff", "hover_bg": "#f5e4c8",
+        "td_color": "#2a1f0a", "td_border": "#e0d0b5",
+    }
+
+    for i, (date_str, df) in enumerate(fetched.items()):
+        if date_str == "エラー":
+            st.error(df.iloc[0, 0] if not df.empty else "エラー")
+            continue
+        st.subheader(date_str)
+        if df is None or df.empty:
+            st.info("データなし")
+            continue
+
+        time_cols = [c for c in df.columns if c != "種別"]
+
+        # --- 件数テーブル (HTML) ---
+        css_cls = f"table-orikaeshi-{i}"
+        html = df.to_html(index=False, escape=False)
+        st.markdown(
+            f"""
+            <style>
+            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:0.9rem; }}
+            .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:8px 10px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:600; border:1px solid {t['th_border']}; position:sticky; top:0; }}
+            .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:6px 10px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; }}
+            .{css_cls} tr:nth-child(even) {{ background:{t['even_bg']}; }}
+            .{css_cls} tr:nth-child(odd) {{ background:{t['odd_bg']}; }}
+            .{css_cls} tr:hover {{ background:{t['hover_bg']}; }}
+            @media screen and (max-width:768px) {{
+                .{css_cls} {{ font-size:0.75rem; min-width:600px; }}
+                .{css_cls} th {{ padding:5px 6px; white-space:nowrap; }}
+                .{css_cls} td {{ padding:4px 6px; white-space:nowrap; }}
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        table_html = html.replace("<table", f'<table class="{css_cls}"', 1)
+        st.markdown(f'<div class="responsive-table-wrapper">{table_html}</div>', unsafe_allow_html=True)
+
+        # --- チェックボックス (data_editor) ---
+        check_time_cols = [c for c in time_cols if c != "合計"]
+        check_rows = []
+        for _, row in df.iterrows():
+            cat = row["種別"]
+            r = {"種別": cat}
+            for tc in check_time_cols:
+                key = f"{date_str}|{cat}|{tc}"
+                r[tc] = checks.get(key, False)
+            check_rows.append(r)
+        check_df = pd.DataFrame(check_rows)
+
+        col_config = {"種別": st.column_config.TextColumn("種別", disabled=True, width="medium")}
+        for tc in check_time_cols:
+            col_config[tc] = st.column_config.CheckboxColumn(tc, width="small")
+
+        edited = st.data_editor(
+            check_df,
+            column_config=col_config,
+            hide_index=True,
+            use_container_width=True,
+            key=f"orikaeshi_chk_{i}",
+        )
+
+        # 変更検知 → 共有ストアに反映
+        for _, row in edited.iterrows():
+            cat = row["種別"]
+            for tc in check_time_cols:
+                key = f"{date_str}|{cat}|{tc}"
+                val = bool(row[tc])
+                old_val = checks.get(key, False)
+                if val != old_val:
+                    if val:
+                        checks[key] = True
+                    else:
+                        checks.pop(key, None)
+                    changed = True
+
+        st.download_button(
+            "CSV ダウンロード",
+            df.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"orikaeshi_{date_str.replace('/', '-')}.csv",
+            mime="text/csv",
+            key=f"dl_orikaeshi_{i}",
+        )
+        st.divider()
+
+    if changed:
+        save_checks(checks)
     st.stop()
 
 # 単一DataFrame → dict に正規化

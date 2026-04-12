@@ -1285,18 +1285,16 @@ METRICS: list[Metric] = [
 
 
 # --- ツール: メンバー別トークスクリプト（動的管理） ---
-from tool_members_store import get_members, get_all_member_names, get_member_names
+from tool_members_store import get_members, get_all_member_names, get_member_names, get_boards_as_tuples
 
 # 全メンバー名（非アクティブ含む、インデックス安定用）
 TALK_SCRIPT_MEMBERS_ALL: list[str] = get_all_member_names()
 # アクティブメンバー名（サイドバー表示用）
 TALK_SCRIPT_MEMBERS: list[str] = get_member_names()
 
-# 各メンバーが持てるボード一覧（将来複数追加可）
+# 各メンバーが持てるボード一覧（ストアから動的取得）
 # (suffix, label) のタプルリスト
-TALK_SCRIPT_BOARDS = [
-    ("fc1week", "1週間後FCトーク"),
-]
+TALK_SCRIPT_BOARDS: list[tuple[str, str]] = get_boards_as_tuples()
 
 def _build_talk_script_metrics() -> list[Metric]:
     """メンバー×割当済みボードから Metric リストを動的生成。"""
@@ -1319,12 +1317,13 @@ METRICS.extend(_build_talk_script_metrics())
 
 
 def reload_talk_script_metrics():
-    """メンバー変更後にMETRICSを再構築（マスタ画面から呼ばれる）。"""
-    global TALK_SCRIPT_MEMBERS, TALK_SCRIPT_MEMBERS_ALL
+    """メンバー/ボード変更後にMETRICSを再構築（マスタ画面から呼ばれる）。"""
+    global TALK_SCRIPT_MEMBERS, TALK_SCRIPT_MEMBERS_ALL, TALK_SCRIPT_BOARDS
     from tool_members_store import clear_members_cache
     clear_members_cache()
     TALK_SCRIPT_MEMBERS_ALL = get_all_member_names()
     TALK_SCRIPT_MEMBERS = get_member_names()
+    TALK_SCRIPT_BOARDS = get_boards_as_tuples()
     # 既存の talk_script_* を除去して再生成
     METRICS[:] = [m for m in METRICS if not m.key.startswith("talk_script_")]
     METRICS.extend(_build_talk_script_metrics())

@@ -431,11 +431,60 @@ if selected_key == "_master":
 
     st.divider()
 
+    # --- 📝 トーク種類管理 ---
+    with st.expander("📝 トーク種類管理", expanded=False):
+        from tool_members_store import (
+            get_members, save_members, clear_members_cache,
+            get_boards, save_boards, next_board_suffix,
+        )
+
+        _tool_boards = get_boards()
+        st.caption("トーク種類の追加・削除ができます。追加した種類はメンバー割当で選択可能になります。")
+
+        # 追加フォーム
+        _bc1, _bc2 = st.columns([4, 1])
+        _new_board_label = _bc1.text_input("新しいトーク種類名", key="master_new_board", placeholder="例: 新設FCトーク")
+        if _bc2.button("➕ 追加", key="master_add_board", use_container_width=True):
+            _new_board_label = _new_board_label.strip()
+            if not _new_board_label:
+                st.warning("種類名を入力してください。")
+            elif any(b["label"] == _new_board_label for b in _tool_boards):
+                st.warning("同名のトーク種類が既に存在します。")
+            else:
+                _new_suffix = next_board_suffix()
+                _tool_boards.append({"suffix": _new_suffix, "label": _new_board_label})
+                ok, msg = save_boards(_tool_boards)
+                reload_talk_script_metrics()
+                st.toast(f"「{_new_board_label}」を追加しました（ID: {_new_suffix}）", icon="✅")
+                st.rerun()
+
+        # 一覧＋削除
+        for _bi, _b in enumerate(_tool_boards):
+            _bc_name, _bc_del = st.columns([5, 1])
+            _bc_name.markdown(f"**{_b['label']}**　`{_b['suffix']}`")
+            if len(_tool_boards) > 1:  # 最低1つは残す
+                if _bc_del.button("✕", key=f"del_board_{_bi}", help=f"{_b['label']} を削除"):
+                    _removed_suffix = _b["suffix"]
+                    _tool_boards.pop(_bi)
+                    # メンバーの割当からも除去
+                    _members_for_cleanup = get_members()
+                    for _m in _members_for_cleanup:
+                        if _removed_suffix in _m.get("assignments", []):
+                            _m["assignments"].remove(_removed_suffix)
+                    from tool_members_store import save_all
+                    ok, msg = save_all(_members_for_cleanup, _tool_boards)
+                    reload_talk_script_metrics()
+                    st.toast(f"「{_b['label']}」を削除しました", icon="✅")
+                    st.rerun()
+
+    st.divider()
+
     # --- 👥 ツールメンバー管理 ---
     with st.expander("👥 ツールメンバー管理", expanded=False):
         from tool_members_store import get_members, save_members, clear_members_cache
 
         _tool_members = get_members()
+        _tool_boards_for_assign = get_boards()
 
         st.caption("メンバーの追加・削除、トーク割当の変更ができます。変更後は「💾 保存」を押してください。")
 
@@ -446,21 +495,22 @@ if selected_key == "_master":
             _new_name = _new_name.strip()
             if not _new_name:
                 st.warning("名前を入力してください。")
-            elif any(m["name"] == _new_name for m in _tool_members):
+            elif any(m["name"] == _new_name and m.get("active", True) for m in _tool_members):
                 st.warning("同名のメンバーが既に存在します。")
             else:
+                _all_suffixes = [b["suffix"] for b in _tool_boards_for_assign]
                 # 非アクティブで同名がいれば再有効化
                 _reactivated = False
                 for m in _tool_members:
                     if m["name"] == _new_name and not m.get("active", True):
                         m["active"] = True
-                        m["assignments"] = [s for s, _ in TALK_SCRIPT_BOARDS]
+                        m["assignments"] = _all_suffixes
                         _reactivated = True
                         break
                 if not _reactivated:
                     _tool_members.append({
                         "name": _new_name,
-                        "assignments": [s for s, _ in TALK_SCRIPT_BOARDS],
+                        "assignments": _all_suffixes,
                         "active": True,
                     })
                 ok, msg = save_members(_tool_members)
@@ -479,20 +529,21 @@ if selected_key == "_master":
         for _mi, _m in enumerate(_tool_members):
             if not _m.get("active", True):
                 continue
-            _c_name, _c_talks, _c_del = st.columns([3, 4, 1])
+            _n_boards = max(len(_tool_boards_for_assign), 1)
+            _c_name, _c_talks, _c_del = st.columns([3, _n_boards * 2, 1])
             _c_name.markdown(f"**{_m['name']}**")
 
-            # トーク割当チェックボックス
+            # トーク割当チェックボックス（動的ボード対応）
             _current_assigns = _m.get("assignments", [])
             _new_assigns = []
-            _talk_cols = _c_talks.columns(len(TALK_SCRIPT_BOARDS))
-            for _ti, (_suffix, _label) in enumerate(TALK_SCRIPT_BOARDS):
+            _talk_cols = _c_talks.columns(_n_boards)
+            for _ti, _b in enumerate(_tool_boards_for_assign):
                 _checked = _talk_cols[_ti].checkbox(
-                    _label, value=(_suffix in _current_assigns),
-                    key=f"assign_{_mi}_{_suffix}",
+                    _b["label"], value=(_b["suffix"] in _current_assigns),
+                    key=f"assign_{_mi}_{_b['suffix']}",
                 )
                 if _checked:
-                    _new_assigns.append(_suffix)
+                    _new_assigns.append(_b["suffix"])
             if sorted(_new_assigns) != sorted(_current_assigns):
                 _m["assignments"] = _new_assigns
                 _member_changed = True
@@ -523,8 +574,8 @@ if selected_key == "_master":
     st.divider()
 
     with st.expander("📞 トークスクリプト編集", expanded=False):
-        # 編集するトークスクリプトの種別を選択
-        _talk_script_options = ["（選択してください）", "1週間後FCトーク"]
+        # 編集するトークスクリプトの種別を動的に生成
+        _talk_script_options = ["（選択してください）"] + [b["label"] for b in get_boards()]
         _selected_script = st.selectbox(
             "編集するトークスクリプトを選択",
             _talk_script_options,

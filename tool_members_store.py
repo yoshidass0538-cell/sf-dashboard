@@ -1,10 +1,22 @@
 """
-ツールカテゴリのメンバー＆トーク割当を Google Sheets に永続化するストア。
+ツールカテゴリのメンバー＆トーク種類＆割当を Google Sheets に永続化するストア。
 
 - 保存先: ikusei用スプレッドシート内の `tool_members_data` ワークシートのA1セル
 - 全ユーザー共有（st.cache_resource）
 - 5秒スロットリング
 - soft-delete: active=false で非表示にしてインデックス安定性を保つ
+
+データ構造:
+{
+  "members": [
+    {"name": "室谷 慧", "assignments": ["fc1week"], "active": true},
+    ...
+  ],
+  "boards": [
+    {"suffix": "fc1week", "label": "1週間後FCトーク"},
+    ...
+  ]
+}
 """
 
 import json
@@ -20,6 +32,11 @@ from talk_template_store import (
 
 WORKSHEET_NAME = "tool_members_data"
 CELL = "A1"
+
+# 初期トーク種類
+_DEFAULT_BOARDS = [
+    {"suffix": "fc1week", "label": "1週間後FCトーク"},
+]
 
 # 初期メンバー（初回デプロイ時のシード）
 _DEFAULT_MEMBERS = [
@@ -54,23 +71,53 @@ def _get_ws():
 
 
 @st.cache_resource
-def _shared_members_cache() -> dict:
-    """全ユーザー共有のメンバーキャッシュ。"""
+def _shared_cache() -> dict:
+    """全ユーザー共有キャッシュ。"""
     try:
         ws = _get_ws()
         raw = ws.acell(CELL).value
         if raw:
             data = json.loads(raw)
-            if isinstance(data, dict) and "members" in data:
-                return {"members": data["members"]}
+            if isinstance(data, dict):
+                return {
+                    "members": data.get("members"),
+                    "boards": data.get("boards"),
+                }
     except Exception:
         pass
-    return {"members": None}  # None = 未保存（デフォルト使用）
+    return {"members": None, "boards": None}
 
+
+# --- ボード（トーク種類）管理 ---
+
+def get_boards() -> list[dict]:
+    """トーク種類リストを返す。未保存ならデフォルト。"""
+    cached = _shared_cache().get("boards")
+    if cached is None:
+        return [b.copy() for b in _DEFAULT_BOARDS]
+    return cached
+
+
+def get_boards_as_tuples() -> list[tuple[str, str]]:
+    """(suffix, label) のタプルリスト。metrics.py の TALK_SCRIPT_BOARDS 互換。"""
+    return [(b["suffix"], b["label"]) for b in get_boards()]
+
+
+def next_board_suffix() -> str:
+    """新規トーク種類用のサフィックスを自動生成。"""
+    boards = get_boards()
+    idx = 1
+    existing = {b["suffix"] for b in boards}
+    while f"board{idx:02d}" in existing:
+        idx += 1
+    return f"board{idx:02d}"
+
+
+# --- メンバー管理 ---
 
 def get_members() -> list[dict]:
     """全メンバー（非アクティブ含む）を返す。未保存ならデフォルト。"""
-    cached = _shared_members_cache().get("members")
+    cached = _shared_cache().get("members")
     if cached is None:
         return [m.copy() for m in _DEFAULT_MEMBERS]
     return cached
@@ -99,25 +146,44 @@ def get_member_assignments(name: str) -> list[str]:
     return []
 
 
+# --- 保存 ---
+
 _last_save = {"t": 0.0}
 
 
-def save_members(members: list[dict]) -> tuple[bool, str]:
-    """メンバーリストをGoogle Sheetsに保存（5秒スロットリング）。"""
+def _save_data(members: list[dict], boards: list[dict]) -> tuple[bool, str]:
+    """メンバー＋ボードをGoogle Sheetsに保存（5秒スロットリング）。"""
     now = time.time()
     if now - _last_save["t"] < 5:
         return False, "保存スキップ（5秒以内の連続保存）"
     try:
         ws = _get_ws()
-        ws.update_acell(CELL, json.dumps({"members": members}, ensure_ascii=False))
-        cache = _shared_members_cache()
+        payload = {"members": members, "boards": boards}
+        ws.update_acell(CELL, json.dumps(payload, ensure_ascii=False))
+        cache = _shared_cache()
         cache["members"] = members
+        cache["boards"] = boards
         _last_save["t"] = now
-        return True, "メンバー設定を保存しました"
+        return True, "保存しました"
     except Exception as e:
         return False, f"保存エラー: {e}"
 
 
+def save_members(members: list[dict]) -> tuple[bool, str]:
+    """メンバーリストを保存（ボードは現在値を維持）。"""
+    return _save_data(members, get_boards())
+
+
+def save_boards(boards: list[dict]) -> tuple[bool, str]:
+    """ボードリストを保存（メンバーは現在値を維持）。"""
+    return _save_data(get_members(), boards)
+
+
+def save_all(members: list[dict], boards: list[dict]) -> tuple[bool, str]:
+    """メンバー＋ボードを一括保存。"""
+    return _save_data(members, boards)
+
+
 def clear_members_cache():
     """共有キャッシュをクリア。"""
-    _shared_members_cache.clear()
+    _shared_cache.clear()

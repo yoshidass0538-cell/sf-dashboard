@@ -1126,26 +1126,44 @@ if selected_key == "orikaeshi_kensu":
         table_html = html.replace("<table", f'<table class="{css_cls}"', 1)
         st.markdown(f'<div class="responsive-table-wrapper">{table_html}</div>', unsafe_allow_html=True)
 
-        # --- チェックボックス (data_editor) ---
+        # --- ALL ストップボタン（種別ごと） ---
         check_time_cols = [c for c in time_cols if c != "合計"]
+
+        for row_idx, (_, row) in enumerate(df.iterrows()):
+            cat = row["種別"]
+            all_val = all(checks.get(f"{date_str}|{cat}|{tc}", False) for tc in check_time_cols)
+            c_label, c_btn = st.columns([5, 1.5])
+            c_label.markdown(
+                f'<span style="font-size:0.85rem;font-weight:bold;color:{t["td_color"]};">{cat}</span>',
+                unsafe_allow_html=True,
+            )
+            btn_label = "⛔ ALL ON" if all_val else "ALL"
+            btn_type = "primary" if all_val else "secondary"
+            if c_btn.button(btn_label, key=f"all_{i}_{row_idx}", type=btn_type, use_container_width=True):
+                for tc in check_time_cols:
+                    key = f"{date_str}|{cat}|{tc}"
+                    if not all_val:
+                        checks[key] = True
+                    else:
+                        checks.pop(key, None)
+                save_checks(checks)
+                editor_key = f"orikaeshi_chk_{i}"
+                if editor_key in st.session_state:
+                    del st.session_state[editor_key]
+                st.rerun()
+
+        # --- 時間帯別チェックボックス (data_editor) ---
         check_rows = []
         for _, row in df.iterrows():
             cat = row["種別"]
-            time_vals = {}
+            r = {"種別": cat}
             for tc in check_time_cols:
                 key = f"{date_str}|{cat}|{tc}"
-                time_vals[tc] = checks.get(key, False)
-            # ALL = 全時間帯がTrueならTrue
-            all_val = all(time_vals.values()) if time_vals else False
-            r = {"種別": cat, "ALL": all_val}
-            r.update(time_vals)
+                r[tc] = checks.get(key, False)
             check_rows.append(r)
         check_df = pd.DataFrame(check_rows)
 
-        col_config = {
-            "種別": st.column_config.TextColumn("種別", disabled=True, width="medium"),
-            "ALL": st.column_config.CheckboxColumn("ALL", width="small"),
-        }
+        col_config = {"種別": st.column_config.TextColumn("種別", disabled=True, width="medium")}
         for tc in check_time_cols:
             col_config[tc] = st.column_config.CheckboxColumn(tc, width="small")
 
@@ -1159,41 +1177,18 @@ if selected_key == "orikaeshi_kensu":
         )
 
         # 変更検知 → 共有ストアに反映
-        all_toggled = False
         for row_idx, row in edited.iterrows():
             cat = row["種別"]
-            orig_all = check_df.loc[row_idx, "ALL"]
-            new_all = bool(row["ALL"])
-
-            if new_all != orig_all:
-                # ALL が切り替わった → 全時間帯を一括変更
-                all_toggled = True
-                for tc in check_time_cols:
-                    key = f"{date_str}|{cat}|{tc}"
-                    if new_all:
+            for tc in check_time_cols:
+                key = f"{date_str}|{cat}|{tc}"
+                val = bool(row[tc])
+                old_val = checks.get(key, False)
+                if val != old_val:
+                    if val:
                         checks[key] = True
                     else:
                         checks.pop(key, None)
-                changed = True
-            else:
-                # 個別の時間帯チェック変更
-                for tc in check_time_cols:
-                    key = f"{date_str}|{cat}|{tc}"
-                    val = bool(row[tc])
-                    old_val = checks.get(key, False)
-                    if val != old_val:
-                        if val:
-                            checks[key] = True
-                        else:
-                            checks.pop(key, None)
-                        changed = True
-
-        # ALL切替時は保存して即rerun（個別チェックも連動表示させる）
-        if all_toggled:
-            save_checks(checks)
-            if editor_key in st.session_state:
-                del st.session_state[editor_key]
-            st.rerun()
+                    changed = True
 
         st.download_button(
             "CSV ダウンロード",

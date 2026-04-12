@@ -1192,7 +1192,7 @@ if selected_key == "orikaeshi_kensu":
                        "display": "flex", "alignItems": "center",
                        "justifyContent": "center"})
         for tc in check_time_cols:
-            gb.configure_column(tc, width=65, suppressSizeToFit=True,
+            gb.configure_column(tc, width=90, minWidth=80, suppressSizeToFit=True,
                 cellStyle={"display": "flex", "alignItems": "center",
                            "justifyContent": "center"})
         gb.configure_grid_options(

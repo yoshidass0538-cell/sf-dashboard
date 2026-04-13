@@ -93,11 +93,11 @@ def send_all_checked(date_str: str, category: str) -> list[dict]:
     return send_message(body)
 
 
-def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str], all_categories: list[str]) -> str:
+def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str],
+                          all_categories: list[str], counts: dict | None = None) -> str:
     """
     定期サマリーメッセージを組み立てる。
-    種別ごとにチェック済みの時間帯を表示。
-    全時間チェック済みの場合は翌日以降を案内。
+    counts: {(種別, 時間帯): 件数} — 推奨時間帯の算出に使用。
     """
     now = datetime.now(JST)
     lines = [f"[toall]\n[info][title]折返し件数 状況アナウンス ({now.strftime('%H:%M')}時点)[/title]"]
@@ -115,22 +115,30 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
 
         if not checked:
             lines.append(f"■ {cat}")
-            lines.append("  チェックなし（全時間帯 空き）\n")
+            lines.append("  全時間帯 対応可能\n")
         elif not unchecked:
             lines.append(f"■ {cat}")
-            lines.append("  全時間帯チェック済み → 翌日以降でお願いします\n")
+            lines.append("  全時間帯 対応不可 → 翌日以降でお願いします\n")
         else:
             lines.append(f"■ {cat}")
-            lines.append(f"  チェック済み: {', '.join(checked)}")
-            lines.append(f"  空き: {', '.join(unchecked)}\n")
+            lines.append(f"  対応不可時間: {', '.join(checked)}")
+            lines.append(f"  対応可能時間: {', '.join(unchecked)}")
+            # 推奨時間帯: 対応可能時間のうち件数が少ない順に上位3つ
+            if counts and unchecked:
+                ranked = sorted(unchecked, key=lambda ts: counts.get((cat, ts), 0))
+                top = ranked[:3]
+                top_with_count = [f"{ts}({counts.get((cat, ts), 0)}件)" for ts in top]
+                lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+            lines.append("")
 
     lines.append("[/info]")
     return "\n".join(lines)
 
 
-def send_summary(checks: dict, date_str: str, all_time_slots: list[str], all_categories: list[str]) -> list[dict]:
+def send_summary(checks: dict, date_str: str, all_time_slots: list[str],
+                  all_categories: list[str], counts: dict | None = None) -> list[dict]:
     """定期サマリーを全ルームに送信。"""
-    body = build_summary_message(checks, date_str, all_time_slots, all_categories)
+    body = build_summary_message(checks, date_str, all_time_slots, all_categories, counts)
     return send_message(body)
 
 

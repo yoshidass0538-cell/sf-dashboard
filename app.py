@@ -1597,10 +1597,11 @@ if selected_key == "orikaeshi_kensu":
     # --- Chatwork 定期サマリー（1時間に1回） ---
     from chatwork_client import should_send_summary, send_summary, mark_summary_sent
     if should_send_summary():
-        # 最初の日付のデータからtime_cols/categoriesを取得して送信
+        # 最初の日付のデータからtime_cols/categories/件数を取得して送信
         first_date = None
         summary_time_slots = []
         summary_categories = []
+        summary_counts = {}  # {(種別, 時間帯): 件数}
         for _d, _df in fetched.items():
             if _d == "エラー" or _df is None or _df.empty:
                 continue
@@ -1608,10 +1609,17 @@ if selected_key == "orikaeshi_kensu":
                 first_date = _d
                 summary_time_slots = [c for c in _df.columns if c not in ("種別", "合計")]
                 summary_categories = _df["種別"].tolist()
+                for _, _row in _df.iterrows():
+                    _cat = _row["種別"]
+                    for _ts in summary_time_slots:
+                        try:
+                            summary_counts[(_cat, _ts)] = int(_row[_ts])
+                        except (ValueError, TypeError):
+                            summary_counts[(_cat, _ts)] = 0
                 break
         if first_date and summary_time_slots and summary_categories:
             try:
-                send_summary(checks, first_date, summary_time_slots, summary_categories)
+                send_summary(checks, first_date, summary_time_slots, summary_categories, summary_counts)
                 mark_summary_sent()
             except Exception as _cw_err:
                 pass  # 定期送信のエラーは静かに無視

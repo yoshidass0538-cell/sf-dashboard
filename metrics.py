@@ -1328,13 +1328,6 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
-        key="fc_shiryou",
-        label="1週間後FC 資料",
-        description="1週間後FCの基本手順・不備対応手順（番ポ不備/住所不備/事業変/事前解約）",
-        fetch=fetch_fc_shiryou,
-        category="TOTAL",
-    ),
-    Metric(
         key="kari_keisan",
         label="FC完了CX率",
         description="2025/12以降の月別 1週間後FC完了 vs 留守(完了フラグなし) の開通率・CX率比較",

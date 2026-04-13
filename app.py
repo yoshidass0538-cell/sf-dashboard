@@ -128,7 +128,7 @@ _CACHE_5MIN_KEYS = {"orikaeshi_kensu"}
 # 2時間キャッシュ
 _CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly", "kari_keisan"}
 # 毎日11:00更新（日次キャッシュ）
-_CACHE_DAILY_KEYS = {"progress", "daikon_kaitsu", "fc_shiryou"}
+_CACHE_DAILY_KEYS = {"progress", "daikon_kaitsu"}
 
 
 def _daily_cache_key() -> str:
@@ -267,8 +267,9 @@ for container in st.session_state["board_order"]:
                             if _suffix not in _mem_assignments:
                                 continue  # 未割当のトークはスキップ
                             _bkey = f"talk_script_{_mem_idx:02d}_{_suffix}"
+                            _icon = "📖" if _suffix == "shiryou" else "📋"
                             if st.sidebar.button(
-                                f"　　📋 {_board_label}",
+                                f"　　{_icon} {_board_label}",
                                 key=f"btn_{_bkey}",
                                 use_container_width=True,
                             ):
@@ -709,6 +710,164 @@ if _parsed_title:
 else:
     _title = metric.label
 st.markdown(f'<h1 translate="no">{_title}</h1>', unsafe_allow_html=True)
+
+# 資料ボード（ツール内）: talk_script_NN_shiryou 形式
+if selected_key.startswith("talk_script_") and selected_key.endswith("_shiryou"):
+    from metrics import fetch_fc_shiryou
+
+    @st.cache_data(ttl=86400, show_spinner="資料を取得中...")
+    def _load_shiryou(_cache_day: str):
+        return fetch_fc_shiryou(_sf())
+
+    from datetime import datetime, timezone, timedelta as _td
+    _jst = timezone(_td(hours=9))
+    _now = datetime.now(_jst)
+    _shiryou_cache_key = (_now - _td(days=1)).strftime("%Y-%m-%d") if _now.hour < 11 else _now.strftime("%Y-%m-%d")
+
+    fetched = _load_shiryou(_shiryou_cache_key)
+    shiryou_data = fetched.get("__shiryou__") if isinstance(fetched, dict) else None
+    if not shiryou_data:
+        st.warning("資料データの取得に失敗しました。")
+        if isinstance(fetched, dict):
+            for k, v in fetched.items():
+                st.subheader(k)
+                st.dataframe(v)
+        st.stop()
+
+    sheet2, sheet3 = shiryou_data[0], shiryou_data[1]
+
+    def _esc(t):
+        return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    st.markdown("""
+    <style>
+    .sr-font, .sr-font * { font-family: 'メイリオ', Meiryo, 'Hiragino Sans', sans-serif !important; }
+    .sr-title { background: linear-gradient(90deg, #D4850A, #e8a83e); color: #fff; padding: 12px 20px;
+        font-weight: bold; font-size: 1.15rem; border-radius: 8px; margin: 24px 0 16px 0; }
+    .sr-info { background: #fff8ed; border-left: 4px solid #D4850A; border-radius: 0 8px 8px 0;
+        padding: 12px 16px; margin: 8px 0; color: #3a2a0a; white-space: pre-wrap; line-height: 1.7; font-size: 0.88rem; }
+    .sr-flow { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 16px 0; }
+    .sr-step { background: #fff; border: 2px solid #D4850A; border-radius: 10px; padding: 10px 20px;
+        min-width: 280px; max-width: 90%; text-align: center; font-weight: bold; font-size: 0.92rem;
+        color: #2a1a00; position: relative; white-space: pre-wrap; line-height: 1.6; }
+    .sr-step-num { display: inline-block; background: #D4850A; color: #fff; width: 26px; height: 26px;
+        border-radius: 50%; text-align: center; line-height: 26px; font-size: 0.82rem; margin-right: 8px; font-weight: bold; }
+    .sr-arrow { color: #D4850A; font-size: 1.4rem; line-height: 1; margin: 2px 0; }
+    .sr-branch { display: flex; gap: 12px; margin: 16px 0; flex-wrap: wrap; justify-content: center; }
+    .sr-branch-card { flex: 1; min-width: 220px; max-width: 360px; border-radius: 10px; overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.10); }
+    .sr-branch-hdr { padding: 8px 14px; font-weight: bold; font-size: 0.9rem; text-align: center; }
+    .sr-branch-body { padding: 10px 14px; background: #fff; font-size: 0.82rem; line-height: 1.65;
+        white-space: pre-wrap; color: #2a1a0a; }
+    .sr-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0; }
+    @media (max-width: 768px) { .sr-compare { grid-template-columns: 1fr; } }
+    .sr-cmp-card { border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .sr-cmp-hdr { padding: 8px 14px; font-weight: bold; font-size: 0.9rem; text-align: center; color: #fff; }
+    .sr-cmp-hdr-ok { background: linear-gradient(90deg, #27ae60, #2ecc71); }
+    .sr-cmp-hdr-ng { background: linear-gradient(90deg, #e67e22, #f39c12); }
+    .sr-cmp-body { padding: 10px 14px; background: #fff; font-size: 0.82rem; line-height: 1.65;
+        white-space: pre-wrap; color: #2a1a0a; }
+    .sr-warn { background: #fef3e2; border: 1px solid #f0c36d; border-radius: 8px; padding: 10px 14px;
+        margin: 8px 0; font-size: 0.85rem; color: #7a5a00; line-height: 1.6; white-space: pre-wrap; }
+    .sr-warn::before { content: "\\26A0\\FE0F "; }
+    .sr-knowledge { background: #eef6ff; border: 1px solid #a3c4e8; border-radius: 8px; padding: 12px 16px;
+        margin: 8px 0; font-size: 0.85rem; color: #1a3a5a; line-height: 1.7; white-space: pre-wrap; }
+    .sr-cat-hdr { padding: 10px 16px; border-radius: 8px; color: #fff; font-weight: bold;
+        font-size: 1rem; margin: 12px 0 8px 0; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # シート2: 基本手順
+    st.markdown(f'<div class="sr-title sr-font">{_esc(sheet2["title"])}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sr-info sr-font"><b>対応範囲:</b> {_esc(sheet2["scope"])}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sr-info sr-font"><b>やること:</b> {_esc(sheet2["task"])}</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="sr-title sr-font" style="font-size:1rem;">確認 → 架電 フロー</div>', unsafe_allow_html=True)
+    flow_html = '<div class="sr-flow sr-font">'
+    for i, step in enumerate(sheet2["confirm"]):
+        flow_html += f'<div class="sr-step"><span class="sr-step-num">{i+1}</span>{_esc(step)}</div>'
+        if i < len(sheet2["confirm"]) - 1:
+            flow_html += '<div class="sr-arrow">▼</div>'
+    flow_html += '</div>'
+    st.markdown(flow_html, unsafe_allow_html=True)
+
+    st.markdown('<div class="sr-title sr-font" style="font-size:1rem;">架電後の後処理</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;font-size:1.3rem;color:#D4850A;margin:4px 0;">▼ 架電結果により分岐 ▼</div>', unsafe_allow_html=True)
+    colors = [("#e67e22", "#fef5ed"), ("#d35400", "#fef0e5"), ("#27ae60", "#eafaf1")]
+    branch_html = '<div class="sr-branch sr-font">'
+    for idx, ac in enumerate(sheet2["after_call"]):
+        c_main, c_bg = colors[idx]
+        items_html = "\n".join(_esc(it) for it in ac["items"])
+        branch_html += (
+            f'<div class="sr-branch-card" style="border: 2px solid {c_main};">'
+            f'<div class="sr-branch-hdr" style="background:{c_main};color:#fff;">{_esc(ac["label"])}</div>'
+            f'<div class="sr-branch-body" style="background:{c_bg};">{items_html}</div>'
+            f'</div>'
+        )
+    branch_html += '</div>'
+    st.markdown(branch_html, unsafe_allow_html=True)
+
+    st.markdown('<div class="sr-title sr-font" style="font-size:1rem;">折り返し対応</div>', unsafe_allow_html=True)
+    compare_html = '<div class="sr-compare sr-font">'
+    for i, cb in enumerate(sheet2["callback"]):
+        hdr_cls = "sr-cmp-hdr-ng" if i == 0 else "sr-cmp-hdr-ok"
+        items_html = "\n".join(_esc(it) for it in cb["items"])
+        compare_html += (
+            f'<div class="sr-cmp-card">'
+            f'<div class="sr-cmp-hdr {hdr_cls}">{_esc(cb["label"])}</div>'
+            f'<div class="sr-cmp-body">{items_html}</div>'
+            f'</div>'
+        )
+    compare_html += '</div>'
+    st.markdown(compare_html, unsafe_allow_html=True)
+
+    # シート3: 不備対応手順
+    st.markdown(f'<div class="sr-title sr-font">{_esc(sheet3["title"])}</div>', unsafe_allow_html=True)
+    tabs = st.tabs([cat["name"] for cat in sheet3["categories"]] + ["豆知識"])
+    for tab, cat in zip(tabs[:-1], sheet3["categories"]):
+        with tab:
+            c = cat["color"]
+            st.markdown(
+                f'<div class="sr-cat-hdr sr-font" style="background:{c};">{_esc(cat["name"])}</div>'
+                f'<div class="sr-info sr-font">{_esc(cat["desc"])}</div>',
+                unsafe_allow_html=True,
+            )
+            if cat.get("steps"):
+                st.markdown(f'<div class="sr-cat-hdr sr-font" style="background:{c};font-size:0.92rem;">対応手順</div>', unsafe_allow_html=True)
+                fl = '<div class="sr-flow sr-font">'
+                for si, s in enumerate(cat["steps"]):
+                    fl += f'<div class="sr-step" style="border-color:{c};text-align:left;max-width:100%;"><span class="sr-step-num" style="background:{c};">{si+1}</span>{_esc(s)}</div>'
+                    if si < len(cat["steps"]) - 1:
+                        fl += f'<div class="sr-arrow" style="color:{c};">▼</div>'
+                fl += '</div>'
+                st.markdown(fl, unsafe_allow_html=True)
+            if cat.get("notes"):
+                st.markdown(f'<div class="sr-warn sr-font">{chr(10).join(_esc(n) for n in cat["notes"])}</div>', unsafe_allow_html=True)
+            if cat.get("complete") or cat.get("absent"):
+                st.markdown(f'<div class="sr-cat-hdr sr-font" style="background:{c};font-size:0.92rem;">架電結果</div>', unsafe_allow_html=True)
+                cmp = '<div class="sr-compare sr-font">'
+                cmp += (
+                    f'<div class="sr-cmp-card"><div class="sr-cmp-hdr sr-cmp-hdr-ok">完了</div>'
+                    f'<div class="sr-cmp-body">{chr(10).join(_esc(x) for x in cat.get("complete", []))}</div></div>'
+                    f'<div class="sr-cmp-card"><div class="sr-cmp-hdr sr-cmp-hdr-ng">留守</div>'
+                    f'<div class="sr-cmp-body">{chr(10).join(_esc(x) for x in cat.get("absent", []))}</div></div>'
+                )
+                cmp += '</div>'
+                st.markdown(cmp, unsafe_allow_html=True)
+            if cat.get("flow"):
+                st.markdown(f'<div class="sr-cat-hdr sr-font" style="background:{c};font-size:0.92rem;">全体の流れ</div>', unsafe_allow_html=True)
+                fl2 = '<div class="sr-flow sr-font">'
+                for fi, fs in enumerate(cat["flow"]):
+                    fl2 += f'<div class="sr-step" style="border-color:{c};"><span class="sr-step-num" style="background:{c};">{fi+1}</span>{_esc(fs)}</div>'
+                    if fi < len(cat["flow"]) - 1:
+                        fl2 += f'<div class="sr-arrow" style="color:{c};">▼</div>'
+                fl2 += '</div>'
+                st.markdown(fl2, unsafe_allow_html=True)
+    with tabs[-1]:
+        knowledge = sheet3.get("knowledge", [])
+        if knowledge:
+            st.markdown(f'<div class="sr-knowledge sr-font">{chr(10).join(_esc(k) for k in knowledge)}</div>', unsafe_allow_html=True)
+    st.stop()
 
 # トークスクリプト（テスト）: 電話番号で顧客情報引き当て
 # selected_key が "talk_script_NN" 形式（メンバー別の独立ボード）
@@ -1233,191 +1392,6 @@ if selected_key == "day_calls":
     for chart_title, chart_df in fetched.items():
         _render_bar_chart(chart_title, chart_df)
         st.divider()
-    st.stop()
-
-# 1週間後FC 資料: 図解カスタム描画
-if selected_key == "fc_shiryou":
-    shiryou_data = fetched.get("__shiryou__")
-    if not shiryou_data:
-        st.warning("資料データの取得に失敗しました。")
-        for k, v in fetched.items():
-            st.subheader(k)
-            st.dataframe(v)
-        st.stop()
-
-    sheet2, sheet3 = shiryou_data[0], shiryou_data[1]
-
-    def _esc(t):
-        return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-    # --- 共通CSS ---
-    st.markdown("""
-    <style>
-    .sr-font, .sr-font * { font-family: 'メイリオ', Meiryo, 'Hiragino Sans', sans-serif !important; }
-    /* セクションタイトル */
-    .sr-title { background: linear-gradient(90deg, #D4850A, #e8a83e); color: #fff; padding: 12px 20px;
-        font-weight: bold; font-size: 1.15rem; border-radius: 8px; margin: 24px 0 16px 0; }
-    /* 情報カード */
-    .sr-info { background: #fff8ed; border-left: 4px solid #D4850A; border-radius: 0 8px 8px 0;
-        padding: 12px 16px; margin: 8px 0; color: #3a2a0a; white-space: pre-wrap; line-height: 1.7; font-size: 0.88rem; }
-    /* フローステップ */
-    .sr-flow { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 16px 0; }
-    .sr-step { background: #fff; border: 2px solid #D4850A; border-radius: 10px; padding: 10px 20px;
-        min-width: 280px; max-width: 90%; text-align: center; font-weight: bold; font-size: 0.92rem;
-        color: #2a1a00; position: relative; white-space: pre-wrap; line-height: 1.6; }
-    .sr-step-num { display: inline-block; background: #D4850A; color: #fff; width: 26px; height: 26px;
-        border-radius: 50%; text-align: center; line-height: 26px; font-size: 0.82rem; margin-right: 8px; font-weight: bold; }
-    .sr-arrow { color: #D4850A; font-size: 1.4rem; line-height: 1; margin: 2px 0; }
-    /* 分岐コンテナ */
-    .sr-branch { display: flex; gap: 12px; margin: 16px 0; flex-wrap: wrap; justify-content: center; }
-    .sr-branch-card { flex: 1; min-width: 220px; max-width: 360px; border-radius: 10px; overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.10); }
-    .sr-branch-hdr { padding: 8px 14px; font-weight: bold; font-size: 0.9rem; text-align: center; }
-    .sr-branch-body { padding: 10px 14px; background: #fff; font-size: 0.82rem; line-height: 1.65;
-        white-space: pre-wrap; color: #2a1a0a; }
-    .sr-branch-body .sr-field { background: #f5f0e8; border-radius: 4px; padding: 2px 6px;
-        font-family: 'Consolas', monospace; font-size: 0.8rem; color: #6a4a00; }
-    /* 完了/留守 比較 */
-    .sr-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0; }
-    @media (max-width: 768px) { .sr-compare { grid-template-columns: 1fr; } }
-    .sr-cmp-card { border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-    .sr-cmp-hdr { padding: 8px 14px; font-weight: bold; font-size: 0.9rem; text-align: center; color: #fff; }
-    .sr-cmp-hdr-ok { background: linear-gradient(90deg, #27ae60, #2ecc71); }
-    .sr-cmp-hdr-ng { background: linear-gradient(90deg, #e67e22, #f39c12); }
-    .sr-cmp-body { padding: 10px 14px; background: #fff; font-size: 0.82rem; line-height: 1.65;
-        white-space: pre-wrap; color: #2a1a0a; }
-    /* 注意ボックス */
-    .sr-warn { background: #fef3e2; border: 1px solid #f0c36d; border-radius: 8px; padding: 10px 14px;
-        margin: 8px 0; font-size: 0.85rem; color: #7a5a00; line-height: 1.6; white-space: pre-wrap; }
-    .sr-warn::before { content: "\\26A0\\FE0F "; }
-    /* 豆知識ボックス */
-    .sr-knowledge { background: #eef6ff; border: 1px solid #a3c4e8; border-radius: 8px; padding: 12px 16px;
-        margin: 8px 0; font-size: 0.85rem; color: #1a3a5a; line-height: 1.7; white-space: pre-wrap; }
-    /* 不備タブ内ヘッダー */
-    .sr-cat-hdr { padding: 10px 16px; border-radius: 8px; color: #fff; font-weight: bold;
-        font-size: 1rem; margin: 12px 0 8px 0; }
-    /* フロー(不備) */
-    .sr-miniflow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
-    .sr-miniflow-step { background: #fff; border: 2px solid currentColor; border-radius: 8px;
-        padding: 6px 14px; font-size: 0.82rem; font-weight: bold; color: inherit; white-space: pre-wrap;
-        max-width: 300px; }
-    .sr-miniflow-arrow { font-size: 1.2rem; color: inherit; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    # ========== シート2: 基本手順 ==========
-    st.markdown(f'<div class="sr-title sr-font">{_esc(sheet2["title"])}</div>', unsafe_allow_html=True)
-
-    # 対応範囲 & やること
-    st.markdown(f'<div class="sr-info sr-font"><b>対応範囲:</b> {_esc(sheet2["scope"])}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sr-info sr-font"><b>やること:</b> {_esc(sheet2["task"])}</div>', unsafe_allow_html=True)
-
-    # 確認フロー
-    st.markdown('<div class="sr-title sr-font" style="font-size:1rem;">確認 → 架電 フロー</div>', unsafe_allow_html=True)
-    flow_html = '<div class="sr-flow sr-font">'
-    for i, step in enumerate(sheet2["confirm"]):
-        flow_html += f'<div class="sr-step"><span class="sr-step-num">{i+1}</span>{_esc(step)}</div>'
-        if i < len(sheet2["confirm"]) - 1:
-            flow_html += '<div class="sr-arrow">▼</div>'
-    flow_html += '</div>'
-    st.markdown(flow_html, unsafe_allow_html=True)
-
-    # 後処理: 3分岐
-    st.markdown('<div class="sr-title sr-font" style="font-size:1rem;">架電後の後処理</div>', unsafe_allow_html=True)
-    st.markdown('<div style="text-align:center;font-size:1.3rem;color:#D4850A;margin:4px 0;">▼ 架電結果により分岐 ▼</div>', unsafe_allow_html=True)
-
-    colors = [("#e67e22", "#fef5ed"), ("#d35400", "#fef0e5"), ("#27ae60", "#eafaf1")]
-    branch_html = '<div class="sr-branch sr-font">'
-    for idx, ac in enumerate(sheet2["after_call"]):
-        c_main, c_bg = colors[idx]
-        items_html = "\n".join(_esc(it) for it in ac["items"])
-        branch_html += (
-            f'<div class="sr-branch-card" style="border: 2px solid {c_main};">'
-            f'<div class="sr-branch-hdr" style="background:{c_main};color:#fff;">{_esc(ac["label"])}</div>'
-            f'<div class="sr-branch-body" style="background:{c_bg};">{items_html}</div>'
-            f'</div>'
-        )
-    branch_html += '</div>'
-    st.markdown(branch_html, unsafe_allow_html=True)
-
-    # 折り返し対応: 比較
-    st.markdown('<div class="sr-title sr-font" style="font-size:1rem;">折り返し対応</div>', unsafe_allow_html=True)
-    compare_html = '<div class="sr-compare sr-font">'
-    for i, cb in enumerate(sheet2["callback"]):
-        hdr_cls = "sr-cmp-hdr-ng" if i == 0 else "sr-cmp-hdr-ok"
-        items_html = "\n".join(_esc(it) for it in cb["items"])
-        compare_html += (
-            f'<div class="sr-cmp-card">'
-            f'<div class="sr-cmp-hdr {hdr_cls}">{_esc(cb["label"])}</div>'
-            f'<div class="sr-cmp-body">{items_html}</div>'
-            f'</div>'
-        )
-    compare_html += '</div>'
-    st.markdown(compare_html, unsafe_allow_html=True)
-
-    # ========== シート3: 不備対応手順 ==========
-    st.markdown(f'<div class="sr-title sr-font">{_esc(sheet3["title"])}</div>', unsafe_allow_html=True)
-
-    tabs = st.tabs([cat["name"] for cat in sheet3["categories"]] + ["豆知識"])
-
-    for tab, cat in zip(tabs[:-1], sheet3["categories"]):
-        with tab:
-            c = cat["color"]
-            # 説明
-            st.markdown(
-                f'<div class="sr-cat-hdr sr-font" style="background:{c};">{_esc(cat["name"])}</div>'
-                f'<div class="sr-info sr-font">{_esc(cat["desc"])}</div>',
-                unsafe_allow_html=True,
-            )
-            # 対応手順フロー（縦）
-            if cat.get("steps"):
-                st.markdown(f'<div class="sr-cat-hdr sr-font" style="background:{c};font-size:0.92rem;">対応手順</div>', unsafe_allow_html=True)
-                fl = f'<div class="sr-flow sr-font">'
-                for si, s in enumerate(cat["steps"]):
-                    fl += f'<div class="sr-step" style="border-color:{c};text-align:left;max-width:100%;"><span class="sr-step-num" style="background:{c};">{si+1}</span>{_esc(s)}</div>'
-                    if si < len(cat["steps"]) - 1:
-                        fl += f'<div class="sr-arrow" style="color:{c};">▼</div>'
-                fl += '</div>'
-                st.markdown(fl, unsafe_allow_html=True)
-
-            # 注意事項
-            if cat.get("notes"):
-                st.markdown(f'<div class="sr-warn sr-font">{chr(10).join(_esc(n) for n in cat["notes"])}</div>', unsafe_allow_html=True)
-
-            # 架電結果: 完了 vs 留守
-            if cat.get("complete") or cat.get("absent"):
-                st.markdown(f'<div class="sr-cat-hdr sr-font" style="background:{c};font-size:0.92rem;">架電結果</div>', unsafe_allow_html=True)
-                cmp = '<div class="sr-compare sr-font">'
-                cmp += (
-                    f'<div class="sr-cmp-card">'
-                    f'<div class="sr-cmp-hdr sr-cmp-hdr-ok">完了</div>'
-                    f'<div class="sr-cmp-body">{chr(10).join(_esc(x) for x in cat.get("complete", []))}</div>'
-                    f'</div>'
-                    f'<div class="sr-cmp-card">'
-                    f'<div class="sr-cmp-hdr sr-cmp-hdr-ng">留守</div>'
-                    f'<div class="sr-cmp-body">{chr(10).join(_esc(x) for x in cat.get("absent", []))}</div>'
-                    f'</div>'
-                )
-                cmp += '</div>'
-                st.markdown(cmp, unsafe_allow_html=True)
-
-            # 全体フロー
-            if cat.get("flow"):
-                st.markdown(f'<div class="sr-cat-hdr sr-font" style="background:{c};font-size:0.92rem;">全体の流れ</div>', unsafe_allow_html=True)
-                fl = f'<div class="sr-flow sr-font">'
-                for fi, fs in enumerate(cat["flow"]):
-                    fl += f'<div class="sr-step" style="border-color:{c};"><span class="sr-step-num" style="background:{c};">{fi+1}</span>{_esc(fs)}</div>'
-                    if fi < len(cat["flow"]) - 1:
-                        fl += f'<div class="sr-arrow" style="color:{c};">▼</div>'
-                fl += '</div>'
-                st.markdown(fl, unsafe_allow_html=True)
-
-    # 豆知識タブ
-    with tabs[-1]:
-        knowledge = sheet3.get("knowledge", [])
-        if knowledge:
-            st.markdown(f'<div class="sr-knowledge sr-font">{chr(10).join(_esc(k) for k in knowledge)}</div>', unsafe_allow_html=True)
-
     st.stop()
 
 # 折返し件数: 件数テーブル＋セルごとチェックボックス

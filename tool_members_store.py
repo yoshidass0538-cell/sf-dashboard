@@ -36,6 +36,7 @@ CELL = "A1"
 # 初期トーク種類
 _DEFAULT_BOARDS = [
     {"suffix": "fc1week", "label": "1週間後FCトーク"},
+    {"suffix": "shiryou", "label": "1週間後FC 資料"},
 ]
 
 # 初期メンバー（初回デプロイ時のシード）
@@ -91,10 +92,15 @@ def _shared_cache() -> dict:
 # --- ボード（トーク種類）管理 ---
 
 def get_boards() -> list[dict]:
-    """トーク種類リストを返す。未保存ならデフォルト。"""
+    """トーク種類リストを返す。未保存ならデフォルト。不足分は自動追加。"""
     cached = _shared_cache().get("boards")
     if cached is None:
         return [b.copy() for b in _DEFAULT_BOARDS]
+    # マイグレーション: _DEFAULT_BOARDS に存在するが cached にないボードを追加
+    existing = {b["suffix"] for b in cached}
+    for db in _DEFAULT_BOARDS:
+        if db["suffix"] not in existing:
+            cached.append(db.copy())
     return cached
 
 

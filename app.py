@@ -280,7 +280,9 @@ for container in st.session_state["board_order"]:
                     if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                         st.session_state["selected"] = mkey
 valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth"}
-if st.session_state.get("selected") not in valid_keys:
+_sel = st.session_state.get("selected")
+# talk_script_* は動的生成のため、キャッシュ未更新でも有効とみなす
+if _sel not in valid_keys and not (_sel and _sel.startswith("talk_script_")):
     st.session_state["selected"] = METRICS[0].key
 
 selected_key = st.session_state["selected"]
@@ -293,6 +295,7 @@ if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     from tool_members_store import clear_members_cache
     clear_check_cache()
     clear_members_cache()
+    reload_talk_script_metrics()
     st.rerun()
 
 st.sidebar.caption("データは5分間キャッシュされます")

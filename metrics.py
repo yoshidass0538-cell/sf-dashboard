@@ -1426,10 +1426,12 @@ TALK_SCRIPT_BOARDS: list[tuple[str, str]] = get_boards_as_tuples()
 def _build_talk_script_metrics() -> list[Metric]:
     """メンバー×割当済みボードから Metric リストを動的生成。"""
     result = []
-    for _i, _m in enumerate(get_members()):
+    members = get_members()
+    boards = get_boards_as_tuples()
+    for _i, _m in enumerate(members):
         if not _m.get("active", True):
             continue
-        for _suffix, _board_label in TALK_SCRIPT_BOARDS:
+        for _suffix, _board_label in boards:
             if _suffix in _m.get("assignments", []):
                 result.append(Metric(
                     key=f"talk_script_{_i:02d}_{_suffix}",

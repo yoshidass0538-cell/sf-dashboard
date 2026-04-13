@@ -1017,6 +1017,13 @@ if selected_key.startswith("talk_script_"):
     kessai_raw = info.get("決済登録日（引用）", "")
     kessai_status = "✅ 登録済み" if kessai_raw not in (None, "") else "❌ 未登録"
 
+    # 年齢: 小数点以下切捨て
+    _age_raw = info.get("年齢", "")
+    try:
+        _age_display = str(int(float(_age_raw))) if _age_raw not in (None, "") else "—"
+    except (ValueError, TypeError):
+        _age_display = str(_age_raw) if _age_raw not in (None, "") else "—"
+
     st.markdown(
         f"""
         <div style="
@@ -1057,7 +1064,7 @@ if selected_key.startswith("talk_script_"):
             </tr>
             <tr>
                 <td style="padding:4px 8px;color:#666;">年齢</td>
-                <td style="padding:4px 8px;font-weight:600;">{_v("年齢")}</td>
+                <td style="padding:4px 8px;font-weight:600;">{_age_display}</td>
                 <td style="padding:4px 8px;color:#666;">利用携帯＆台数</td>
                 <td style="padding:4px 8px;font-weight:600;">{_v("利用携帯＆利用台数")}</td>
             </tr>
@@ -1075,7 +1082,7 @@ if selected_key.startswith("talk_script_"):
             </tr>
             <tr>
                 <td style="padding:4px 8px;color:#666;">住所</td>
-                <td colspan="3" style="padding:4px 8px;font-weight:600;">{_v("住所結合")} {_v("住所結合（建物名＋部屋番号）")}</td>
+                <td colspan="3" style="padding:4px 8px;font-weight:600;">{_v("住所結合")}</td>
             </tr>
         </table>
         </div>

@@ -83,6 +83,16 @@ def send_immediate(date_str: str, time_slot: str, category: str) -> list[dict]:
     return send_message(body)
 
 
+def send_all_checked(date_str: str, category: str) -> list[dict]:
+    """ALL列チェック時（全時間帯埋まり）の通知を1通で送信。"""
+    body = (
+        f"[toall]\n"
+        f"[info][title]折返し件数チェック[/title]"
+        f"{category}は翌日以降に時設お願いします。[/info]"
+    )
+    return send_message(body)
+
+
 def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str], all_categories: list[str]) -> str:
     """
     定期サマリーメッセージを組み立てる。

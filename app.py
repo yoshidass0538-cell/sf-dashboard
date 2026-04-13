@@ -1553,9 +1553,13 @@ if selected_key == "orikaeshi_kensu":
 
         # 変更検知 → 共有ストアに反映 + Chatwork即時通知
         if ag_result and ag_result.data is not None:
-            from chatwork_client import send_immediate
+            from chatwork_client import send_immediate, send_all_checked
             for _, row in ag_result.data.iterrows():
                 cat = row["種別"]
+                # ALL列が新たにONになったか判定
+                all_now = all(bool(row[tc]) for tc in check_time_cols)
+                all_before = all(checks.get(f"{date_str}|{cat}|{tc}", False) for tc in check_time_cols)
+                newly_checked_times = []
                 for tc in check_time_cols:
                     key = f"{date_str}|{cat}|{tc}"
                     val = bool(row[tc])
@@ -1563,14 +1567,20 @@ if selected_key == "orikaeshi_kensu":
                     if val != old_val:
                         if val:
                             checks[key] = True
-                            # チェックON → Chatwork即時通知
-                            try:
-                                send_immediate(date_str, tc, cat)
-                            except Exception as _cw_err:
-                                st.toast(f"Chatwork送信エラー: {_cw_err}", icon="⚠️")
+                            newly_checked_times.append(tc)
                         else:
                             checks.pop(key, None)
                         changed = True
+                # Chatwork送信: ALLが新たにON → 1通にまとめる
+                if newly_checked_times:
+                    try:
+                        if all_now and not all_before:
+                            send_all_checked(date_str, cat)
+                        else:
+                            for tc in newly_checked_times:
+                                send_immediate(date_str, tc, cat)
+                    except Exception as _cw_err:
+                        st.toast(f"Chatwork送信エラー: {_cw_err}", icon="⚠️")
 
         st.download_button(
             "CSV ダウンロード",

@@ -617,7 +617,23 @@ if selected_key == "_master":
                 current_sections = list(_sections_by_kind.get(kind, []))
 
                 # --- セクション管理UI ---
+                st.markdown(
+                    f'<style>'
+                    f'div[data-testid="stExpander"]:has(div#{kind}_sec_exp) > details > summary {{'
+                    f'  background: #C62828 !important; color: #fff !important;'
+                    f'  border-radius: 6px; padding: 8px 14px; font-weight: 700;'
+                    f'}}'
+                    f'div[data-testid="stExpander"]:has(div#{kind}_sec_exp) > details > summary:hover {{'
+                    f'  background: #B71C1C !important;'
+                    f'}}'
+                    f'div[data-testid="stExpander"]:has(div#{kind}_sec_exp) > details > summary svg {{'
+                    f'  fill: #fff !important;'
+                    f'}}'
+                    f'</style>',
+                    unsafe_allow_html=True,
+                )
                 with st.expander(f"🔧 セクション構成を編集（{label}）", expanded=False):
+                    st.markdown(f'<div id="{kind}_sec_exp"></div>', unsafe_allow_html=True)
                     st.caption("セクション名の変更・追加・削除・並び替えができます。変更後は「セクション構成を保存」を押してください。")
 
                     # 並び替え用session_stateキー

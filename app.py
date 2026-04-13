@@ -1551,8 +1551,9 @@ if selected_key == "orikaeshi_kensu":
             key=f"orikaeshi_chk_{i}",
         )
 
-        # 変更検知 → 共有ストアに反映
+        # 変更検知 → 共有ストアに反映 + Chatwork即時通知
         if ag_result and ag_result.data is not None:
+            from chatwork_client import send_immediate
             for _, row in ag_result.data.iterrows():
                 cat = row["種別"]
                 for tc in check_time_cols:
@@ -1562,6 +1563,11 @@ if selected_key == "orikaeshi_kensu":
                     if val != old_val:
                         if val:
                             checks[key] = True
+                            # チェックON → Chatwork即時通知
+                            try:
+                                send_immediate(date_str, tc, cat)
+                            except Exception as _cw_err:
+                                st.toast(f"Chatwork送信エラー: {_cw_err}", icon="⚠️")
                         else:
                             checks.pop(key, None)
                         changed = True
@@ -1577,6 +1583,29 @@ if selected_key == "orikaeshi_kensu":
 
     if changed:
         save_checks(checks)
+
+    # --- Chatwork 定期サマリー（1時間に1回） ---
+    from chatwork_client import should_send_summary, send_summary, mark_summary_sent
+    if should_send_summary():
+        # 最初の日付のデータからtime_cols/categoriesを取得して送信
+        first_date = None
+        summary_time_slots = []
+        summary_categories = []
+        for _d, _df in fetched.items():
+            if _d == "エラー" or _df is None or _df.empty:
+                continue
+            if first_date is None:
+                first_date = _d
+                summary_time_slots = [c for c in _df.columns if c not in ("種別", "合計")]
+                summary_categories = _df["種別"].tolist()
+                break
+        if first_date and summary_time_slots and summary_categories:
+            try:
+                send_summary(checks, first_date, summary_time_slots, summary_categories)
+                mark_summary_sent()
+            except Exception as _cw_err:
+                pass  # 定期送信のエラーは静かに無視
+
     st.stop()
 
 # 単一DataFrame → dict に正規化

@@ -26,7 +26,7 @@ API_URL = "https://api.chatwork.com/v2"
 JST = timezone(timedelta(hours=9))
 
 # サマリーから除外する時間帯（対応不可・可能・推奨のいずれにも表示しない）
-EXCLUDED_TIME_SLOTS = {"14:00", "20:00"}
+EXCLUDED_TIME_SLOTS = {"14:00", "19:00", "20:00"}
 
 
 def _get_token() -> str:

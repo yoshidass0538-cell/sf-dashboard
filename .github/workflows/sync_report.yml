@@ -1,0 +1,30 @@
+name: Sync SF Report to Google Sheets
+
+on:
+  schedule:
+    # 毎日 10:00 JST = 01:00 UTC, 19:00 JST = 10:00 UTC
+    - cron: '0 1 * * *'   # 10:00 JST
+    - cron: '0 10 * * *'  # 19:00 JST
+  workflow_dispatch:  # 手動実行も可能
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install simple-salesforce gspread google-auth requests
+
+      - name: Sync report
+        env:
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_TOKEN: ${{ secrets.SF_TOKEN }}
+          SF_DOMAIN: login
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: python sync_report.py

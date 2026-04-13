@@ -18,10 +18,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 
-# トークスクリプト用スプレッドシート
+# トークスクリプト用スプレッドシート（トーク本文ソース）
 TALK_SCRIPT_SHEET_ID = "15kqCJoZYQSrkvqwecmLgeS9aJBlJAVdoSOP1j822zS0"
 
-# 顧客データシート
+# 顧客データシート（sync_report.pyで自動同期される先）
+LOOKUP_SHEET_ID = "1iNtEakg4U4C3p7uQlVcJIzojnUd8uW5Ykl8swQRQD5U"
 LOOKUP_SHEET = "1週間後FC該当案件"
 
 # 商材種別 → トークシート名
@@ -63,7 +64,7 @@ def normalize_phone(phone: str) -> str:
 def load_customer_data() -> pd.DataFrame:
     """1週間後FC該当案件シートを丸ごとDataFrameで読み込み、電話番号正規化列を付与。"""
     client = _get_gspread_client()
-    sh = client.open_by_key(TALK_SCRIPT_SHEET_ID)
+    sh = client.open_by_key(LOOKUP_SHEET_ID)
     ws = sh.worksheet(LOOKUP_SHEET)
     values = ws.get_all_values()
     if not values or len(values) < 2:

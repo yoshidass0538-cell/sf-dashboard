@@ -107,7 +107,8 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
     """
     now = datetime.now(JST)
     lines = [f"[toall]\n[info][title]折返し件数 状況アナウンス ({now.strftime('%H:%M')}時点)[/title]"]
-    lines.append(f"対象日: {date_str}\n")
+    lines.append(f"対象日: {date_str}")
+    lines.append("時設推奨時間帯とは：現在ご予約に余裕があるため、可能であれば優先的にご提案ください。\n")
 
     for cat in all_categories:
         checked = []
@@ -132,7 +133,6 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
                 top = ranked[:3]
                 top_with_count = [f"{ts}({counts.get((cat, ts), 0)}件)" for ts in top]
                 lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
-                lines.append("  ※時間指定ある場合は推奨時間を参考にお約束をお願いします。")
             lines.append("")
         else:
             lines.append(f"■ {cat}")
@@ -142,7 +142,6 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
                 top = ranked[:3]
                 top_with_count = [f"{ts}({counts.get((cat, ts), 0)}件)" for ts in top]
                 lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
-                lines.append("  ※時間指定ある場合は推奨時間を参考にお約束をお願いします。")
             lines.append("")
 
     lines.append("[/info]")

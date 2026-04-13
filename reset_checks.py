@@ -21,9 +21,14 @@ CELL = "A1"
 
 
 def get_gspread_client():
+    import base64
     sa_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON", "")
     if sa_json:
-        creds_dict = json.loads(sa_json)
+        try:
+            decoded = base64.b64decode(sa_json)
+            creds_dict = json.loads(decoded)
+        except Exception:
+            creds_dict = json.loads(sa_json)
         creds = Credentials.from_service_account_info(creds_dict, scopes=GS_SCOPES)
     else:
         creds = Credentials.from_service_account_file(

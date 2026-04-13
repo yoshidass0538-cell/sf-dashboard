@@ -42,10 +42,16 @@ JST = timezone(timedelta(hours=9))
 
 
 def get_gspread_client():
-    """環境変数 GCP_SERVICE_ACCOUNT_JSON からgspreadクライアントを作成。"""
+    """環境変数 GCP_SERVICE_ACCOUNT_JSON からgspreadクライアントを作成（Base64対応）。"""
+    import base64
     sa_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON", "")
     if sa_json:
-        creds_dict = json.loads(sa_json)
+        # Base64エンコード済みならデコード
+        try:
+            decoded = base64.b64decode(sa_json)
+            creds_dict = json.loads(decoded)
+        except Exception:
+            creds_dict = json.loads(sa_json)
         creds = Credentials.from_service_account_info(creds_dict, scopes=GS_SCOPES)
     else:
         # ローカルフォールバック

@@ -70,9 +70,14 @@ def get_sf() -> Salesforce:
 
 
 def get_gspread_client():
+    import base64
     sa_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON", "")
     if sa_json:
-        creds_dict = json.loads(sa_json)
+        try:
+            decoded = base64.b64decode(sa_json)
+            creds_dict = json.loads(decoded)
+        except Exception:
+            creds_dict = json.loads(sa_json)
         creds = Credentials.from_service_account_info(creds_dict, scopes=GS_SCOPES)
     else:
         creds = Credentials.from_service_account_file(
@@ -81,31 +86,125 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 
+# レポートと同等のフィールド (APIフィールド名, 表示ラベル)
+_SOQL_FIELDS = [
+    ("Name", "取引先名"),
+    ("Field29__c", "申込者氏名"),
+    ("Field32__c", "申込者氏名（フリガナ）"),
+    ("Field63__c", "申込受付番号"),
+    ("Field76__r.Name", "取次商材情報"),
+    ("Field183__c", "申込時工事取得状況"),
+    ("Field118__c", "申込日（引用）"),
+    ("Field128__c", "工事予定日（引用）"),
+    ("Field130__c", "開通日（引用）"),
+    ("Field131__c", "決済登録日（引用）"),
+    ("Field119__c", "キャンセル日（引用）"),
+    ("Field80__c", "キャンセル理由（中区分）"),
+    ("status__c", "status大区分（引用）"),
+    ("Ltotugo__c", "【Lｽﾃｯﾌﾟ】突合完了日（引用）"),
+    ("Field97__c", "次回コール"),
+    ("Field9__c", "利用回線"),
+    ("Field43__c", "エリア（東西）"),
+    ("Field6__c", "建物区分（設置先）"),
+    ("Field228__c", "開通後ホーム電話案内"),
+    ("Id", "取引先 ID"),
+    ("Field109__c", "対応ステータス"),
+    ("Field144__c", "促進ステータス"),
+    ("Field225__c", "ダイコンステータス"),
+    ("Field242__c", "1次ダイコン理由"),
+    ("Field224__c", "1次ダイコン備考"),
+    ("Field243__c", "2次ダイコン理由"),
+    ("Field247__c", "2次ダイコン備考"),
+    ("Field244__c", "3次ダイコン理由"),
+    ("Field248__c", "3次ダイコン備考"),
+    ("Field245__c", "4次ダイコン理由"),
+    ("Field249__c", "4次ダイコン備考"),
+    ("Field246__c", "5次ダイコン理由"),
+    ("Field250__c", "5次ダイコン備考"),
+    ("Field341__c", "6次ダイコン理由"),
+    ("Field346__c", "6次ダイコン備考"),
+    ("Field342__c", "7次ダイコン理由"),
+    ("Field347__c", "7次ダイコン備考"),
+    ("Field343__c", "8次ダイコン理由"),
+    ("Field348__c", "8次ダイコン備考"),
+    ("Field344__c", "9次ダイコン理由"),
+    ("Field349__c", "9次ダイコン備考"),
+    ("Field345__c", "10次ダイコン理由"),
+    ("Field350__c", "10次ダイコン備考"),
+    ("Field24__c", "次回コール日"),
+    ("Field25__c", "次回コール時間"),
+    ("Field42__c", "年齢"),
+    ("Field373__c", "利用携帯＆利用台数"),
+    ("Field138__c", "商流（引用）"),
+    ("Field134__c", "住所結合"),
+    ("Field257__c", "住所結合（建物名＋部屋番号）"),
+    ("Field139__c", "住所フリガナ"),
+    ("BillingPostalCode", "郵便番号(設置先)"),
+]
+
+
+def _get_nested(rec, field):
+    """ドット区切りのフィールド（例: Field76__r.Name）から値を取得。"""
+    parts = field.split(".")
+    val = rec
+    for p in parts:
+        if val is None:
+            return ""
+        if isinstance(val, dict):
+            val = val.get(p)
+        else:
+            return ""
+    return val
+
+
 def fetch_report(sf: Salesforce) -> tuple[list[str], list[list[str]]]:
     """
-    SFレポートAPIでデータを取得。
-    Returns: (headers, rows)
+    レポートと同等のデータをSOQLで全件取得（2000件制限なし）。
+    レポートのフィルター: 申込区分=新設, 申込日=2025-04-01～2026-05-31
     """
-    # レポート記述を取得してカラム順を把握
-    desc = sf.restful(f"analytics/reports/{SF_REPORT_ID}/describe")
-    detail_cols = desc["reportMetadata"]["detailColumns"]
-    col_info = desc["reportExtendedMetadata"]["detailColumnInfo"]
-    headers = [col_info.get(c, {}).get("label", c) for c in detail_cols]
+    field_names = [f[0] for f in _SOQL_FIELDS]
+    field_str = ", ".join(field_names)
 
-    # レポート実行
+    soql = (
+        f"SELECT {field_str} FROM Account "
+        f"WHERE Field78__c = '新設' "
+        f"AND Field118__c >= 2025-04-01 AND Field118__c <= 2026-05-31 "
+        f"ORDER BY Name"
+    )
+
+    print("  SOQL実行中（全件取得）...")
+    result = sf.query_all(soql)
+    records = result.get("records", [])
+
+    headers = [f[1] for f in _SOQL_FIELDS]
+    # エントリ日を追加（子オブジェクトから別途取得）
+    headers.append("案件進捗管理: エントリ日")
+
+    # Account ID → エントリ日マッピング（最新を1件）
+    print("  エントリ日を取得中...")
+    entry_soql = (
+        "SELECT Field13__c, Field46__c "
+        "FROM CustomObject3__c "
+        "WHERE Field13__c != null "
+        "ORDER BY Field13__c, Field46__c DESC"
+    )
+    entry_result = sf.query_all(entry_soql)
+    entry_map = {}
+    for r in entry_result.get("records", []):
+        acc_id = r.get("Field13__c", "") or ""
+        entry_date = r.get("Field46__c", "") or ""
+        if acc_id and acc_id not in entry_map:
+            entry_map[acc_id] = entry_date
+
     all_rows = []
-    result = sf.restful(f"analytics/reports/{SF_REPORT_ID}", params={"includeDetails": "true"})
-    fact_map = result.get("factMap", {})
-
-    for key in sorted(fact_map.keys()):
-        section = fact_map[key]
-        for row_data in section.get("rows", []):
-            cells = row_data.get("dataCells", [])
-            row = [str(cell.get("label", "")) for cell in cells]
-            all_rows.append(row)
-
-    if result.get("allData") is False:
-        print(f"  WARNING: レポートが上限(2000件)に達しています。")
+    for rec in records:
+        row = []
+        for api_name, _ in _SOQL_FIELDS:
+            val = _get_nested(rec, api_name)
+            row.append(str(val) if val not in (None, "") else "")
+        acc_id = rec.get("Id", "")
+        row.append(entry_map.get(acc_id, ""))
+        all_rows.append(row)
 
     print(f"  取得行数: {len(all_rows)}")
     return headers, all_rows

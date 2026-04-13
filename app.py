@@ -152,7 +152,7 @@ def _load_2h(metric_key: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
-def _load_daily(metric_key: str, _cache_day: str) -> pd.DataFrame:
+def _load_daily(metric_key: str, _cache_day: str, _v: int = 2) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 

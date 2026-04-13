@@ -106,9 +106,16 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
     counts: {(種別, 時間帯): 件数} — 推奨時間帯の算出に使用。
     """
     now = datetime.now(JST)
+    current_hour = now.hour
     lines = [f"[toall]\n[info][title]折返し件数 状況アナウンス ({now.strftime('%H:%M')}時点)[/title]"]
     lines.append(f"対象日: {date_str}")
     lines.append("時設推奨時間帯とは：現在ご予約に余裕があるため、可能であれば優先的にご提案ください。\n")
+
+    def _is_future(ts):
+        try:
+            return int(ts.split(":")[0]) >= current_hour
+        except (ValueError, IndexError):
+            return True
 
     for cat in all_categories:
         checked = []
@@ -129,19 +136,23 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
             lines.append(f"■ {cat}")
             lines.append("  全時間帯 対応可能")
             if counts and unchecked:
-                ranked = sorted(unchecked, key=lambda ts: counts.get((cat, ts), 0))
-                top = ranked[:3]
-                top_with_count = [f"{ts}({counts.get((cat, ts), 0)}件)" for ts in top]
-                lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+                future = [t for t in unchecked if _is_future(t)]
+                if future:
+                    ranked = sorted(future, key=lambda t: counts.get((cat, t), 0))
+                    top = ranked[:3]
+                    top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
+                    lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
             lines.append("")
         else:
             lines.append(f"■ {cat}")
             lines.append(f"  対応不可時間: {', '.join(checked)}")
             if counts and unchecked:
-                ranked = sorted(unchecked, key=lambda ts: counts.get((cat, ts), 0))
-                top = ranked[:3]
-                top_with_count = [f"{ts}({counts.get((cat, ts), 0)}件)" for ts in top]
-                lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+                future = [t for t in unchecked if _is_future(t)]
+                if future:
+                    ranked = sorted(future, key=lambda t: counts.get((cat, t), 0))
+                    top = ranked[:3]
+                    top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
+                    lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
             lines.append("")
 
     lines.append("[/info]")

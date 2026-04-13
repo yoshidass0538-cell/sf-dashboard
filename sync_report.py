@@ -241,7 +241,7 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
     from datetime import datetime, timezone, timedelta
     JST = timezone(timedelta(hours=9))
     now = datetime.now(JST)
-    date_from = (now - timedelta(days=60)).date()
+    date_from = (now - timedelta(days=30)).date()
 
     col_indices = []
     found_headers = []
@@ -255,11 +255,9 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
     # フィルター用の列インデックス
     entry_idx = headers.index("案件進捗管理: エントリ日") if "案件進捗管理: エントリ日" in headers else -1
     status_idx = headers.index("status大区分（引用）") if "status大区分（引用）" in headers else -1
-    kouji_idx = headers.index("工事予定日（引用）") if "工事予定日（引用）" in headers else -1
     shozai_idx = headers.index("取次商材情報") if "取次商材情報" in headers else -1
     EXCLUDE_STATUS = {"95 キャンセル済み", "96 解約済み", "キャンセル"}
     EXCLUDE_SHOZAI = {"AU光_010"}
-    kouji_cutoff = (now - timedelta(days=30)).date()
 
     extracted = []
     skipped = 0
@@ -293,24 +291,9 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
                     skipped += 1
                     continue
 
-        # 工事予定日フィルター（30日より過去は除外）
-        if kouji_idx >= 0 and kouji_idx < len(row):
-            kouji_str = row[kouji_idx].strip()
-            if kouji_str:
-                kouji_date = None
-                for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-                    try:
-                        kouji_date = datetime.strptime(kouji_str[:10], fmt).date()
-                        break
-                    except ValueError:
-                        continue
-                if kouji_date and kouji_date < kouji_cutoff:
-                    skipped += 1
-                    continue
-
         extracted.append([row[i] if i < len(row) else "" for i in col_indices])
 
-    print(f"  フィルター: エントリ日>={date_from}, 工事予定日>={kouji_cutoff}, status除外={EXCLUDE_STATUS}, 商材除外={EXCLUDE_SHOZAI}")
+    print(f"  フィルター: エントリ日>={date_from}, status除外={EXCLUDE_STATUS}, 商材除外={EXCLUDE_SHOZAI}")
     print(f"  → {len(extracted)}行（除外: {skipped}行）")
     return found_headers, extracted
 

@@ -170,15 +170,15 @@ def fetch_report(sf: Salesforce) -> tuple[list[str], list[list[str]]]:
     # Account ID → エントリ日のマッピングを取得
     print("  エントリ日を取得中...")
     entry_soql = (
-        "SELECT Field128__r.Id accId, Field46__c "
+        "SELECT Field13__c, Field46__c "
         "FROM CustomObject3__c "
-        "WHERE Field128__r.Id != null "
-        "ORDER BY Field128__r.Id, Field46__c DESC"
+        "WHERE Field13__c != null "
+        "ORDER BY Field13__c, Field46__c DESC"
     )
     entry_result = sf.query_all(entry_soql)
     entry_map = {}
     for r in entry_result.get("records", []):
-        acc_id = (r.get("Field128__r") or {}).get("Id", "")
+        acc_id = r.get("Field13__c", "") or ""
         entry_date = r.get("Field46__c", "") or ""
         if acc_id and acc_id not in entry_map:
             entry_map[acc_id] = entry_date

@@ -1077,8 +1077,8 @@ if selected_key.startswith("talk_script_"):
             <tr>
                 <td style="padding:4px 8px;color:#666;">郵便番号</td>
                 <td style="padding:4px 8px;font-weight:600;">{_v("郵便番号(設置先)")}</td>
-                <td style="padding:4px 8px;color:#666;">住所フリガナ</td>
-                <td style="padding:4px 8px;font-weight:600;">{_v("住所フリガナ")}</td>
+                <td style="padding:4px 8px;color:#666;">ダイコンST</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("ダイコンステータス")}</td>
             </tr>
             <tr>
                 <td style="padding:4px 8px;color:#666;">住所</td>

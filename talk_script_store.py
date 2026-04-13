@@ -60,7 +60,7 @@ def normalize_phone(phone: str) -> str:
     return re.sub(r"[^0-9]", "", str(phone))
 
 
-@st.cache_data(ttl=300, show_spinner="顧客データを取得中...")
+@st.cache_data(ttl=600, show_spinner="顧客データを取得中...")
 def load_customer_data() -> pd.DataFrame:
     """1週間後FC該当案件シートを丸ごとDataFrameで読み込み、電話番号正規化列を付与。"""
     # 書き込み可能シートなので書き込み用クライアントを使用

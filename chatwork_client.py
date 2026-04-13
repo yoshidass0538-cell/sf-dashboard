@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # _PRODUCTION_ROOM_IDS = ["398296862", "398125674", "260721357", "380105765"]
 ROOM_IDS = [
     "425326390",  # テスト用ルーム
+    "398125674",
 ]
 
 API_URL = "https://api.chatwork.com/v2"

@@ -52,13 +52,16 @@ def send_message(body: str, room_ids: list[str] | None = None) -> list[dict]:
         return []
     targets = room_ids or ROOM_IDS
     results = []
-    headers = {"X-ChatWorkToken": token}
+    headers = {
+        "X-ChatWorkToken": token,
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    }
     for rid in targets:
         try:
             resp = requests.post(
                 f"{API_URL}/rooms/{rid}/messages",
                 headers=headers,
-                data={"body": body},
+                data={"body": body, "self_unread": 1},
                 timeout=10,
             )
             results.append({"room_id": rid, "status": resp.status_code, "body": resp.text})
@@ -70,6 +73,7 @@ def send_message(body: str, room_ids: list[str] | None = None) -> list[dict]:
 def build_immediate_message(date_str: str, time_slot: str, category: str) -> str:
     """チェック時の即時通知メッセージを組み立てる。"""
     return (
+        f"[toall]\n"
         f"[info][title]折返し件数チェック[/title]"
         f"{time_slot}台の{category}は他時間もしくは翌日以降での時設をお願いします。[/info]"
     )
@@ -88,7 +92,7 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
     全時間チェック済みの場合は翌日以降を案内。
     """
     now = datetime.now(JST)
-    lines = [f"[info][title]折返し件数 状況アナウンス ({now.strftime('%H:%M')}時点)[/title]"]
+    lines = [f"[toall]\n[info][title]折返し件数 状況アナウンス ({now.strftime('%H:%M')}時点)[/title]"]
     lines.append(f"対象日: {date_str}\n")
 
     for cat in all_categories:

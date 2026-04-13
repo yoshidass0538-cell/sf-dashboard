@@ -121,7 +121,7 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
         checked = []
         unchecked = []
         for ts in all_time_slots:
-            if ts in EXCLUDED_TIME_SLOTS:
+            if ts in EXCLUDED_TIME_SLOTS or not _is_future(ts):
                 continue
             key = f"{date_str}|{cat}|{ts}"
             if checks.get(key, False):
@@ -136,23 +136,19 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
             lines.append(f"■ {cat}")
             lines.append("  全時間帯 対応可能")
             if counts and unchecked:
-                future = [t for t in unchecked if _is_future(t)]
-                if future:
-                    ranked = sorted(future, key=lambda t: counts.get((cat, t), 0))
-                    top = ranked[:3]
-                    top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
-                    lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+                ranked = sorted(unchecked, key=lambda t: counts.get((cat, t), 0))
+                top = ranked[:3]
+                top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
+                lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
             lines.append("")
         else:
             lines.append(f"■ {cat}")
             lines.append(f"  対応不可時間: {', '.join(checked)}")
             if counts and unchecked:
-                future = [t for t in unchecked if _is_future(t)]
-                if future:
-                    ranked = sorted(future, key=lambda t: counts.get((cat, t), 0))
-                    top = ranked[:3]
-                    top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
-                    lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+                ranked = sorted(unchecked, key=lambda t: counts.get((cat, t), 0))
+                top = ranked[:3]
+                top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
+                lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
             lines.append("")
 
     lines.append("[/info]")

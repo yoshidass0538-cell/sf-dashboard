@@ -233,7 +233,17 @@ def write_to_sheet(client, sheet_id: str, tab_name: str, headers: list[str], row
 
 
 def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
-    """全データからLOOKUP_COLUMNSだけ抽出。レポート側でフィルター済みのためそのまま使用。"""
+    """
+    全データからLOOKUP_COLUMNSだけ抽出。
+    フィルター:
+      - エントリ日が過去60日以内
+      - status大区分が 95 キャンセル済み / 96 解約済み は除外
+    """
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST)
+    date_from = (now - timedelta(days=60)).date()
+
     col_indices = []
     found_headers = []
     for col_name in LOOKUP_COLUMNS:
@@ -243,10 +253,40 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
         else:
             print(f"  WARNING: 列 '{col_name}' がレポートに見つかりません（スキップ）")
 
+    # フィルター用の列インデックス
+    entry_idx = headers.index("案件進捗管理: エントリ日") if "案件進捗管理: エントリ日" in headers else -1
+    status_idx = headers.index("status大区分（引用）") if "status大区分（引用）" in headers else -1
+    EXCLUDE_STATUS = {"95 キャンセル済み", "96 解約済み"}
+
     extracted = []
+    skipped = 0
     for row in rows:
+        # status除外
+        if status_idx >= 0 and status_idx < len(row):
+            st = row[status_idx].strip()
+            if st in EXCLUDE_STATUS:
+                skipped += 1
+                continue
+
+        # エントリ日フィルター（過去60日以内）
+        if entry_idx >= 0 and entry_idx < len(row):
+            entry_str = row[entry_idx].strip()
+            if entry_str:
+                entry_date = None
+                for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+                    try:
+                        entry_date = datetime.strptime(entry_str[:10], fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                if entry_date and entry_date < date_from:
+                    skipped += 1
+                    continue
+
         extracted.append([row[i] if i < len(row) else "" for i in col_indices])
 
+    print(f"  フィルター: エントリ日>={date_from}, status除外={EXCLUDE_STATUS}")
+    print(f"  → {len(extracted)}行（除外: {skipped}行）")
     return found_headers, extracted
 
 

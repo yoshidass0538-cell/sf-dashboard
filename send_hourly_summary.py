@@ -168,16 +168,17 @@ def build_summary(checks, date_str, time_slots, categories, counts):
                 top = ranked[:3]
                 top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
                 lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+                lines.append("  ※時間指定ある場合は推奨時間を参考にお約束をお願いします。")
             lines.append("")
         else:
             lines.append(f"■ {cat}")
             lines.append(f"  対応不可時間: {', '.join(checked)}")
-            lines.append(f"  対応可能時間: {', '.join(unchecked)}")
             if counts and unchecked:
                 ranked = sorted(unchecked, key=lambda t: counts.get((cat, t), 0))
                 top = ranked[:3]
                 top_with_count = [f"{t}({counts.get((cat, t), 0)}件)" for t in top]
                 lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+                lines.append("  ※時間指定ある場合は推奨時間を参考にお約束をお願いします。")
             lines.append("")
 
     lines.append("[/info]")

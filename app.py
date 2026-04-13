@@ -595,7 +595,8 @@ if selected_key == "_master":
             get_templates,
             save_templates,
             reset_to_default,
-            SECTIONS_BY_KIND,
+            get_sections_by_kind,
+            update_sections,
             SONET_FUBI_KEYS,
             SONET_CLOSING_KEYS,
             LINE_TEMPLATE_KEYS,
@@ -603,6 +604,8 @@ if selected_key == "_master":
         )
 
         templates = get_templates()
+        _sections_by_kind = get_sections_by_kind()
+
         talk_kind_tabs = st.tabs(["So-net光", "NURO光"])
         _kind_meta = [
             ("Sonet", "So-net光", "#1976D2"),
@@ -611,7 +614,77 @@ if selected_key == "_master":
         for tab, (kind, label, color) in zip(talk_kind_tabs, _kind_meta):
             with tab:
                 kind_templates = templates.setdefault(kind, {})
-                for sec_name in SECTIONS_BY_KIND[kind]:
+                current_sections = list(_sections_by_kind.get(kind, []))
+
+                # --- セクション管理UI ---
+                with st.expander(f"🔧 セクション構成を編集（{label}）", expanded=False):
+                    st.caption("セクション名の変更・追加・削除・並び替えができます。変更後は「セクション構成を保存」を押してください。")
+
+                    # 並び替え用session_stateキー
+                    _sec_order_key = f"_sec_order_{kind}"
+                    if _sec_order_key not in st.session_state:
+                        st.session_state[_sec_order_key] = list(current_sections)
+                    _sec_list = st.session_state[_sec_order_key]
+
+                    # 各セクションの編集行
+                    _to_delete = []
+                    _renamed = {}
+                    for si, sn in enumerate(_sec_list):
+                        c1, c2, c3, c4 = st.columns([1, 6, 1, 1])
+                        with c1:
+                            if si > 0 and st.button("↑", key=f"sec_up_{kind}_{si}"):
+                                _sec_list[si], _sec_list[si - 1] = _sec_list[si - 1], _sec_list[si]
+                                st.rerun()
+                        with c2:
+                            new_name = st.text_input(
+                                f"sec_{si}", value=sn, key=f"sec_name_{kind}_{si}",
+                                label_visibility="collapsed",
+                            )
+                            if new_name != sn:
+                                _renamed[si] = new_name
+                        with c3:
+                            if si < len(_sec_list) - 1 and st.button("↓", key=f"sec_down_{kind}_{si}"):
+                                _sec_list[si], _sec_list[si + 1] = _sec_list[si + 1], _sec_list[si]
+                                st.rerun()
+                        with c4:
+                            if st.button("🗑", key=f"sec_del_{kind}_{si}"):
+                                _to_delete.append(si)
+
+                    # 名前変更を反映
+                    for si, new_name in _renamed.items():
+                        old_name = _sec_list[si]
+                        _sec_list[si] = new_name
+                        # テンプレート本文も引き継ぎ
+                        if old_name in kind_templates and old_name != new_name:
+                            kind_templates[new_name] = kind_templates.pop(old_name)
+
+                    # 削除を反映
+                    if _to_delete:
+                        for di in sorted(_to_delete, reverse=True):
+                            _sec_list.pop(di)
+                        st.rerun()
+
+                    # 新規追加
+                    ac1, ac2 = st.columns([4, 1])
+                    with ac1:
+                        _new_sec = st.text_input("新しいセクション名", key=f"sec_new_{kind}", placeholder="例: ヒアリング")
+                    with ac2:
+                        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                        if st.button("＋ 追加", key=f"sec_add_{kind}", use_container_width=True):
+                            if _new_sec and _new_sec not in _sec_list:
+                                _sec_list.append(_new_sec)
+                                st.rerun()
+
+                    # セクション構成を保存
+                    if st.button(f"💾 セクション構成を保存（{label}）", key=f"sec_save_{kind}", type="primary", use_container_width=True):
+                        update_sections(kind, list(_sec_list))
+                        ok, msg = save_templates()
+                        st.session_state[_sec_order_key] = list(_sec_list)
+                        st.toast(msg, icon="✅" if ok else "⚠️")
+                        st.rerun()
+
+                # --- セクション別テンプレート編集 ---
+                for sec_name in _sections_by_kind.get(kind, []):
                     # 不備解消(Sonet)は9種テンプレに展開
                     if sec_name == "不備解消" and kind == "Sonet":
                         fubi_templates = templates.setdefault("Sonet_fubi", {})
@@ -999,14 +1072,14 @@ if selected_key.startswith("talk_script_"):
     # --- トークスクリプト本文（セクション別テンプレ + 動的処理） ---
     from talk_template_store import (
         get_templates,
-        SECTIONS_BY_KIND,
+        get_sections,
         select_fubi_key,
         apply_dynamic_processing,
     )
 
     st.subheader(f"📞 トークスクリプト（{kind_label}）")
     templates = get_templates()
-    sections = SECTIONS_BY_KIND.get(kind, [])
+    sections = get_sections(kind)
     kind_templates = templates.get(kind, {})
 
     # 決済登録日が入っていれば「決済未登録」セクションはスキップ

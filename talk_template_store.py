@@ -34,8 +34,8 @@ TEMPLATE_WORKSHEET = "talk_template_data"
 TEMPLATE_CELL = "A1"
 
 
-# セクション順（編集UI・表示で共通）
-SONET_SECTIONS = [
+# セクション順（デフォルト値。Google Sheetsに保存があればそちらを優先）
+_DEFAULT_SONET_SECTIONS = [
     "アプローチ",
     "現時点の状況確認",
     "契約書の説明",
@@ -45,7 +45,7 @@ SONET_SECTIONS = [
     "締め",
 ]
 
-NURO_SECTIONS = [
+_DEFAULT_NURO_SECTIONS = [
     "アプローチ",
     "現時点の状況確認",
     "契約書の説明",
@@ -53,6 +53,15 @@ NURO_SECTIONS = [
     "締め",
 ]
 
+_DEFAULT_SECTIONS_BY_KIND = {
+    "Sonet": _DEFAULT_SONET_SECTIONS,
+    "NURO": _DEFAULT_NURO_SECTIONS,
+}
+
+# 後方互換: 既存コードが SECTIONS_BY_KIND を参照している箇所用
+# get_sections_by_kind() を使うのが正しいが、初期値としてデフォルトを設定
+SONET_SECTIONS = list(_DEFAULT_SONET_SECTIONS)
+NURO_SECTIONS = list(_DEFAULT_NURO_SECTIONS)
 SECTIONS_BY_KIND = {
     "Sonet": SONET_SECTIONS,
     "NURO": NURO_SECTIONS,
@@ -808,13 +817,19 @@ def _serialize(templates: dict[str, dict[str, str]]) -> str:
     return json.dumps(templates, ensure_ascii=False)
 
 
-def _deserialize(raw: str) -> dict[str, dict[str, str]]:
+def _deserialize(raw: str) -> dict:
     data = json.loads(raw)
+    # セクション構成がなければデフォルトで初期化
+    if "_sections" not in data:
+        data["_sections"] = {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
     # 欠けセクションをデフォルトでマージ
-    for kind in SECTIONS_BY_KIND:
+    sections_map = data["_sections"]
+    for kind in _DEFAULT_SECTIONS_BY_KIND:
+        if kind not in sections_map:
+            sections_map[kind] = list(_DEFAULT_SECTIONS_BY_KIND[kind])
         if kind not in data:
             data[kind] = {}
-        for sec in SECTIONS_BY_KIND[kind]:
+        for sec in sections_map[kind]:
             data[kind].setdefault(sec, "")
     # 不備解消9種テンプレ（Sonet_fubi）も欠けてればデフォルトで埋める
     if "Sonet_fubi" not in data:
@@ -856,14 +871,43 @@ def _shared_templates() -> dict:
         pass
     # 初回 or 失敗時 → ソースB列から構築
     try:
-        return _parse_defaults_from_source()
+        result = _parse_defaults_from_source()
+        if "_sections" not in result:
+            result["_sections"] = {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
+        return result
     except Exception:
-        return {kind: {sec: "" for sec in secs} for kind, secs in SECTIONS_BY_KIND.items()}
+        result = {kind: {sec: "" for sec in secs} for kind, secs in _DEFAULT_SECTIONS_BY_KIND.items()}
+        result["_sections"] = {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
+        return result
 
 
-def get_templates() -> dict[str, dict[str, str]]:
+def get_templates() -> dict:
     """共有テンプレートを取得（編集可能な参照を返す）。"""
     return _shared_templates()
+
+
+def get_sections(kind: str) -> list[str]:
+    """指定商材のセクション構成を取得。Google Sheets保存値優先、なければデフォルト。"""
+    templates = _shared_templates()
+    sections_map = templates.get("_sections", {})
+    return sections_map.get(kind, list(_DEFAULT_SECTIONS_BY_KIND.get(kind, [])))
+
+
+def get_sections_by_kind() -> dict[str, list[str]]:
+    """全商材のセクション構成を返す。"""
+    templates = _shared_templates()
+    sections_map = templates.get("_sections")
+    if sections_map:
+        return sections_map
+    return {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
+
+
+def update_sections(kind: str, sections: list[str]):
+    """セクション構成を更新（メモリ上のみ。save_templatesで永続化）。"""
+    templates = _shared_templates()
+    if "_sections" not in templates:
+        templates["_sections"] = {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
+    templates["_sections"][kind] = sections
 
 
 _last_save = {"t": 0.0}
@@ -889,9 +933,11 @@ def reset_to_default() -> tuple[bool, str]:
     try:
         defaults = _parse_defaults_from_source()
         templates = _shared_templates()
+        # セクション構成もデフォルトに戻す
+        templates["_sections"] = {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
         # 既存ストアを上書き
-        for kind in SECTIONS_BY_KIND:
-            templates[kind] = defaults.get(kind, {sec: "" for sec in SECTIONS_BY_KIND[kind]})
+        for kind in _DEFAULT_SECTIONS_BY_KIND:
+            templates[kind] = defaults.get(kind, {sec: "" for sec in _DEFAULT_SECTIONS_BY_KIND[kind]})
         # 即時保存（スロットリング回避）
         ws = _get_storage_worksheet()
         ws.update_acell(TEMPLATE_CELL, _serialize(templates))

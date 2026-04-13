@@ -256,7 +256,7 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
     # フィルター用の列インデックス
     entry_idx = headers.index("案件進捗管理: エントリ日") if "案件進捗管理: エントリ日" in headers else -1
     status_idx = headers.index("status大区分（引用）") if "status大区分（引用）" in headers else -1
-    EXCLUDE_STATUS = {"95 キャンセル済み", "96 解約済み"}
+    EXCLUDE_STATUS = {"95 キャンセル済み", "96 解約済み", "キャンセル"}
 
     extracted = []
     skipped = 0

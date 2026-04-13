@@ -1177,6 +1177,261 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return result
 
 
+# ======================================================================
+# 1週間後FC 資料ボード（Google Sheets 読み取り専用）
+# ======================================================================
+_SHIRYOU_SHEET_ID = "1E-bMWswznqU8GZBA-3cUy9FAYKO0oYWGsf4tk6w4ryY"
+
+
+def fetch_fc_shiryou(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """
+    シート2（1週間後FC 基本手順）とシート3（不備対応手順）を読み取り、
+    セクションごとに整形して返す。
+    戻り値は {"__shiryou__": [section, ...]} の特殊形式。
+    app.py 側でカスタム描画する。
+    """
+    from talk_script_store import _get_gspread_client
+
+    try:
+        client = _get_gspread_client()
+        sp = client.open_by_key(_SHIRYOU_SHEET_ID)
+    except Exception as e:
+        return {"エラー": pd.DataFrame({"メッセージ": [f"シート取得失敗: {e}"]})}
+
+    def _read_sheet(name: str) -> list[list[str]]:
+        ws = sp.worksheet(name)
+        return ws.get_all_values()
+
+    try:
+        raw2 = _read_sheet("シート2")
+        raw3 = _read_sheet("シート3")
+    except Exception as e:
+        return {"エラー": pd.DataFrame({"メッセージ": [f"シート読み込み失敗: {e}"]})}
+
+    sections = []
+
+    # --- シート2: 1週間後FC 基本手順 ---
+    sections.append(_parse_sheet2(raw2))
+    # --- シート3: 不備対応手順 ---
+    sections.append(_parse_sheet3(raw3))
+
+    return {"__shiryou__": sections}
+
+
+def _cell(row: list[str], idx: int) -> str:
+    if idx < len(row):
+        return (row[idx] or "").strip()
+    return ""
+
+
+def _parse_sheet2(raw: list[list[str]]) -> dict:
+    """シート2を構造化パース。"""
+    result = {
+        "title": "1週間後FC 基本手順",
+        "blocks": [],
+    }
+
+    # やること (row 4)
+    result["blocks"].append({
+        "heading": "やること",
+        "content": _cell(raw[4], 1) if len(raw) > 4 else "",
+    })
+
+    # 対応範囲 (row 1-2)
+    range_text = _cell(raw[2], 1) if len(raw) > 2 else ""
+    result["blocks"].append({
+        "heading": "1週間後FCの対応範囲",
+        "content": range_text,
+    })
+
+    # 確認すること (rows 6-13)
+    confirm_lines = []
+    for i in range(6, min(14, len(raw))):
+        c = _cell(raw[i], 1)
+        if c:
+            confirm_lines.append(c)
+    result["blocks"].append({
+        "heading": "確認すること",
+        "content": "\n".join(confirm_lines),
+    })
+
+    # 後処理: 3列構造 (rows 15-29)
+    # col 1: 留守, col 3: 留守(7日目), col 5: 完了
+    for col_idx, label in [(1, "架電　留守"), (3, "架電　留守（7日目）"), (5, "架電　完了")]:
+        lines = []
+        for i in range(15, min(30, len(raw))):
+            c = _cell(raw[i], col_idx)
+            if c:
+                lines.append(c)
+        result["blocks"].append({
+            "heading": f"後処理 ─ {label}",
+            "content": "\n".join(lines),
+        })
+
+    # 折り返し対応 (rows 30-40)
+    for col_idx, label in [(1, "折り返し対応（再コール）"), (4, "折り返し対応（完了時）")]:
+        lines = []
+        for i in range(30, min(41, len(raw))):
+            c = _cell(raw[i], col_idx)
+            if c:
+                lines.append(c)
+        if lines:
+            result["blocks"].append({
+                "heading": f"後処理 ─ {label}",
+                "content": "\n".join(lines),
+            })
+
+    return result
+
+
+def _parse_sheet3(raw: list[list[str]]) -> dict:
+    """シート3を構造化パース。"""
+    result = {
+        "title": "不備対応手順",
+        "blocks": [],
+    }
+
+    # --- 番ポ不備 (左: col 1, rows 1-27) ---
+    banpo_desc = _cell(raw[4], 1) if len(raw) > 4 else ""
+    banpo_steps = []
+    for i in range(6, min(11, len(raw))):
+        c = _cell(raw[i], 1)
+        if c:
+            banpo_steps.append(c)
+    banpo_note = _cell(raw[10], 1) if len(raw) > 10 else ""
+    result["blocks"].append({
+        "heading": "番ポ不備",
+        "content": banpo_desc + "\n\n【対応手順】\n" + "\n".join(banpo_steps),
+    })
+    # 架電結果 (rows 15-27)
+    for col_idx, label in [(1, "番ポ不備 ─ 完了時"), (6, "番ポ不備 ─ 留守時")]:
+        lines = []
+        for i in range(17, min(28, len(raw))):
+            c = _cell(raw[i], col_idx)
+            if c:
+                lines.append(c)
+        if lines:
+            result["blocks"].append({
+                "heading": label,
+                "content": "\n".join(lines),
+            })
+    # 流れ (rows 30-35)
+    flow_lines = []
+    for i in range(30, min(36, len(raw))):
+        c = _cell(raw[i], 1)
+        if c:
+            flow_lines.append(c)
+    if flow_lines:
+        result["blocks"].append({
+            "heading": "番ポ不備 ─ 流れ",
+            "content": "\n".join(flow_lines),
+        })
+
+    # --- 住所不備 (右: col 10-11, rows 1-35) ---
+    jusho_desc = _cell(raw[4], 10) if len(raw) > 4 else ""
+    jusho_steps = []
+    for i in range(6, min(11, len(raw))):
+        c = _cell(raw[i], 10)
+        if c:
+            jusho_steps.append(c)
+    result["blocks"].append({
+        "heading": "住所不備",
+        "content": jusho_desc + "\n\n【対応手順】\n" + "\n".join(jusho_steps),
+    })
+    for col_idx, label in [(10, "住所不備 ─ 完了時"), (15, "住所不備 ─ 留守時")]:
+        lines = []
+        for i in range(17, min(28, len(raw))):
+            c = _cell(raw[i], col_idx)
+            if c:
+                lines.append(c)
+        if lines:
+            result["blocks"].append({
+                "heading": label,
+                "content": "\n".join(lines),
+            })
+    flow_lines2 = []
+    for i in range(31, min(36, len(raw))):
+        c = _cell(raw[i], 10)
+        if c:
+            flow_lines2.append(c)
+    if flow_lines2:
+        result["blocks"].append({
+            "heading": "住所不備 ─ 流れ",
+            "content": "\n".join(flow_lines2),
+        })
+
+    # --- 事業変 (左: col 1, rows 57-) ---
+    jigyohen_desc = _cell(raw[60], 1) if len(raw) > 60 else ""
+    jigyohen_steps = []
+    for i in range(64, min(73, len(raw))):
+        c = _cell(raw[i], 1)
+        if c:
+            jigyohen_steps.append(c)
+    result["blocks"].append({
+        "heading": "事業変",
+        "content": jigyohen_desc + "\n\n" + "\n".join(jigyohen_steps),
+    })
+    for col_idx, label in [(1, "事業変 ─ 完了時"), (6, "事業変 ─ 留守時")]:
+        lines = []
+        for i in range(78, min(93, len(raw))):
+            c = _cell(raw[i], col_idx)
+            if c:
+                lines.append(c)
+        if lines:
+            result["blocks"].append({
+                "heading": label,
+                "content": "\n".join(lines),
+            })
+    # 連携 (rows 95-100)
+    renk_lines = []
+    for i in range(95, min(101, len(raw))):
+        c = _cell(raw[i], 1)
+        if c:
+            renk_lines.append(c)
+    if renk_lines:
+        result["blocks"].append({
+            "heading": "事業変 ─ 連携",
+            "content": "\n".join(renk_lines),
+        })
+
+    # --- 事前解約 (右: col 11, rows 57-) ---
+    jizen_desc = _cell(raw[60], 11) if len(raw) > 60 else ""
+    jizen_steps = []
+    for i in range(64, min(73, len(raw))):
+        c = _cell(raw[i], 11)
+        if c:
+            jizen_steps.append(c)
+    result["blocks"].append({
+        "heading": "事前解約",
+        "content": jizen_desc + "\n\n" + "\n".join(jizen_steps),
+    })
+    for col_idx, label in [(11, "事前解約 ─ 完了時"), (15, "事前解約 ─ 留守時")]:
+        lines = []
+        for i in range(78, min(93, len(raw))):
+            c = _cell(raw[i], col_idx)
+            if c:
+                lines.append(c)
+        if lines:
+            result["blocks"].append({
+                "heading": label,
+                "content": "\n".join(lines),
+            })
+
+    # --- 豆知識 (rows 37-53) ---
+    knowledge_lines = []
+    for i in range(37, min(54, len(raw))):
+        c = _cell(raw[i], 1)
+        if c:
+            knowledge_lines.append(c)
+    if knowledge_lines:
+        result["blocks"].append({
+            "heading": "1週間後FC 豆知識",
+            "content": "\n".join(knowledge_lines),
+        })
+
+    return result
+
+
 METRICS: list[Metric] = [
     # --- TOTAL ---
     Metric(
@@ -1198,6 +1453,13 @@ METRICS: list[Metric] = [
         label="折返し件数",
         description="後確待ち管理シートから今日と明日の時間別折返件数を表示",
         fetch=fetch_orikaeshi_kensu,
+        category="TOTAL",
+    ),
+    Metric(
+        key="fc_shiryou",
+        label="1週間後FC 資料",
+        description="1週間後FCの基本手順・不備対応手順（番ポ不備/住所不備/事業変/事前解約）",
+        fetch=fetch_fc_shiryou,
         category="TOTAL",
     ),
     Metric(

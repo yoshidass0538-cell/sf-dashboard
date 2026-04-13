@@ -128,7 +128,7 @@ _CACHE_5MIN_KEYS = {"orikaeshi_kensu"}
 # 2時間キャッシュ
 _CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly", "kari_keisan"}
 # 毎日11:00更新（日次キャッシュ）
-_CACHE_DAILY_KEYS = {"progress", "daikon_kaitsu"}
+_CACHE_DAILY_KEYS = {"progress", "daikon_kaitsu", "fc_shiryou"}
 
 
 def _daily_cache_key() -> str:
@@ -1233,6 +1233,81 @@ if selected_key == "day_calls":
     for chart_title, chart_df in fetched.items():
         _render_bar_chart(chart_title, chart_df)
         st.divider()
+    st.stop()
+
+# 1週間後FC 資料: カスタム描画
+if selected_key == "fc_shiryou":
+    shiryou_data = fetched.get("__shiryou__")
+    if not shiryou_data:
+        st.warning("資料データの取得に失敗しました。")
+        for k, v in fetched.items():
+            st.subheader(k)
+            st.dataframe(v)
+        st.stop()
+
+    # TOTAL配色ベース
+    _S_COLORS = {
+        "card_bg": "#fffaf3",
+        "card_border": "#D4850A",
+        "heading_bg": "#D4850A",
+        "heading_fg": "#ffffff",
+        "text_color": "#2a1f0a",
+        "sub_bg": "#fff5e6",
+    }
+
+    st.markdown("""
+    <style>
+    .shiryou-card {
+        background: %(card_bg)s;
+        border: 1px solid %(card_border)s;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        overflow: hidden;
+    }
+    .shiryou-card-heading {
+        background: %(heading_bg)s;
+        color: %(heading_fg)s;
+        padding: 8px 16px;
+        font-weight: bold;
+        font-size: 0.95rem;
+        font-family: 'メイリオ', Meiryo, sans-serif;
+    }
+    .shiryou-card-body {
+        padding: 12px 16px;
+        color: %(text_color)s;
+        white-space: pre-wrap;
+        font-size: 0.88rem;
+        line-height: 1.7;
+        font-family: 'メイリオ', Meiryo, sans-serif;
+    }
+    .shiryou-section-title {
+        background: linear-gradient(90deg, %(heading_bg)s, #e8a83e);
+        color: %(heading_fg)s;
+        padding: 10px 18px;
+        font-weight: bold;
+        font-size: 1.1rem;
+        border-radius: 6px;
+        margin: 20px 0 12px 0;
+        font-family: 'メイリオ', Meiryo, sans-serif;
+    }
+    </style>
+    """ % _S_COLORS, unsafe_allow_html=True)
+
+    for section in shiryou_data:
+        st.markdown(
+            f'<div class="shiryou-section-title">{section["title"]}</div>',
+            unsafe_allow_html=True,
+        )
+        for block in section.get("blocks", []):
+            heading = block.get("heading", "")
+            body = block.get("content", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            st.markdown(
+                f'<div class="shiryou-card">'
+                f'<div class="shiryou-card-heading">{heading}</div>'
+                f'<div class="shiryou-card-body">{body}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
     st.stop()
 
 # 折返し件数: 件数テーブル＋セルごとチェックボックス

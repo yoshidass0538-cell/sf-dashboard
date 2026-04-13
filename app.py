@@ -1055,6 +1055,28 @@ if selected_key.startswith("talk_script_"):
                 <td style="padding:4px 8px;color:#666;">取次商材</td>
                 <td style="padding:4px 8px;font-weight:600;">{shozai}</td>
             </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">年齢</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("年齢")}</td>
+                <td style="padding:4px 8px;color:#666;">利用携帯＆台数</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("利用携帯＆利用台数")}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">商流</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("商流（引用）")}</td>
+                <td style="padding:4px 8px;color:#666;">エリア</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("エリア（東西）")}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">郵便番号</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("郵便番号(設置先)")}</td>
+                <td style="padding:4px 8px;color:#666;">住所フリガナ</td>
+                <td style="padding:4px 8px;font-weight:600;">{_v("住所フリガナ")}</td>
+            </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">住所</td>
+                <td colspan="3" style="padding:4px 8px;font-weight:600;">{_v("住所結合")} {_v("住所結合（建物名＋部屋番号）")}</td>
+            </tr>
         </table>
         </div>
         """,

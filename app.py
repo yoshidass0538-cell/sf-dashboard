@@ -1263,8 +1263,8 @@ if selected_key == "fc_shiryou":
     /* フローステップ */
     .sr-flow { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 16px 0; }
     .sr-step { background: #fff; border: 2px solid #D4850A; border-radius: 10px; padding: 10px 20px;
-        min-width: 280px; max-width: 600px; text-align: center; font-weight: bold; font-size: 0.92rem;
-        color: #2a1a00; position: relative; }
+        min-width: 280px; max-width: 90%; text-align: center; font-weight: bold; font-size: 0.92rem;
+        color: #2a1a00; position: relative; white-space: pre-wrap; line-height: 1.6; }
     .sr-step-num { display: inline-block; background: #D4850A; color: #fff; width: 26px; height: 26px;
         border-radius: 50%; text-align: center; line-height: 26px; font-size: 0.82rem; margin-right: 8px; font-weight: bold; }
     .sr-arrow { color: #D4850A; font-size: 1.4rem; line-height: 1; margin: 2px 0; }
@@ -1369,16 +1369,16 @@ if selected_key == "fc_shiryou":
                 f'<div class="sr-info sr-font">{_esc(cat["desc"])}</div>',
                 unsafe_allow_html=True,
             )
-            # 対応手順フロー
+            # 対応手順フロー（縦）
             if cat.get("steps"):
                 st.markdown(f'<div class="sr-cat-hdr sr-font" style="background:{c};font-size:0.92rem;">対応手順</div>', unsafe_allow_html=True)
-                mf = f'<div class="sr-miniflow sr-font" style="color:{c};">'
+                fl = f'<div class="sr-flow sr-font">'
                 for si, s in enumerate(cat["steps"]):
-                    mf += f'<div class="sr-miniflow-step">{_esc(s)}</div>'
+                    fl += f'<div class="sr-step" style="border-color:{c};text-align:left;max-width:100%;"><span class="sr-step-num" style="background:{c};">{si+1}</span>{_esc(s)}</div>'
                     if si < len(cat["steps"]) - 1:
-                        mf += '<div class="sr-miniflow-arrow">→</div>'
-                mf += '</div>'
-                st.markdown(mf, unsafe_allow_html=True)
+                        fl += f'<div class="sr-arrow" style="color:{c};">▼</div>'
+                fl += '</div>'
+                st.markdown(fl, unsafe_allow_html=True)
 
             # 注意事項
             if cat.get("notes"):

@@ -1499,27 +1499,24 @@ if selected_key == "orikaeshi_kensu":
             resizable=False, sortable=False, filter=False,
             editable=True,
             cellRenderer=_cb_renderer,
-            suppressSizeToFit=True,
         )
         gb.configure_column("種別",
             cellRenderer=None, editable=False, pinned="left",
-            width=180, suppressSizeToFit=True,
+            flex=2, minWidth=140,
             cellStyle={"fontWeight": "bold", "textAlign": "left",
                        "display": "flex", "alignItems": "center"})
         gb.configure_column("ALL",
-            editable=True, width=70, suppressSizeToFit=True,
+            editable=True, flex=1, minWidth=50,
             headerClass="orikaeshi-all-hdr",
             cellStyle={"backgroundColor": "rgba(212,133,10,0.25)",
                        "display": "flex", "alignItems": "center",
                        "justifyContent": "center"})
         for tc in check_time_cols:
-            gb.configure_column(tc, editable=True, width=90, minWidth=80, suppressSizeToFit=True,
+            gb.configure_column(tc, editable=True, flex=1, minWidth=50,
                 cellStyle={"display": "flex", "alignItems": "center",
                            "justifyContent": "center"})
         gb.configure_grid_options(
             onCellValueChanged=_all_toggle,
-            suppressHorizontalScroll=False,
-            alwaysShowHorizontalScroll=True,
         )
 
         _ag_css = {
@@ -1547,6 +1544,7 @@ if selected_key == "orikaeshi_kensu":
             theme="balham",
             allow_unsafe_jscode=True,
             custom_css=_ag_css,
+            fit_columns_on_grid_load=True,
             update_mode="VALUE_CHANGED",
             key=f"orikaeshi_chk_{i}",
         )

@@ -123,7 +123,13 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
             lines.append("  全時間帯 対応不可 → 翌日以降でお願いします\n")
         elif not checked:
             lines.append(f"■ {cat}")
-            lines.append(f"  対応可能時間: {', '.join(unchecked)}\n")
+            lines.append("  全時間帯 対応可能")
+            if counts and unchecked:
+                ranked = sorted(unchecked, key=lambda ts: counts.get((cat, ts), 0))
+                top = ranked[:3]
+                top_with_count = [f"{ts}({counts.get((cat, ts), 0)}件)" for ts in top]
+                lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
+            lines.append("")
         else:
             lines.append(f"■ {cat}")
             lines.append(f"  対応不可時間: {', '.join(checked)}")

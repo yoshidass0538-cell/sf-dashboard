@@ -126,7 +126,7 @@ _REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_to
 # 5分キャッシュ
 _CACHE_5MIN_KEYS = {"orikaeshi_kensu"}
 # 2時間キャッシュ
-_CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly", "kari_keisan"}
+_CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly", "kari_keisan", "cx_age_area"}
 # 毎日11:00更新（日次キャッシュ）
 _CACHE_DAILY_KEYS = {"progress", "daikon_kaitsu"}
 

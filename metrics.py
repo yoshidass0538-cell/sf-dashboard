@@ -1057,6 +1057,85 @@ def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
     }
 
 
+def fetch_cx_age_area(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """
+    エリア別×年代別のCX内訳を集計。
+    CX = 開通日(Field130__c)が空 AND キャンセル日(Field119__c)に日付あり。
+    直近6ヶ月の申込日(Field118__c)が対象。
+    """
+    import math
+
+    soql = (
+        "SELECT Field43__c, Field42__c, Field80__c, Field118__c "
+        "FROM Account "
+        "WHERE Field119__c != null AND Field130__c = null "
+        "AND Field118__c >= LAST_N_MONTHS:6"
+    )
+    records = sf.query_all(soql).get("records", [])
+    if not records:
+        return {"エラー": pd.DataFrame({"メッセージ": ["CXデータがありません"]})}
+
+    rows = []
+    for r in records:
+        area = (r.get("Field43__c") or "").strip()
+        age_raw = r.get("Field42__c")
+        reason = (r.get("Field80__c") or "その他").strip()
+        if not area:
+            area = "不明"
+        # 年代に変換
+        try:
+            age = int(float(age_raw))
+            if age < 20:
+                age_group = "10代以下"
+            elif age >= 70:
+                age_group = "70代以上"
+            else:
+                age_group = f"{(age // 10) * 10}代"
+        except (ValueError, TypeError):
+            age_group = "不明"
+        rows.append({"エリア": area, "年代": age_group, "CX理由": reason})
+
+    df = pd.DataFrame(rows)
+
+    AGE_ORDER = ["10代以下", "20代", "30代", "40代", "50代", "60代", "70代以上", "不明"]
+
+    result = {}
+
+    # --- エリア別×年代別 CX件数 ---
+    for area_label, area_filter in [("東日本", "東"), ("西日本", "西"), ("合算", None)]:
+        if area_filter:
+            sub = df[df["エリア"] == area_filter]
+        else:
+            sub = df
+        pivot = sub.groupby("年代").size().reset_index(name="CX件数")
+        total = sub.shape[0]
+        pivot["構成比"] = pivot["CX件数"].apply(lambda x: f"{x/total*100:.1f}%" if total else "0%")
+        # 年代順にソート
+        pivot["_order"] = pivot["年代"].apply(lambda x: AGE_ORDER.index(x) if x in AGE_ORDER else 99)
+        pivot = pivot.sort_values("_order").drop(columns="_order").reset_index(drop=True)
+        # 合計行
+        pivot = pd.concat([pivot, pd.DataFrame([{"年代": "合計", "CX件数": total, "構成比": "100%"}])], ignore_index=True)
+        result[f"CX件数（{area_label}）"] = pivot
+
+    # --- エリア別×年代別×CX理由 TOP5 ---
+    for area_label, area_filter in [("東日本", "東"), ("西日本", "西"), ("合算", None)]:
+        if area_filter:
+            sub = df[df["エリア"] == area_filter]
+        else:
+            sub = df
+        reason_pivot = sub.groupby(["年代", "CX理由"]).size().reset_index(name="件数")
+        # 年代ごとにTOP5のCX理由を表示
+        top_rows = []
+        for ag in AGE_ORDER:
+            ag_data = reason_pivot[reason_pivot["年代"] == ag].sort_values("件数", ascending=False).head(5)
+            for _, row in ag_data.iterrows():
+                top_rows.append({"年代": row["年代"], "CX理由": row["CX理由"], "件数": row["件数"]})
+        if top_rows:
+            result[f"CX理由TOP5（{area_label}）"] = pd.DataFrame(top_rows)
+
+    return result
+
+
 def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """
     後確待ち確認用スプレッドシートから、最新の BY用_* シートを読んで
@@ -1318,6 +1397,13 @@ METRICS: list[Metric] = [
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",
         fetch=fetch_total_calls,
+        category="TOTAL",
+    ),
+    Metric(
+        key="cx_age_area",
+        label="エリア別年代別CX内訳",
+        description="直近6ヶ月のCX（キャンセル）をエリア×年代別に集計＋CX理由TOP5",
+        fetch=fetch_cx_age_area,
         category="TOTAL",
     ),
     Metric(

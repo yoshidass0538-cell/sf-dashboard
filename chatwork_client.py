@@ -17,7 +17,7 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 # 送信先ルームID（本番用はリリース時に切り替え）
-# _PRODUCTION_ROOM_IDS = ["398296862", "398125674", "260721357", "380105765", "398125674"]
+# _PRODUCTION_ROOM_IDS = ["398296862", "398125674", "260721357", "380105765", "422217521"]
 ROOM_IDS = [
     "425326390",  # テスト用ルーム
 ]

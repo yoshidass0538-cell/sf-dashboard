@@ -1224,212 +1224,84 @@ def _cell(row: list[str], idx: int) -> str:
     return ""
 
 
+def _collect(raw, rows, col) -> list[str]:
+    """指定行範囲・列から空でないセルを収集。"""
+    return [_cell(raw[i], col) for i in range(rows[0], min(rows[1], len(raw))) if _cell(raw[i], col)]
+
+
 def _parse_sheet2(raw: list[list[str]]) -> dict:
-    """シート2を構造化パース。"""
-    result = {
+    """シート2をフロー図向けに構造化。"""
+    return {
         "title": "1週間後FC 基本手順",
-        "blocks": [],
+        "scope": _cell(raw[2], 1) if len(raw) > 2 else "",
+        "task": _cell(raw[4], 1) if len(raw) > 4 else "",
+        "confirm": _collect(raw, (6, 14), 1),
+        "after_call": [
+            {"label": "架電　留守",         "icon": "phone_rusu",    "items": _collect(raw, (15, 30), 1)},
+            {"label": "架電　留守（7日目）", "icon": "phone_rusu7",   "items": _collect(raw, (15, 30), 3)},
+            {"label": "架電　完了",         "icon": "phone_kanryou", "items": _collect(raw, (15, 30), 5)},
+        ],
+        "callback": [
+            {"label": "折り返し対応（再コール）", "items": _collect(raw, (30, 41), 1)},
+            {"label": "折り返し対応（完了時）",   "items": _collect(raw, (30, 41), 4)},
+        ],
     }
-
-    # やること (row 4)
-    result["blocks"].append({
-        "heading": "やること",
-        "content": _cell(raw[4], 1) if len(raw) > 4 else "",
-    })
-
-    # 対応範囲 (row 1-2)
-    range_text = _cell(raw[2], 1) if len(raw) > 2 else ""
-    result["blocks"].append({
-        "heading": "1週間後FCの対応範囲",
-        "content": range_text,
-    })
-
-    # 確認すること (rows 6-13)
-    confirm_lines = []
-    for i in range(6, min(14, len(raw))):
-        c = _cell(raw[i], 1)
-        if c:
-            confirm_lines.append(c)
-    result["blocks"].append({
-        "heading": "確認すること",
-        "content": "\n".join(confirm_lines),
-    })
-
-    # 後処理: 3列構造 (rows 15-29)
-    # col 1: 留守, col 3: 留守(7日目), col 5: 完了
-    for col_idx, label in [(1, "架電　留守"), (3, "架電　留守（7日目）"), (5, "架電　完了")]:
-        lines = []
-        for i in range(15, min(30, len(raw))):
-            c = _cell(raw[i], col_idx)
-            if c:
-                lines.append(c)
-        result["blocks"].append({
-            "heading": f"後処理 ─ {label}",
-            "content": "\n".join(lines),
-        })
-
-    # 折り返し対応 (rows 30-40)
-    for col_idx, label in [(1, "折り返し対応（再コール）"), (4, "折り返し対応（完了時）")]:
-        lines = []
-        for i in range(30, min(41, len(raw))):
-            c = _cell(raw[i], col_idx)
-            if c:
-                lines.append(c)
-        if lines:
-            result["blocks"].append({
-                "heading": f"後処理 ─ {label}",
-                "content": "\n".join(lines),
-            })
-
-    return result
 
 
 def _parse_sheet3(raw: list[list[str]]) -> dict:
-    """シート3を構造化パース。"""
-    result = {
+    """シート3を不備カテゴリ別に構造化。"""
+    categories = []
+
+    # --- 番ポ不備 ---
+    categories.append({
+        "name": "番ポ不備", "color": "#E67E22",
+        "desc": _cell(raw[4], 1) if len(raw) > 4 else "",
+        "steps": _collect(raw, (6, 11), 1),
+        "complete": _collect(raw, (17, 28), 1),
+        "absent": _collect(raw, (17, 28), 6),
+        "flow": _collect(raw, (30, 36), 1),
+    })
+
+    # --- 住所不備 ---
+    categories.append({
+        "name": "住所不備", "color": "#2980B9",
+        "desc": _cell(raw[4], 10) if len(raw) > 4 else "",
+        "steps": _collect(raw, (6, 11), 10),
+        "complete": _collect(raw, (17, 28), 10),
+        "absent": _collect(raw, (17, 28), 15),
+        "flow": _collect(raw, (31, 36), 10),
+    })
+
+    # --- 事業変 ---
+    categories.append({
+        "name": "事業変", "color": "#8E44AD",
+        "desc": _cell(raw[60], 1) if len(raw) > 60 else "",
+        "steps": _collect(raw, (64, 67), 1),
+        "notes": _collect(raw, (69, 73), 1),
+        "complete": _collect(raw, (78, 93), 1),
+        "absent": _collect(raw, (78, 93), 6),
+        "flow": _collect(raw, (95, 101), 1),
+    })
+
+    # --- 事前解約 ---
+    categories.append({
+        "name": "事前解約", "color": "#C0392B",
+        "desc": _cell(raw[60], 11) if len(raw) > 60 else "",
+        "steps": _collect(raw, (64, 67), 11),
+        "notes": _collect(raw, (69, 73), 11),
+        "complete": _collect(raw, (78, 93), 11),
+        "absent": _collect(raw, (78, 93), 15),
+        "flow": [],
+    })
+
+    # --- 豆知識 ---
+    knowledge = _collect(raw, (37, 54), 1)
+
+    return {
         "title": "不備対応手順",
-        "blocks": [],
+        "categories": categories,
+        "knowledge": knowledge,
     }
-
-    # --- 番ポ不備 (左: col 1, rows 1-27) ---
-    banpo_desc = _cell(raw[4], 1) if len(raw) > 4 else ""
-    banpo_steps = []
-    for i in range(6, min(11, len(raw))):
-        c = _cell(raw[i], 1)
-        if c:
-            banpo_steps.append(c)
-    banpo_note = _cell(raw[10], 1) if len(raw) > 10 else ""
-    result["blocks"].append({
-        "heading": "番ポ不備",
-        "content": banpo_desc + "\n\n【対応手順】\n" + "\n".join(banpo_steps),
-    })
-    # 架電結果 (rows 15-27)
-    for col_idx, label in [(1, "番ポ不備 ─ 完了時"), (6, "番ポ不備 ─ 留守時")]:
-        lines = []
-        for i in range(17, min(28, len(raw))):
-            c = _cell(raw[i], col_idx)
-            if c:
-                lines.append(c)
-        if lines:
-            result["blocks"].append({
-                "heading": label,
-                "content": "\n".join(lines),
-            })
-    # 流れ (rows 30-35)
-    flow_lines = []
-    for i in range(30, min(36, len(raw))):
-        c = _cell(raw[i], 1)
-        if c:
-            flow_lines.append(c)
-    if flow_lines:
-        result["blocks"].append({
-            "heading": "番ポ不備 ─ 流れ",
-            "content": "\n".join(flow_lines),
-        })
-
-    # --- 住所不備 (右: col 10-11, rows 1-35) ---
-    jusho_desc = _cell(raw[4], 10) if len(raw) > 4 else ""
-    jusho_steps = []
-    for i in range(6, min(11, len(raw))):
-        c = _cell(raw[i], 10)
-        if c:
-            jusho_steps.append(c)
-    result["blocks"].append({
-        "heading": "住所不備",
-        "content": jusho_desc + "\n\n【対応手順】\n" + "\n".join(jusho_steps),
-    })
-    for col_idx, label in [(10, "住所不備 ─ 完了時"), (15, "住所不備 ─ 留守時")]:
-        lines = []
-        for i in range(17, min(28, len(raw))):
-            c = _cell(raw[i], col_idx)
-            if c:
-                lines.append(c)
-        if lines:
-            result["blocks"].append({
-                "heading": label,
-                "content": "\n".join(lines),
-            })
-    flow_lines2 = []
-    for i in range(31, min(36, len(raw))):
-        c = _cell(raw[i], 10)
-        if c:
-            flow_lines2.append(c)
-    if flow_lines2:
-        result["blocks"].append({
-            "heading": "住所不備 ─ 流れ",
-            "content": "\n".join(flow_lines2),
-        })
-
-    # --- 事業変 (左: col 1, rows 57-) ---
-    jigyohen_desc = _cell(raw[60], 1) if len(raw) > 60 else ""
-    jigyohen_steps = []
-    for i in range(64, min(73, len(raw))):
-        c = _cell(raw[i], 1)
-        if c:
-            jigyohen_steps.append(c)
-    result["blocks"].append({
-        "heading": "事業変",
-        "content": jigyohen_desc + "\n\n" + "\n".join(jigyohen_steps),
-    })
-    for col_idx, label in [(1, "事業変 ─ 完了時"), (6, "事業変 ─ 留守時")]:
-        lines = []
-        for i in range(78, min(93, len(raw))):
-            c = _cell(raw[i], col_idx)
-            if c:
-                lines.append(c)
-        if lines:
-            result["blocks"].append({
-                "heading": label,
-                "content": "\n".join(lines),
-            })
-    # 連携 (rows 95-100)
-    renk_lines = []
-    for i in range(95, min(101, len(raw))):
-        c = _cell(raw[i], 1)
-        if c:
-            renk_lines.append(c)
-    if renk_lines:
-        result["blocks"].append({
-            "heading": "事業変 ─ 連携",
-            "content": "\n".join(renk_lines),
-        })
-
-    # --- 事前解約 (右: col 11, rows 57-) ---
-    jizen_desc = _cell(raw[60], 11) if len(raw) > 60 else ""
-    jizen_steps = []
-    for i in range(64, min(73, len(raw))):
-        c = _cell(raw[i], 11)
-        if c:
-            jizen_steps.append(c)
-    result["blocks"].append({
-        "heading": "事前解約",
-        "content": jizen_desc + "\n\n" + "\n".join(jizen_steps),
-    })
-    for col_idx, label in [(11, "事前解約 ─ 完了時"), (15, "事前解約 ─ 留守時")]:
-        lines = []
-        for i in range(78, min(93, len(raw))):
-            c = _cell(raw[i], col_idx)
-            if c:
-                lines.append(c)
-        if lines:
-            result["blocks"].append({
-                "heading": label,
-                "content": "\n".join(lines),
-            })
-
-    # --- 豆知識 (rows 37-53) ---
-    knowledge_lines = []
-    for i in range(37, min(54, len(raw))):
-        c = _cell(raw[i], 1)
-        if c:
-            knowledge_lines.append(c)
-    if knowledge_lines:
-        result["blocks"].append({
-            "heading": "1週間後FC 豆知識",
-            "content": "\n".join(knowledge_lines),
-        })
-
-    return result
 
 
 METRICS: list[Metric] = [

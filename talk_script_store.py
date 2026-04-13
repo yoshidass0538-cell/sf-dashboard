@@ -63,7 +63,12 @@ def normalize_phone(phone: str) -> str:
 @st.cache_data(ttl=300, show_spinner="顧客データを取得中...")
 def load_customer_data() -> pd.DataFrame:
     """1週間後FC該当案件シートを丸ごとDataFrameで読み込み、電話番号正規化列を付与。"""
-    client = _get_gspread_client()
+    # 書き込み可能シートなので書き込み用クライアントを使用
+    from talk_template_store import _get_writable_client
+    try:
+        client = _get_writable_client()
+    except Exception:
+        client = _get_gspread_client()
     sh = client.open_by_key(LOOKUP_SHEET_ID)
     ws = sh.worksheet(LOOKUP_SHEET)
     values = ws.get_all_values()

@@ -25,8 +25,8 @@ ROOM_IDS = [
 API_URL = "https://api.chatwork.com/v2"
 JST = timezone(timedelta(hours=9))
 
-# デフォルト対応不可時間（常に対応不可として扱う）
-DEFAULT_UNAVAILABLE = {"14:00"}
+# サマリーから除外する時間帯（対応不可・可能・推奨のいずれにも表示しない）
+EXCLUDED_TIME_SLOTS = {"14:00", "20:00"}
 
 
 def _get_token() -> str:
@@ -110,8 +110,10 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
         checked = []
         unchecked = []
         for ts in all_time_slots:
+            if ts in EXCLUDED_TIME_SLOTS:
+                continue
             key = f"{date_str}|{cat}|{ts}"
-            if checks.get(key, False) or ts in DEFAULT_UNAVAILABLE:
+            if checks.get(key, False):
                 checked.append(ts)
             else:
                 unchecked.append(ts)
@@ -119,10 +121,8 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
         if not unchecked:
             lines.append(f"■ {cat}")
             lines.append("  全時間帯 対応不可 → 翌日以降でお願いします\n")
-        elif not [c for c in checked if c not in DEFAULT_UNAVAILABLE]:
-            # チェックは入っていないがデフォルト不可のみ
+        elif not checked:
             lines.append(f"■ {cat}")
-            lines.append(f"  対応不可時間: {', '.join(checked)}")
             lines.append(f"  対応可能時間: {', '.join(unchecked)}\n")
         else:
             lines.append(f"■ {cat}")

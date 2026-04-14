@@ -655,75 +655,151 @@ if selected_key == "_master":
                     # 各セクションの編集行
                     _to_delete = []
                     _renamed = {}
-                    _OP_LABELS = {"": "常に表示", "not_empty": "値あり時に表示", "empty": "値なし時に表示"}
-                    _OP_KEYS = list(_OP_LABELS.keys())
+                    _OP_OPTIONS = {"not_empty": "入力済みの時だけ", "empty": "空の時だけ"}
+                    _OP_KEYS = list(_OP_OPTIONS.keys())
                     for si, sn in enumerate(_sec_list):
-                        # セクションごとの枠
+                        _rule_current = get_section_rule(kind, sn)
+                        _cur_field = _rule_current.get("field", "")
+                        _cur_op = _rule_current.get("op", "")
+                        _has_rule = bool(_cur_field and _cur_op)
+
+                        # 表示状態バッジ
+                        if _has_rule:
+                            _badge_bg = "#FFF3CD"
+                            _badge_fg = "#856404"
+                            _badge_text = f"⚙ 条件付き表示"
+                        else:
+                            _badge_bg = "#D4EDDA"
+                            _badge_fg = "#155724"
+                            _badge_text = "✓ 常に表示"
+
+                        # カード枠の開始
                         st.markdown(
-                            f'<div style="background:#f8f5fb;border:1px solid #d4c5e0;border-radius:6px;padding:10px 12px;margin:8px 0;">'
-                            f'<div style="font-weight:700;color:#5B2C6F;margin-bottom:6px;font-size:0.95rem;">📌 {si+1}. {sn}</div>'
-                            f'</div>',
+                            f'<div style="background:#fff;border:2px solid #8B5CF6;border-radius:10px;'
+                            f'padding:14px 16px;margin:12px 0 6px 0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">'
+                            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'
+                            f'<span style="background:#8B5CF6;color:#fff;border-radius:50%;'
+                            f'width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;'
+                            f'font-weight:700;font-size:0.9rem;">{si+1}</span>'
+                            f'<span style="font-weight:700;font-size:1.05rem;color:#333;">{sn}</span>'
+                            f'<span style="background:{_badge_bg};color:{_badge_fg};padding:2px 10px;'
+                            f'border-radius:12px;font-size:0.8rem;font-weight:600;margin-left:auto;">'
+                            f'{_badge_text}</span>'
+                            f'</div></div>',
                             unsafe_allow_html=True,
                         )
-                        # 1行目: ↑ セクション名 ↓ 🗑
-                        c1, c2, c3, c4 = st.columns([1, 6, 1, 1])
-                        with c1:
-                            if si > 0 and st.button("↑", key=f"sec_up_{kind}_{si}"):
-                                _sec_list[si], _sec_list[si - 1] = _sec_list[si - 1], _sec_list[si]
-                                st.rerun()
-                        with c2:
+
+                        # 1行目: セクション名の編集 + 操作ボタン
+                        st.markdown(
+                            '<div style="font-size:0.85rem;color:#666;margin:4px 0 2px 0;">セクション名</div>',
+                            unsafe_allow_html=True,
+                        )
+                        cn1, cn2, cn3, cn4 = st.columns([8, 1, 1, 1])
+                        with cn1:
                             new_name = st.text_input(
                                 f"sec_{si}", value=sn, key=f"sec_name_{kind}_{si}",
                                 label_visibility="collapsed",
                             )
                             if new_name != sn:
                                 _renamed[si] = new_name
-                        with c3:
-                            if si < len(_sec_list) - 1 and st.button("↓", key=f"sec_down_{kind}_{si}"):
+                        with cn2:
+                            if si > 0 and st.button("⬆", key=f"sec_up_{kind}_{si}", help="上に移動"):
+                                _sec_list[si], _sec_list[si - 1] = _sec_list[si - 1], _sec_list[si]
+                                st.rerun()
+                        with cn3:
+                            if si < len(_sec_list) - 1 and st.button("⬇", key=f"sec_down_{kind}_{si}", help="下に移動"):
                                 _sec_list[si], _sec_list[si + 1] = _sec_list[si + 1], _sec_list[si]
                                 st.rerun()
-                        with c4:
-                            if st.button("🗑", key=f"sec_del_{kind}_{si}"):
+                        with cn4:
+                            if st.button("🗑", key=f"sec_del_{kind}_{si}", help="削除"):
                                 _to_delete.append(si)
 
-                        # 2行目: 表示条件（引用情報ベース）- ラベル + 2プルダウン
-                        _rule_current = get_section_rule(kind, sn)
-                        _cur_field = _rule_current.get("field", "")
-                        _cur_op = _rule_current.get("op", "")
+                        # 2行目: 表示タイミング（ラジオで選択）
                         st.markdown(
-                            '<div style="color:#5B2C6F;font-weight:600;font-size:0.85rem;margin:4px 0 2px 4px;">'
-                            '🎯 表示条件（顧客引用情報による自動表示/非表示）</div>',
+                            '<div style="font-size:0.85rem;color:#666;margin:10px 0 2px 0;">表示タイミング</div>',
                             unsafe_allow_html=True,
                         )
-                        rc1, rc2 = st.columns([5, 4])
-                        with rc1:
+                        _mode_options = ["常に表示", "条件付き（顧客情報に応じて自動判定）"]
+                        _current_mode = _mode_options[1] if _has_rule else _mode_options[0]
+                        _new_mode = st.radio(
+                            "表示モード",
+                            options=_mode_options,
+                            index=_mode_options.index(_current_mode),
+                            key=f"sec_rule_mode_{kind}_{si}",
+                            label_visibility="collapsed",
+                            horizontal=True,
+                        )
+
+                        # 条件付きを選んだ場合のみ、フィールド+条件の詳細が出現
+                        if _new_mode == _mode_options[1]:
+                            st.markdown(
+                                '<div style="background:#F3E8FF;border-radius:6px;padding:10px 12px;margin-top:6px;">'
+                                '<div style="font-size:0.88rem;color:#5B2C6F;margin-bottom:6px;">'
+                                '顧客情報の下記項目が条件を満たす時のみ、このセクションを表示します。</div>'
+                                '</div>',
+                                unsafe_allow_html=True,
+                            )
                             _field_options = [""] + _lookup_cols
                             _field_idx = _field_options.index(_cur_field) if _cur_field in _field_options else 0
-                            _new_field = st.selectbox(
-                                "判定フィールド",
-                                options=_field_options,
-                                format_func=lambda x: "（条件なし＝常に表示）" if x == "" else x,
-                                index=_field_idx,
-                                key=f"sec_rule_field_{kind}_{si}",
-                                label_visibility="collapsed",
-                            )
-                        with rc2:
-                            _op_idx = _OP_KEYS.index(_cur_op) if _cur_op in _OP_KEYS else 0
-                            _new_op = st.selectbox(
-                                "条件",
-                                options=_OP_KEYS,
-                                format_func=lambda x: _OP_LABELS[x],
-                                index=_op_idx,
-                                key=f"sec_rule_op_{kind}_{si}",
-                                label_visibility="collapsed",
-                                disabled=(not _new_field),
-                            )
-                        st.markdown('<div style="margin-bottom:10px;"></div>', unsafe_allow_html=True)
-                        # ルール変更を反映（フィールド未選択 or 「常に表示」なら削除）
-                        if _new_field and _new_op:
-                            _new_rule = {"field": _new_field, "op": _new_op}
+                            fc1, fc2, fc3 = st.columns([4, 3, 2])
+                            with fc1:
+                                st.markdown(
+                                    '<div style="font-size:0.8rem;color:#666;margin-bottom:2px;">顧客情報の項目</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                _new_field = st.selectbox(
+                                    "判定項目",
+                                    options=_field_options,
+                                    format_func=lambda x: "（選択してください）" if x == "" else x,
+                                    index=_field_idx,
+                                    key=f"sec_rule_field_{kind}_{si}",
+                                    label_visibility="collapsed",
+                                )
+                            with fc2:
+                                st.markdown(
+                                    '<div style="font-size:0.8rem;color:#666;margin-bottom:2px;">条件</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                _op_idx = _OP_KEYS.index(_cur_op) if _cur_op in _OP_KEYS else 0
+                                _new_op = st.selectbox(
+                                    "条件",
+                                    options=_OP_KEYS,
+                                    format_func=lambda x: _OP_OPTIONS[x],
+                                    index=_op_idx,
+                                    key=f"sec_rule_op_{kind}_{si}",
+                                    label_visibility="collapsed",
+                                    disabled=(not _new_field),
+                                )
+                            with fc3:
+                                st.markdown(
+                                    '<div style="font-size:0.8rem;color:#666;margin-bottom:2px;">&nbsp;</div>'
+                                    '<div style="padding:8px 4px;color:#5B2C6F;font-weight:600;">表示</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            # プレビュー文
+                            if _new_field and _new_op:
+                                _preview = f"💡 {_new_field} が {_OP_OPTIONS[_new_op]}表示されます"
+                                st.markdown(
+                                    f'<div style="background:#FFFBEA;border-left:3px solid #F59E0B;'
+                                    f'padding:6px 10px;margin-top:8px;border-radius:4px;font-size:0.85rem;color:#78350F;">'
+                                    f'{_preview}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                _new_rule = {"field": _new_field, "op": _new_op}
+                            else:
+                                st.markdown(
+                                    '<div style="background:#FEE2E2;border-left:3px solid #DC2626;'
+                                    'padding:6px 10px;margin-top:8px;border-radius:4px;font-size:0.85rem;color:#7F1D1D;">'
+                                    '⚠ 「顧客情報の項目」を選択してください</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                _new_rule = {}
                         else:
                             _new_rule = {}
+
+                        st.markdown('<div style="margin-bottom:16px;"></div>', unsafe_allow_html=True)
+
+                        # ルール変更を反映
                         if _new_rule != _rule_current:
                             update_section_rule(kind, sn, _new_rule)
 

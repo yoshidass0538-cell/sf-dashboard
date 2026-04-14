@@ -948,6 +948,13 @@ def evaluate_section_rule(rule: dict, info: dict) -> bool:
     """
     ルールを顧客lookup辞書に適用し、表示するか判定。
     rule が空ならTrue（常に表示）。
+
+    サポート演算子:
+      - empty, not_empty: 値の有無のみで判定
+      - eq, ne: 文字列完全一致 / 不一致
+      - contains, not_contains: 部分一致
+      - starts_with: 前方一致
+      - lt, gt, le, ge: 大小比較（数値優先、失敗時は文字列比較）
     """
     if not rule:
         return True
@@ -955,12 +962,45 @@ def evaluate_section_rule(rule: dict, info: dict) -> bool:
     op = rule.get("op")
     if not field or not op:
         return True
-    val = info.get(field)
-    has_val = val not in (None, "")
+
+    raw_val = info.get(field)
+    val_str = "" if raw_val is None else str(raw_val).strip()
+    has_val = val_str != ""
+
     if op == "empty":
         return not has_val
     if op == "not_empty":
         return has_val
+
+    cmp_str = str(rule.get("value", "")).strip()
+
+    if op == "eq":
+        return val_str == cmp_str
+    if op == "ne":
+        return val_str != cmp_str
+    if op == "contains":
+        return cmp_str in val_str
+    if op == "not_contains":
+        return cmp_str not in val_str
+    if op == "starts_with":
+        return val_str.startswith(cmp_str)
+
+    if op in ("lt", "gt", "le", "ge"):
+        # 数値比較を試み、失敗したら文字列比較にフォールバック
+        try:
+            a = float(val_str)
+            b = float(cmp_str)
+        except (ValueError, TypeError):
+            a, b = val_str, cmp_str
+        if op == "lt":
+            return a < b
+        if op == "gt":
+            return a > b
+        if op == "le":
+            return a <= b
+        if op == "ge":
+            return a >= b
+
     return True
 
 

@@ -650,8 +650,22 @@ if selected_key == "_master":
                     # 各セクションの編集行
                     _to_delete = []
                     _renamed = {}
-                    _OP_OPTIONS = {"not_empty": "入力済みの時だけ", "empty": "空の時だけ"}
+                    _OP_OPTIONS = {
+                        "not_empty": "入力済みの時だけ",
+                        "empty": "空の時だけ",
+                        "eq": "次の文字列と一致する",
+                        "ne": "次の文字列と一致しない",
+                        "contains": "次の文字列を含む",
+                        "not_contains": "次の文字列を含まない",
+                        "starts_with": "次の文字列から始まる",
+                        "lt": "＜（より小さい）",
+                        "gt": "＞（より大きい）",
+                        "le": "＝＜（以下）",
+                        "ge": "＝＞（以上）",
+                    }
                     _OP_KEYS = list(_OP_OPTIONS.keys())
+                    # value入力が必要な演算子
+                    _OPS_NEED_VALUE = {"eq", "ne", "contains", "not_contains", "starts_with", "lt", "gt", "le", "ge"}
                     for si, sn in enumerate(_sec_list):
                         _rule_current = get_section_rule(kind, sn)
                         _cur_field = _rule_current.get("field", "")
@@ -731,7 +745,7 @@ if selected_key == "_master":
                             horizontal=True,
                         )
 
-                        # 条件付きを選んだ場合のみ、フィールド+条件の詳細が出現
+                        # 条件付きを選んだ場合のみ、フィールド+値+条件の詳細が出現
                         if _new_mode == _mode_options[1]:
                             st.markdown(
                                 '<div style="background:#F3E8FF;border-radius:6px;padding:10px 12px;margin-top:6px;">'
@@ -742,52 +756,55 @@ if selected_key == "_master":
                             )
                             _field_options = [""] + _lookup_cols
                             _field_idx = _field_options.index(_cur_field) if _cur_field in _field_options else 0
-                            fc1, fc2, fc3 = st.columns([4, 3, 2])
-                            with fc1:
+                            _cur_value = _rule_current.get("value", "")
+
+                            # 1段目: 顧客情報の項目
+                            st.markdown(
+                                '<div style="font-size:0.8rem;color:#666;margin:8px 0 2px 0;">① 顧客情報の項目</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _new_field = st.selectbox(
+                                "判定項目",
+                                options=_field_options,
+                                format_func=lambda x: "（選択してください）" if x == "" else x,
+                                index=_field_idx,
+                                key=f"sec_rule_field_{kind}_{si}",
+                                label_visibility="collapsed",
+                            )
+
+                            # 2段目: 条件
+                            st.markdown(
+                                '<div style="font-size:0.8rem;color:#666;margin:8px 0 2px 0;">② 条件</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _op_idx = _OP_KEYS.index(_cur_op) if _cur_op in _OP_KEYS else 0
+                            _new_op = st.selectbox(
+                                "条件",
+                                options=_OP_KEYS,
+                                format_func=lambda x: _OP_OPTIONS[x],
+                                index=_op_idx,
+                                key=f"sec_rule_op_{kind}_{si}",
+                                label_visibility="collapsed",
+                                disabled=(not _new_field),
+                            )
+
+                            # 3段目: 文字列入力（条件が value を必要とする場合のみ）
+                            _new_value = ""
+                            if _new_op in _OPS_NEED_VALUE:
                                 st.markdown(
-                                    '<div style="font-size:0.8rem;color:#666;margin-bottom:2px;">顧客情報の項目</div>',
+                                    '<div style="font-size:0.8rem;color:#666;margin:8px 0 2px 0;">③ 比較する値</div>',
                                     unsafe_allow_html=True,
                                 )
-                                _new_field = st.selectbox(
-                                    "判定項目",
-                                    options=_field_options,
-                                    format_func=lambda x: "（選択してください）" if x == "" else x,
-                                    index=_field_idx,
-                                    key=f"sec_rule_field_{kind}_{si}",
+                                _new_value = st.text_input(
+                                    "比較値",
+                                    value=_cur_value,
+                                    key=f"sec_rule_value_{kind}_{si}",
                                     label_visibility="collapsed",
+                                    placeholder="例: あり / 2026-01-01 / ソネット など",
                                 )
-                            with fc2:
-                                st.markdown(
-                                    '<div style="font-size:0.8rem;color:#666;margin-bottom:2px;">条件</div>',
-                                    unsafe_allow_html=True,
-                                )
-                                _op_idx = _OP_KEYS.index(_cur_op) if _cur_op in _OP_KEYS else 0
-                                _new_op = st.selectbox(
-                                    "条件",
-                                    options=_OP_KEYS,
-                                    format_func=lambda x: _OP_OPTIONS[x],
-                                    index=_op_idx,
-                                    key=f"sec_rule_op_{kind}_{si}",
-                                    label_visibility="collapsed",
-                                    disabled=(not _new_field),
-                                )
-                            with fc3:
-                                st.markdown(
-                                    '<div style="font-size:0.8rem;color:#666;margin-bottom:2px;">&nbsp;</div>'
-                                    '<div style="padding:8px 4px;color:#5B2C6F;font-weight:600;">表示</div>',
-                                    unsafe_allow_html=True,
-                                )
-                            # プレビュー文
-                            if _new_field and _new_op:
-                                _preview = f"💡 {_new_field} が {_OP_OPTIONS[_new_op]}表示されます"
-                                st.markdown(
-                                    f'<div style="background:#FFFBEA;border-left:3px solid #F59E0B;'
-                                    f'padding:6px 10px;margin-top:8px;border-radius:4px;font-size:0.85rem;color:#78350F;">'
-                                    f'{_preview}</div>',
-                                    unsafe_allow_html=True,
-                                )
-                                _new_rule = {"field": _new_field, "op": _new_op}
-                            else:
+
+                            # プレビュー文 & ルール確定
+                            if not _new_field:
                                 st.markdown(
                                     '<div style="background:#FEE2E2;border-left:3px solid #DC2626;'
                                     'padding:6px 10px;margin-top:8px;border-radius:4px;font-size:0.85rem;color:#7F1D1D;">'
@@ -795,6 +812,27 @@ if selected_key == "_master":
                                     unsafe_allow_html=True,
                                 )
                                 _new_rule = {}
+                            elif _new_op in _OPS_NEED_VALUE and not _new_value:
+                                st.markdown(
+                                    '<div style="background:#FEE2E2;border-left:3px solid #DC2626;'
+                                    'padding:6px 10px;margin-top:8px;border-radius:4px;font-size:0.85rem;color:#7F1D1D;">'
+                                    '⚠ 「比較する値」を入力してください</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                _new_rule = {}
+                            else:
+                                if _new_op in _OPS_NEED_VALUE:
+                                    _preview = f"💡 {_new_field} が「{_new_value}」{_OP_OPTIONS[_new_op]} 時のみ表示"
+                                    _new_rule = {"field": _new_field, "op": _new_op, "value": _new_value}
+                                else:
+                                    _preview = f"💡 {_new_field} が {_OP_OPTIONS[_new_op]} 表示されます"
+                                    _new_rule = {"field": _new_field, "op": _new_op}
+                                st.markdown(
+                                    f'<div style="background:#FFFBEA;border-left:3px solid #F59E0B;'
+                                    f'padding:6px 10px;margin-top:8px;border-radius:4px;font-size:0.85rem;color:#78350F;">'
+                                    f'{_preview}</div>',
+                                    unsafe_allow_html=True,
+                                )
                         else:
                             _new_rule = {}
 

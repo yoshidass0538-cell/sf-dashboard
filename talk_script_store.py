@@ -60,18 +60,36 @@ def normalize_phone(phone: str) -> str:
     return re.sub(r"[^0-9]", "", str(phone))
 
 
-@st.cache_data(ttl=600, show_spinner="顧客データを取得中...")
+@st.cache_data(ttl=1800, show_spinner="顧客データを取得中...")
 def load_customer_data() -> pd.DataFrame:
-    """1週間後FC該当案件シートを丸ごとDataFrameで読み込み、電話番号正規化列を付与。"""
-    # 書き込み可能シートなので書き込み用クライアントを使用
+    """1週間後FC該当案件シートを丸ごとDataFrameで読み込み、電話番号正規化列を付与。
+    TTL 30分（API制限回避のため長め）。
+    """
+    import time as _time
     from talk_template_store import _get_writable_client
     try:
         client = _get_writable_client()
     except Exception:
         client = _get_gspread_client()
-    sh = client.open_by_key(LOOKUP_SHEET_ID)
-    ws = sh.worksheet(LOOKUP_SHEET)
-    values = ws.get_all_values()
+
+    # リトライ付きで取得（429/レート制限対策）
+    last_err = None
+    for attempt in range(4):
+        try:
+            sh = client.open_by_key(LOOKUP_SHEET_ID)
+            ws = sh.worksheet(LOOKUP_SHEET)
+            values = ws.get_all_values()
+            break
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            if "429" in msg or "quota" in msg.lower() or "rate" in msg.lower() or "limit" in msg.lower():
+                _time.sleep(2 ** attempt)  # 1, 2, 4, 8秒
+                continue
+            raise
+    else:
+        raise last_err
+
     if not values or len(values) < 2:
         return pd.DataFrame()
     header = values[0]

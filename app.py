@@ -700,10 +700,16 @@ if selected_key == "_master":
                         with cn2:
                             if si > 0 and st.button("⬆", key=f"sec_up_{kind}_{si}", help="上に移動"):
                                 _sec_list[si], _sec_list[si - 1] = _sec_list[si - 1], _sec_list[si]
+                                # 並び替え後はtext_input session_stateをクリア
+                                # （インデックスキーに古い名前が残ってrename誤検知を防ぐ）
+                                for _i in range(len(_sec_list)):
+                                    st.session_state.pop(f"sec_name_{kind}_{_i}", None)
                                 st.rerun()
                         with cn3:
                             if si < len(_sec_list) - 1 and st.button("⬇", key=f"sec_down_{kind}_{si}", help="下に移動"):
                                 _sec_list[si], _sec_list[si + 1] = _sec_list[si + 1], _sec_list[si]
+                                for _i in range(len(_sec_list)):
+                                    st.session_state.pop(f"sec_name_{kind}_{_i}", None)
                                 st.rerun()
                         with cn4:
                             if st.button("🗑", key=f"sec_del_{kind}_{si}", help="削除"):
@@ -815,6 +821,9 @@ if selected_key == "_master":
                     if _to_delete:
                         for di in sorted(_to_delete, reverse=True):
                             _sec_list.pop(di)
+                        # 削除後はインデックスがずれるためtext_input session_stateをクリア
+                        for _i in range(len(_sec_list) + len(_to_delete)):
+                            st.session_state.pop(f"sec_name_{kind}_{_i}", None)
                         st.rerun()
 
                     # 新規追加
@@ -826,6 +835,9 @@ if selected_key == "_master":
                         if st.button("＋ 追加", key=f"sec_add_{kind}", use_container_width=True):
                             if _new_sec and _new_sec not in _sec_list:
                                 _sec_list.append(_new_sec)
+                                # 新規追加後もtext_input session_stateをクリア（念のため）
+                                for _i in range(len(_sec_list)):
+                                    st.session_state.pop(f"sec_name_{kind}_{_i}", None)
                                 st.rerun()
 
                 # ===== サブタブ2: テンプレート本文編集 =====

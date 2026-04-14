@@ -177,7 +177,7 @@ def _load(metric_key: str):
 # サイドバー: 指標選択
 # ----------------------------------------------------------------------
 import base64
-with open("5065e1e637de06a018cf1dbbf567009a.png", "rb") as f:
+with open("gcs_logo.png", "rb") as f:
     _icon_b64 = base64.b64encode(f.read()).decode()
 st.sidebar.markdown(
     f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'

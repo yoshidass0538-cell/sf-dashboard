@@ -626,25 +626,16 @@ if selected_key == "_master":
                 kind_templates = templates.setdefault(kind, {})
                 current_sections = list(_sections_by_kind.get(kind, []))
 
-                # --- セクション管理UI ---
-                st.markdown(
-                    f'<style>'
-                    f'div[data-testid="stExpander"]:has(div#{kind}_sec_exp) > details > summary {{'
-                    f'  background: #C62828 !important; color: #fff !important;'
-                    f'  border-radius: 6px; padding: 8px 14px; font-weight: 700;'
-                    f'}}'
-                    f'div[data-testid="stExpander"]:has(div#{kind}_sec_exp) > details > summary:hover {{'
-                    f'  background: #B71C1C !important;'
-                    f'}}'
-                    f'div[data-testid="stExpander"]:has(div#{kind}_sec_exp) > details > summary svg {{'
-                    f'  fill: #fff !important;'
-                    f'}}'
-                    f'</style>',
-                    unsafe_allow_html=True,
-                )
-                with st.expander(f"🔧 セクション構成を編集（{label}）", expanded=False):
-                    st.markdown(f'<div id="{kind}_sec_exp"></div>', unsafe_allow_html=True)
-                    st.caption("セクション名の変更・追加・削除・並び替えができます。変更後は「セクション構成を保存」を押してください。")
+                # サブタブで機能を整理
+                sub_tabs = st.tabs([
+                    "📝 セクション構成・表示条件",
+                    "✏️ テンプレート本文編集",
+                    "💬 LINEテンプレ",
+                ])
+
+                # ===== サブタブ1: セクション構成・表示条件 =====
+                with sub_tabs[0]:
+                    st.caption("セクション名の変更・追加・削除・並び替え、表示/非表示条件の設定ができます。変更後は下の「💾 保存」を押してください。")
 
                     # 並び替え用session_stateキー
                     _sec_order_key = f"_sec_order_{kind}"
@@ -833,103 +824,106 @@ if selected_key == "_master":
                                 _sec_list.append(_new_sec)
                                 st.rerun()
 
-                    # セクション構成を保存
-                    if st.button(f"💾 セクション構成を保存（{label}）", key=f"sec_save_{kind}", type="primary", use_container_width=True):
-                        update_sections(kind, list(_sec_list))
-                        ok, msg = save_templates()
-                        st.session_state[_sec_order_key] = list(_sec_list)
-                        st.toast(msg, icon="✅" if ok else "⚠️")
-                        st.rerun()
+                # ===== サブタブ2: テンプレート本文編集 =====
+                with sub_tabs[1]:
+                    st.caption("各セクションの本文を編集できます。「💾 保存」で全ユーザーに反映されます。")
+                    for sec_name in _sections_by_kind.get(kind, []):
+                        # 不備解消(Sonet)は9種テンプレに展開
+                        if sec_name == "不備解消" and kind == "Sonet":
+                            fubi_templates = templates.setdefault("Sonet_fubi", {})
+                            st.markdown(
+                                f'<div style="background:{color};color:#fff;padding:8px 14px;'
+                                f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
+                                f'【不備解消】テンプレート（ダイコンステータス別 9種）</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.caption("ダイコンステータスから自動選択されます。「工事日調整希望」は「工事取得」に変換されます。")
+                            for fkey in SONET_FUBI_KEYS:
+                                with st.expander(f"📋 {fkey}", expanded=False):
+                                    current = fubi_templates.get(fkey, "")
+                                    new_val = st.text_area(
+                                        fkey,
+                                        value=current,
+                                        height=300,
+                                        key=f"talk_edit_fubi_{fkey}",
+                                        label_visibility="collapsed",
+                                    )
+                                    if new_val != current:
+                                        fubi_templates[fkey] = new_val
+                            continue
 
-                # --- セクション別テンプレート編集 ---
-                for sec_name in _sections_by_kind.get(kind, []):
-                    # 不備解消(Sonet)は9種テンプレに展開
-                    if sec_name == "不備解消" and kind == "Sonet":
-                        fubi_templates = templates.setdefault("Sonet_fubi", {})
-                        st.markdown(
-                            f'<div style="background:{color};color:#fff;padding:8px 14px;'
-                            f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
-                            f'【不備解消】テンプレート（ダイコンステータス別 9種）</div>',
-                            unsafe_allow_html=True,
-                        )
-                        st.caption("ダイコンステータスから自動選択されます。「工事日調整希望」は「工事取得」に変換されます。")
-                        for fkey in SONET_FUBI_KEYS:
-                            with st.expander(f"📋 {fkey}", expanded=False):
-                                current = fubi_templates.get(fkey, "")
-                                new_val = st.text_area(
-                                    fkey,
-                                    value=current,
-                                    height=300,
-                                    key=f"talk_edit_fubi_{fkey}",
-                                    label_visibility="collapsed",
-                                )
-                                if new_val != current:
-                                    fubi_templates[fkey] = new_val
-                        continue
+                        # 締め(Sonet)は2種テンプレに展開
+                        if sec_name == "締め" and kind == "Sonet":
+                            closing_templates = templates.setdefault("Sonet_closing", {})
+                            st.markdown(
+                                f'<div style="background:{color};color:#fff;padding:8px 14px;'
+                                f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
+                                f'【締め】テンプレート（利用回線あり/不明 2種）</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.caption("お客様の利用回線が「あり」「不明 or 空欄」のどちらかで自動選択されます。")
+                            for ckey in SONET_CLOSING_KEYS:
+                                with st.expander(f"📋 {ckey}", expanded=False):
+                                    current = closing_templates.get(ckey, "")
+                                    new_val = st.text_area(
+                                        ckey,
+                                        value=current,
+                                        height=240,
+                                        key=f"talk_edit_closing_{ckey}",
+                                        label_visibility="collapsed",
+                                    )
+                                    if new_val != current:
+                                        closing_templates[ckey] = new_val
+                            continue
 
-                    # 締め(Sonet)は2種テンプレに展開
-                    if sec_name == "締め" and kind == "Sonet":
-                        closing_templates = templates.setdefault("Sonet_closing", {})
-                        st.markdown(
-                            f'<div style="background:{color};color:#fff;padding:8px 14px;'
-                            f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
-                            f'【締め】テンプレート（利用回線あり/不明 2種）</div>',
-                            unsafe_allow_html=True,
-                        )
-                        st.caption("お客様の利用回線が「あり」「不明 or 空欄」のどちらかで自動選択されます。")
-                        for ckey in SONET_CLOSING_KEYS:
-                            with st.expander(f"📋 {ckey}", expanded=False):
-                                current = closing_templates.get(ckey, "")
-                                new_val = st.text_area(
-                                    ckey,
-                                    value=current,
-                                    height=240,
-                                    key=f"talk_edit_closing_{ckey}",
-                                    label_visibility="collapsed",
-                                )
-                                if new_val != current:
-                                    closing_templates[ckey] = new_val
-                        continue
+                        with st.expander(f"【{sec_name}】", expanded=False):
+                            current = kind_templates.get(sec_name, "")
+                            new_val = st.text_area(
+                                sec_name,
+                                value=current,
+                                height=240,
+                                key=f"talk_edit_{kind}_{sec_name}",
+                                label_visibility="collapsed",
+                            )
+                            if new_val != current:
+                                kind_templates[sec_name] = new_val
 
-                    with st.expander(f"【{sec_name}】", expanded=False):
-                        current = kind_templates.get(sec_name, "")
-                        new_val = st.text_area(
-                            sec_name,
-                            value=current,
-                            height=240,
-                            key=f"talk_edit_{kind}_{sec_name}",
-                            label_visibility="collapsed",
-                        )
-                        if new_val != current:
-                            kind_templates[sec_name] = new_val
+                # ===== サブタブ3: LINEテンプレ =====
+                with sub_tabs[2]:
+                    st.caption("完了LINE・留守LINE・留守完了LINEの3種を編集できます。")
+                    line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
+                    line_store = templates.setdefault(line_store_key, {})
+                    st.markdown(
+                        f'<div style="background:#06C755;color:#fff;padding:8px 14px;'
+                        f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
+                        f'💬 LINEテンプレ（3種）</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for lkey in LINE_TEMPLATE_KEYS:
+                        with st.expander(f"💬 {lkey}", expanded=False):
+                            current = line_store.get(lkey, "")
+                            new_val = st.text_area(
+                                lkey,
+                                value=current,
+                                height=240,
+                                key=f"talk_edit_line_{kind}_{lkey}",
+                                label_visibility="collapsed",
+                            )
+                            if new_val != current:
+                                line_store[lkey] = new_val
 
-                # LINEテンプレ編集セクション（Sonet/NURO共通）
-                line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
-                line_store = templates.setdefault(line_store_key, {})
-                st.markdown(
-                    f'<div style="background:#06C755;color:#fff;padding:8px 14px;'
-                    f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
-                    f'💬 LINEテンプレ（3種）</div>',
-                    unsafe_allow_html=True,
-                )
-                for lkey in LINE_TEMPLATE_KEYS:
-                    with st.expander(f"💬 {lkey}", expanded=False):
-                        current = line_store.get(lkey, "")
-                        new_val = st.text_area(
-                            lkey,
-                            value=current,
-                            height=240,
-                            key=f"talk_edit_line_{kind}_{lkey}",
-                            label_visibility="collapsed",
-                        )
-                        if new_val != current:
-                            line_store[lkey] = new_val
-
+                # ===== 共通の保存/再読み込み（タブ外） =====
+                st.divider()
                 col_save, col_reload = st.columns([1, 1])
                 if col_save.button(f"💾 {label} を保存", key=f"talk_save_{kind}", use_container_width=True, type="primary"):
+                    # セクション構成の変更（並び替え・追加・削除）もここで確定
+                    update_sections(kind, list(_sec_list))
+                    st.session_state[_sec_order_key] = list(_sec_list)
                     ok, msg = save_templates()
-                    st.session_state["selected"] = "_master"
                     st.toast(msg, icon="✅" if ok else "⚠️")
+                    if ok:
+                        st.session_state["selected"] = "_master"
+                        st.rerun()
                 if col_reload.button(f"⟳ 再読み込み", key=f"talk_reload_{kind}", use_container_width=True):
                     clear_template_cache()
                     st.session_state["selected"] = "_master"

@@ -1382,9 +1382,18 @@ if selected_key == "ikusei_kpi":
                                 else:
                                     st.warning("同じ名前のタブが既にあります")
 
-                        if st.button("💾 保存", key=f"save_{member_key}", use_container_width=True):
-                            save_store()
-                            st.toast("保存しました", icon="✅")
+                        _save_col, _reload_col = st.columns([1, 1])
+                        if _save_col.button("💾 保存", key=f"save_{member_key}", use_container_width=True, type="primary"):
+                            ok, msg = save_store()
+                            st.toast(msg, icon="✅" if ok else "⚠️")
+                            if ok:
+                                st.rerun()
+                        if _reload_col.button("🔄 最新を取得（他PCの編集を反映）", key=f"reload_{member_key}", use_container_width=True):
+                            from ikusei_store import reload_store_from_sheet
+                            ok, msg = reload_store_from_sheet()
+                            st.toast(msg, icon="✅" if ok else "⚠️")
+                            if ok:
+                                st.rerun()
 
                         for p_tab, tab_info in zip(all_tabs[:-1], tabs_info):
                             with p_tab:

@@ -106,15 +106,53 @@ import time
 _last_save_time = {"t": 0}
 
 
+def reload_store_from_sheet():
+    """Google Sheetsから最新を取り直し、共有メモリへ反映（他PCの編集を取り込む）。"""
+    try:
+        ws = _get_worksheet()
+        raw = ws.acell(DATA_CELL).value
+        latest = _deserialize(raw) if raw else _default_data()
+        local = _shared_store()
+        for k in ("order", "tabs", "memo", "phase_data"):
+            local[k] = latest.get(k, local.get(k))
+        return True, "最新データを取得しました"
+    except Exception as e:
+        return False, f"取得エラー: {e}"
+
+
 def save_store():
-    """共有ストアをGoogle Sheetsに保存（最低5秒間隔）。"""
+    """
+    共有ストアをGoogle Sheetsに保存。
+    ★Sheetsから最新を再取得→キー単位でマージ→書き戻し（他PCの編集を温存）。
+    ★サイレント失敗せずに必ず結果を返す（5秒未満連打は (False, '保存中...') を返す）。
+    返り値: (success: bool, message: str)
+    """
     now = time.time()
     if now - _last_save_time["t"] < 5:
-        return
+        return False, "連続保存はできません（5秒間隔）"
     try:
-        store = _shared_store()
+        local = _shared_store()
         ws = _get_worksheet()
-        ws.update_acell(DATA_CELL, _serialize(store))
+        # 1) Sheetsの最新を取得
+        raw = ws.acell(DATA_CELL).value
+        latest = _deserialize(raw) if raw else _default_data()
+        # 2) ローカル編集を最新にマージ
+        #    - phase_data / memo: キー単位で上書き（他PCが作った別キーは温存）
+        for k, v in local.get("phase_data", {}).items():
+            latest.setdefault("phase_data", {})[k] = v
+        for k, v in local.get("memo", {}).items():
+            latest.setdefault("memo", {})[k] = v
+        #    - tabs / order: 構造が複雑なのでローカルを優先（マスタ側で編集）
+        if "tabs" in local:
+            latest["tabs"] = local["tabs"]
+        if "order" in local:
+            latest["order"] = local["order"]
+        # 3) 書き戻し
+        ws.update_acell(DATA_CELL, _serialize(latest))
+        # 4) ローカルキャッシュも最新で更新（他PCの別キーが見えるように）
+        for k in ("order", "tabs", "memo", "phase_data"):
+            local[k] = latest.get(k, local.get(k))
         _last_save_time["t"] = now
+        return True, "保存しました"
     except Exception as e:
-        st.toast(f"保存エラー: {e}", icon="⚠️")
+        return False, f"保存エラー: {e}"

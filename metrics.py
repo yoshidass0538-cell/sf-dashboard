@@ -1057,19 +1057,36 @@ def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
     }
 
 
-def fetch_cx_age_area(sf: Salesforce) -> dict[str, pd.DataFrame]:
+def fetch_cx_age_area(
+    sf: Salesforce,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, pd.DataFrame]:
     """
     エリア別×年代別のCX内訳を集計。
     CX = 開通日(Field130__c)が空 AND キャンセル日(Field119__c)に日付あり。
-    直近6ヶ月の申込日(Field118__c)が対象。
+    申込日(Field118__c) = エントリ日で期間フィルター。
+
+    start_date / end_date は "YYYY-MM-DD" 文字列。両方未指定なら直近6ヶ月。
     """
     import math
+
+    where_parts = [
+        "Field119__c != null",
+        "Field130__c = null",
+    ]
+    if start_date or end_date:
+        if start_date:
+            where_parts.append(f"Field118__c >= {start_date}")
+        if end_date:
+            where_parts.append(f"Field118__c <= {end_date}")
+    else:
+        where_parts.append("Field118__c >= LAST_N_MONTHS:6")
 
     soql = (
         "SELECT Field43__c, Field42__c, Field80__c, Field118__c "
         "FROM Account "
-        "WHERE Field119__c != null AND Field130__c = null "
-        "AND Field118__c >= LAST_N_MONTHS:6"
+        "WHERE " + " AND ".join(where_parts)
     )
     records = sf.query_all(soql).get("records", [])
     if not records:

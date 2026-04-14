@@ -910,6 +910,60 @@ def update_sections(kind: str, sections: list[str]):
     templates["_sections"][kind] = sections
 
 
+def _ensure_default_section_rules(templates: dict):
+    """既存の「決済未登録」ハードコード挙動を初回のみルールとして自動登録。"""
+    if "_section_rules" in templates:
+        return
+    templates["_section_rules"] = {
+        "Sonet": {"決済未登録": {"field": "決済登録日（引用）", "op": "empty"}},
+        "NURO": {"決済未登録": {"field": "決済登録日（引用）", "op": "empty"}},
+    }
+
+
+def get_section_rule(kind: str, section_name: str) -> dict:
+    """
+    セクションの表示ルールを取得。
+    返り値: {"field": "引用フィールド名", "op": "empty"|"not_empty"} または空 {}（常に表示）
+    """
+    templates = _shared_templates()
+    _ensure_default_section_rules(templates)
+    rules = templates.get("_section_rules", {})
+    return dict(rules.get(kind, {}).get(section_name, {}))
+
+
+def update_section_rule(kind: str, section_name: str, rule: dict):
+    """
+    セクションの表示ルールを更新。rule が空 {} なら削除（常に表示に戻す）。
+    """
+    templates = _shared_templates()
+    _ensure_default_section_rules(templates)
+    kind_rules = templates["_section_rules"].setdefault(kind, {})
+    if rule:
+        kind_rules[section_name] = rule
+    else:
+        kind_rules.pop(section_name, None)
+
+
+def evaluate_section_rule(rule: dict, info: dict) -> bool:
+    """
+    ルールを顧客lookup辞書に適用し、表示するか判定。
+    rule が空ならTrue（常に表示）。
+    """
+    if not rule:
+        return True
+    field = rule.get("field")
+    op = rule.get("op")
+    if not field or not op:
+        return True
+    val = info.get(field)
+    has_val = val not in (None, "")
+    if op == "empty":
+        return not has_val
+    if op == "not_empty":
+        return has_val
+    return True
+
+
 _last_save = {"t": 0.0}
 
 

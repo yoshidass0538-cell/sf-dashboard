@@ -87,6 +87,14 @@ def load_customer_data() -> pd.DataFrame:
     return df
 
 
+def get_lookup_columns() -> list[str]:
+    """顧客lookupシートのヘッダー列名一覧を返す（内部列を除外）。"""
+    df = load_customer_data()
+    if df.empty:
+        return []
+    return [c for c in df.columns if not c.startswith("_")]
+
+
 def lookup_customer(phone: str) -> dict | None:
     """
     電話番号で顧客情報を引き当て。複数ヒット時は申込日（案件進捗管理: エントリ日）が

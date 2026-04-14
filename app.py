@@ -151,6 +151,12 @@ def _load_2h(metric_key: str) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 
+@st.cache_data(ttl=7200, show_spinner="Salesforce から取得中...")
+def _load_cx_age_area(start_date: str, end_date: str):
+    from metrics import fetch_cx_age_area
+    return fetch_cx_age_area(_sf(), start_date=start_date, end_date=end_date)
+
+
 @st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
 def _load_daily(metric_key: str, _cache_day: str, _v: int = 2) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
@@ -597,11 +603,15 @@ if selected_key == "_master":
             reset_to_default,
             get_sections_by_kind,
             update_sections,
+            get_section_rule,
+            update_section_rule,
             SONET_FUBI_KEYS,
             SONET_CLOSING_KEYS,
             LINE_TEMPLATE_KEYS,
             clear_template_cache,
         )
+        from talk_script_store import get_lookup_columns
+        _lookup_cols = get_lookup_columns()
 
         templates = get_templates()
         _sections_by_kind = get_sections_by_kind()
@@ -645,6 +655,8 @@ if selected_key == "_master":
                     # 各セクションの編集行
                     _to_delete = []
                     _renamed = {}
+                    _OP_LABELS = {"": "常に表示", "not_empty": "値あり時に表示", "empty": "値なし時に表示"}
+                    _OP_KEYS = list(_OP_LABELS.keys())
                     for si, sn in enumerate(_sec_list):
                         c1, c2, c3, c4 = st.columns([1, 6, 1, 1])
                         with c1:
@@ -666,6 +678,46 @@ if selected_key == "_master":
                             if st.button("🗑", key=f"sec_del_{kind}_{si}"):
                                 _to_delete.append(si)
 
+                        # 表示条件（引用情報ベース）
+                        _rule_current = get_section_rule(kind, sn)
+                        _cur_field = _rule_current.get("field", "")
+                        _cur_op = _rule_current.get("op", "")
+                        rc1, rc2, rc3 = st.columns([1, 5, 3])
+                        with rc1:
+                            st.markdown(
+                                "<div style='text-align:right;padding-top:6px;color:#666;font-size:0.85rem;'>表示条件:</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with rc2:
+                            _field_options = [""] + _lookup_cols
+                            _field_idx = _field_options.index(_cur_field) if _cur_field in _field_options else 0
+                            _new_field = st.selectbox(
+                                "判定フィールド",
+                                options=_field_options,
+                                format_func=lambda x: "（条件なし）" if x == "" else x,
+                                index=_field_idx,
+                                key=f"sec_rule_field_{kind}_{si}",
+                                label_visibility="collapsed",
+                            )
+                        with rc3:
+                            _op_idx = _OP_KEYS.index(_cur_op) if _cur_op in _OP_KEYS else 0
+                            _new_op = st.selectbox(
+                                "条件",
+                                options=_OP_KEYS,
+                                format_func=lambda x: _OP_LABELS[x],
+                                index=_op_idx,
+                                key=f"sec_rule_op_{kind}_{si}",
+                                label_visibility="collapsed",
+                                disabled=(not _new_field),
+                            )
+                        # ルール変更を反映（フィールド未選択 or 「常に表示」なら削除）
+                        if _new_field and _new_op:
+                            _new_rule = {"field": _new_field, "op": _new_op}
+                        else:
+                            _new_rule = {}
+                        if _new_rule != _rule_current:
+                            update_section_rule(kind, sn, _new_rule)
+
                     # 名前変更を反映
                     for si, new_name in _renamed.items():
                         old_name = _sec_list[si]
@@ -673,6 +725,11 @@ if selected_key == "_master":
                         # テンプレート本文も引き継ぎ
                         if old_name in kind_templates and old_name != new_name:
                             kind_templates[new_name] = kind_templates.pop(old_name)
+                        # 表示ルールも引き継ぎ
+                        _old_rule = get_section_rule(kind, old_name)
+                        if _old_rule and old_name != new_name:
+                            update_section_rule(kind, old_name, {})
+                            update_section_rule(kind, new_name, _old_rule)
 
                     # 削除を反映
                     if _to_delete:
@@ -1118,6 +1175,8 @@ if selected_key.startswith("talk_script_"):
     from talk_template_store import (
         get_templates,
         get_sections,
+        get_section_rule,
+        evaluate_section_rule,
         select_fubi_key,
         apply_dynamic_processing,
     )
@@ -1126,9 +1185,6 @@ if selected_key.startswith("talk_script_"):
     templates = get_templates()
     sections = get_sections(kind)
     kind_templates = templates.get(kind, {})
-
-    # 決済登録日が入っていれば「決済未登録」セクションはスキップ
-    skip_kessai = bool(kessai_raw)
 
     # Sonetの場合、不備解消セクションは9種テンプレから動的選択
     fubi_key_selected = None
@@ -1167,7 +1223,9 @@ if selected_key.startswith("talk_script_"):
         return "".join(out)
 
     for sec_name in sections:
-        if sec_name == "決済未登録" and skip_kessai:
+        # マスタで設定した引用情報ベースの表示ルールを評価
+        _rule = get_section_rule(kind, sec_name)
+        if not evaluate_section_rule(_rule, info):
             continue
 
         # 不備解消セクションは動的に9種から選択（Sonetのみ）
@@ -1464,11 +1522,42 @@ if selected_key == "ikusei_kpi":
                                         store["phase_data"][data_key] = ag_result.data
     st.stop()
 
-try:
-    fetched = _load(selected_key)
-except Exception as e:
-    st.error(f"取得に失敗しました: {e}")
-    st.stop()
+# エリア別年代別CX内訳: エントリ日の期間プルダウンで絞り込み
+if selected_key == "cx_age_area":
+    from datetime import date, timedelta
+    _today = date.today()
+    _default_start = _today - timedelta(days=180)
+    _col_s, _col_t, _col_e = st.columns([3, 1, 3])
+    with _col_s:
+        _start = st.date_input(
+            "開始日（エントリ日）",
+            value=st.session_state.get("cx_age_start", _default_start),
+            key="cx_age_start",
+            format="YYYY/MM/DD",
+        )
+    with _col_t:
+        st.markdown("<div style='text-align:center;padding-top:32px;font-weight:600;'>〜</div>", unsafe_allow_html=True)
+    with _col_e:
+        _end = st.date_input(
+            "終了日（エントリ日）",
+            value=st.session_state.get("cx_age_end", _today),
+            key="cx_age_end",
+            format="YYYY/MM/DD",
+        )
+    if _start > _end:
+        st.error("開始日が終了日より後になっています。")
+        st.stop()
+    try:
+        fetched = _load_cx_age_area(_start.strftime("%Y-%m-%d"), _end.strftime("%Y-%m-%d"))
+    except Exception as e:
+        st.error(f"取得に失敗しました: {e}")
+        st.stop()
+else:
+    try:
+        fetched = _load(selected_key)
+    except Exception as e:
+        st.error(f"取得に失敗しました: {e}")
+        st.stop()
 
 # DAYコール数: 帯グラフ表示
 if selected_key == "day_calls":

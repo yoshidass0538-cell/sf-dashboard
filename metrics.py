@@ -1096,7 +1096,10 @@ def fetch_cx_age_area(
     for r in records:
         area = (r.get("Field43__c") or "").strip()
         age_raw = r.get("Field42__c")
-        reason = (r.get("Field80__c") or "その他").strip()
+        reason = (r.get("Field80__c") or "").strip()
+        # 「その他」は集計対象外
+        if not reason or reason == "その他":
+            continue
         if not area:
             area = "不明"
         # 年代に変換
@@ -1134,19 +1137,28 @@ def fetch_cx_age_area(
         pivot = pd.concat([pivot, pd.DataFrame([{"年代": "合計", "CX件数": total, "構成比": "100%"}])], ignore_index=True)
         result[f"CX件数（{area_label}）"] = pivot
 
-    # --- エリア別×年代別×CX理由 TOP5 ---
+    # --- エリア別×年代別×CX理由 TOP10（「その他」除外済み） ---
     for area_label, area_filter in [("東日本", "東"), ("西日本", "西"), ("合算", None)]:
         if area_filter:
             sub = df[df["エリア"] == area_filter]
         else:
             sub = df
         reason_pivot = sub.groupby(["年代", "CX理由"]).size().reset_index(name="件数")
-        # 年代ごとにTOP5のCX理由を表示
+        # 年代ごとにTOP10のCX理由を表示
         top_rows = []
         for ag in AGE_ORDER:
-            ag_data = reason_pivot[reason_pivot["年代"] == ag].sort_values("件数", ascending=False).head(5)
-            for _, row in ag_data.iterrows():
-                top_rows.append({"年代": row["年代"], "CX理由": row["CX理由"], "件数": row["件数"]})
+            ag_data = reason_pivot[reason_pivot["年代"] == ag].sort_values("件数", ascending=False).head(10)
+            _age_total = int(ag_data["件数"].sum())
+            for rank, (_, row) in enumerate(ag_data.iterrows(), start=1):
+                _cnt = int(row["件数"])
+                _ratio = f"{_cnt/_age_total*100:.1f}%" if _age_total else "0%"
+                top_rows.append({
+                    "年代": row["年代"],
+                    "順位": rank,
+                    "CX理由": row["CX理由"],
+                    "件数": _cnt,
+                    "構成比": _ratio,
+                })
         if top_rows:
             result[f"CX理由TOP5（{area_label}）"] = pd.DataFrame(top_rows)
 
@@ -1419,7 +1431,7 @@ METRICS: list[Metric] = [
     Metric(
         key="cx_age_area",
         label="エリア別年代別CX内訳",
-        description="直近6ヶ月のCX（キャンセル）をエリア×年代別に集計＋CX理由TOP5",
+        description="エリア×年代別のCX件数＋CX理由TOP10（「その他」除外、構成比付き）",
         fetch=fetch_cx_age_area,
         category="TOTAL",
     ),

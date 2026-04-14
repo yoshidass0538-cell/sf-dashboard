@@ -299,8 +299,12 @@ if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     _load_daily.clear()
     from orikaeshi_check_store import clear_check_cache
     from tool_members_store import clear_members_cache
+    from talk_template_store import clear_template_cache
+    from talk_script_store import clear_caches as _clear_ts_caches
     clear_check_cache()
     clear_members_cache()
+    clear_template_cache()
+    _clear_ts_caches()
     reload_talk_script_metrics()
     st.rerun()
 

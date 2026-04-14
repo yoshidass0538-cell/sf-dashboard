@@ -772,9 +772,23 @@ if selected_key == "_master":
                                 label_visibility="collapsed",
                             )
 
-                            # 2段目: 条件
+                            # 2段目: 文字列入力（比較する値）
                             st.markdown(
-                                '<div style="font-size:0.8rem;color:#666;margin:8px 0 2px 0;">② 条件</div>',
+                                '<div style="font-size:0.8rem;color:#666;margin:8px 0 2px 0;">② 比較する値（文字列入力）</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _new_value = st.text_input(
+                                "比較値",
+                                value=_cur_value,
+                                key=f"sec_rule_value_{kind}_{si}",
+                                label_visibility="collapsed",
+                                placeholder="例: あり / 2026-01-01 / ソネット など（空/入力済みチェックの時は未使用）",
+                                disabled=(not _new_field),
+                            )
+
+                            # 3段目: 条件
+                            st.markdown(
+                                '<div style="font-size:0.8rem;color:#666;margin:8px 0 2px 0;">③ 条件</div>',
                                 unsafe_allow_html=True,
                             )
                             _op_idx = _OP_KEYS.index(_cur_op) if _cur_op in _OP_KEYS else 0
@@ -787,21 +801,6 @@ if selected_key == "_master":
                                 label_visibility="collapsed",
                                 disabled=(not _new_field),
                             )
-
-                            # 3段目: 文字列入力（条件が value を必要とする場合のみ）
-                            _new_value = ""
-                            if _new_op in _OPS_NEED_VALUE:
-                                st.markdown(
-                                    '<div style="font-size:0.8rem;color:#666;margin:8px 0 2px 0;">③ 比較する値</div>',
-                                    unsafe_allow_html=True,
-                                )
-                                _new_value = st.text_input(
-                                    "比較値",
-                                    value=_cur_value,
-                                    key=f"sec_rule_value_{kind}_{si}",
-                                    label_visibility="collapsed",
-                                    placeholder="例: あり / 2026-01-01 / ソネット など",
-                                )
 
                             # プレビュー文 & ルール確定
                             if not _new_field:

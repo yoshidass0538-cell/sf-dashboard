@@ -1137,6 +1137,30 @@ def fetch_cx_age_area(
         pivot = pd.concat([pivot, pd.DataFrame([{"年代": "合計", "CX件数": total, "構成比": "100%"}])], ignore_index=True)
         result[f"CX件数（{area_label}）"] = pivot
 
+    # --- エリア別×「年代×CX理由」組み合わせ全体TOP10（「その他」除外済み） ---
+    #     どこの年代のどういうCXが多いのかを俯瞰できる統合テーブル
+    for area_label, area_filter in [("東日本", "東"), ("西日本", "西"), ("合算", None)]:
+        if area_filter:
+            sub = df[df["エリア"] == area_filter]
+        else:
+            sub = df
+        combo_pivot = sub.groupby(["年代", "CX理由"]).size().reset_index(name="件数")
+        combo_pivot = combo_pivot.sort_values("件数", ascending=False).head(10)
+        _area_total = sub.shape[0]
+        combo_rows = []
+        for rank, (_, row) in enumerate(combo_pivot.iterrows(), start=1):
+            _cnt = int(row["件数"])
+            _ratio = f"{_cnt/_area_total*100:.1f}%" if _area_total else "0%"
+            combo_rows.append({
+                "順位": rank,
+                "年代": row["年代"],
+                "CX理由": row["CX理由"],
+                "件数": _cnt,
+                "構成比": _ratio,
+            })
+        if combo_rows:
+            result[f"年代×CX理由 TOP10（{area_label}）"] = pd.DataFrame(combo_rows)
+
     # --- エリア別×年代別×CX理由 TOP10（「その他」除外済み） ---
     for area_label, area_filter in [("東日本", "東"), ("西日本", "西"), ("合算", None)]:
         if area_filter:
@@ -1160,7 +1184,7 @@ def fetch_cx_age_area(
                     "構成比": _ratio,
                 })
         if top_rows:
-            result[f"CX理由TOP5（{area_label}）"] = pd.DataFrame(top_rows)
+            result[f"年代別CX理由TOP10（{area_label}）"] = pd.DataFrame(top_rows)
 
     return result
 

@@ -1067,14 +1067,15 @@ def fetch_cx_age_area(
     CX = 開通日(Field130__c)が空 AND キャンセル日(Field119__c)に日付あり。
     申込日(Field118__c) = エントリ日で期間フィルター。
 
+    「その他」CX理由は集計対象外。
+    CX率 = その年代のCX件数 / その年代の申込総数。
+    7日以内/以降の区分: エントリ日からキャンセル日までの経過日数で判定。
+
     start_date / end_date は "YYYY-MM-DD" 文字列。両方未指定なら直近6ヶ月。
     """
     import math
 
-    where_parts = [
-        "Field119__c != null",
-        "Field130__c = null",
-    ]
+    where_parts = []
     if start_date or end_date:
         if start_date:
             where_parts.append(f"Field118__c >= {start_date}")
@@ -1083,8 +1084,9 @@ def fetch_cx_age_area(
     else:
         where_parts.append("Field118__c >= LAST_N_MONTHS:6")
 
+    # CX率計算のため全申込を取得（CXフラグはPython側で判定）
     soql = (
-        "SELECT Field43__c, Field42__c, Field80__c, Field118__c "
+        "SELECT Field43__c, Field42__c, Field80__c, Field118__c, Field119__c, Field130__c "
         "FROM Account "
         "WHERE " + " AND ".join(where_parts)
     )
@@ -1092,17 +1094,18 @@ def fetch_cx_age_area(
     if not records:
         return {"エラー": pd.DataFrame({"メッセージ": ["CXデータがありません"]})}
 
-    rows = []
+    all_rows = []   # 全申込
+    cx_rows = []    # CXのみ（CX理由集計用、「その他」除外）
     for r in records:
         area = (r.get("Field43__c") or "").strip()
         age_raw = r.get("Field42__c")
         reason = (r.get("Field80__c") or "").strip()
-        # 「その他」は集計対象外
-        if not reason or reason == "その他":
-            continue
+        entry_date = r.get("Field118__c")
+        cancel_date = r.get("Field119__c")
+        open_date = r.get("Field130__c")
+
         if not area:
             area = "不明"
-        # 年代に変換
         try:
             age = int(float(age_raw))
             if age < 20:
@@ -1113,9 +1116,31 @@ def fetch_cx_age_area(
                 age_group = f"{(age // 10) * 10}代"
         except (ValueError, TypeError):
             age_group = "不明"
-        rows.append({"エリア": area, "年代": age_group, "CX理由": reason})
 
-    df = pd.DataFrame(rows)
+        is_cx = bool(cancel_date) and not bool(open_date)
+        # エントリ日〜キャンセル日の経過日数を計算
+        days_to_cancel = None
+        if is_cx and entry_date and cancel_date:
+            try:
+                d_entry = pd.to_datetime(entry_date)
+                d_cancel = pd.to_datetime(cancel_date)
+                days_to_cancel = (d_cancel - d_entry).days
+            except Exception:
+                days_to_cancel = None
+
+        all_rows.append({
+            "エリア": area,
+            "年代": age_group,
+            "is_cx": is_cx,
+            "days_to_cancel": days_to_cancel,
+        })
+
+        # CX理由集計用（その他除外）
+        if is_cx and reason and reason != "その他":
+            cx_rows.append({"エリア": area, "年代": age_group, "CX理由": reason})
+
+    df_all = pd.DataFrame(all_rows)
+    df = pd.DataFrame(cx_rows) if cx_rows else pd.DataFrame(columns=["エリア", "年代", "CX理由"])
 
     AGE_ORDER = ["10代以下", "20代", "30代", "40代", "50代", "60代", "70代以上", "不明"]
 
@@ -1136,6 +1161,46 @@ def fetch_cx_age_area(
         # 合計行
         pivot = pd.concat([pivot, pd.DataFrame([{"年代": "合計", "CX件数": total, "構成比": "100%"}])], ignore_index=True)
         result[f"CX件数（{area_label}）"] = pivot
+
+    # --- エリア別×年代別 7日以内/以降 CX率 ---
+    #     CX率 = その年代のCX件数 / その年代の申込総数（全申込ベース）
+    for area_label, area_filter in [("東日本", "東"), ("西日本", "西"), ("合算", None)]:
+        if area_filter:
+            sub_all = df_all[df_all["エリア"] == area_filter]
+        else:
+            sub_all = df_all
+        rows_out = []
+        for ag in AGE_ORDER:
+            ag_all = sub_all[sub_all["年代"] == ag]
+            total_n = ag_all.shape[0]
+            if total_n == 0:
+                continue
+            ag_cx = ag_all[ag_all["is_cx"] == True]
+            within_cx = ag_cx[(ag_cx["days_to_cancel"].notna()) & (ag_cx["days_to_cancel"] <= 7)].shape[0]
+            after_cx = ag_cx[(ag_cx["days_to_cancel"].notna()) & (ag_cx["days_to_cancel"] > 7)].shape[0]
+            rows_out.append({
+                "年代": ag,
+                "申込数": total_n,
+                "7日以内CX": within_cx,
+                "7日以内CX率": f"{within_cx/total_n*100:.1f}%" if total_n else "0%",
+                "7日以降CX": after_cx,
+                "7日以降CX率": f"{after_cx/total_n*100:.1f}%" if total_n else "0%",
+            })
+        # 合計行
+        total_n_all = sub_all.shape[0]
+        cx_all = sub_all[sub_all["is_cx"] == True]
+        w_all = cx_all[(cx_all["days_to_cancel"].notna()) & (cx_all["days_to_cancel"] <= 7)].shape[0]
+        a_all = cx_all[(cx_all["days_to_cancel"].notna()) & (cx_all["days_to_cancel"] > 7)].shape[0]
+        if rows_out:
+            rows_out.append({
+                "年代": "合計",
+                "申込数": total_n_all,
+                "7日以内CX": w_all,
+                "7日以内CX率": f"{w_all/total_n_all*100:.1f}%" if total_n_all else "0%",
+                "7日以降CX": a_all,
+                "7日以降CX率": f"{a_all/total_n_all*100:.1f}%" if total_n_all else "0%",
+            })
+            result[f"年代別CX率（7日以内/以降）（{area_label}）"] = pd.DataFrame(rows_out)
 
     # --- エリア別×「年代×CX理由」組み合わせ全体TOP10（「その他」除外済み） ---
     #     どこの年代のどういうCXが多いのかを俯瞰できる統合テーブル

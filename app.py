@@ -658,6 +658,14 @@ if selected_key == "_master":
                     _OP_LABELS = {"": "常に表示", "not_empty": "値あり時に表示", "empty": "値なし時に表示"}
                     _OP_KEYS = list(_OP_LABELS.keys())
                     for si, sn in enumerate(_sec_list):
+                        # セクションごとの枠
+                        st.markdown(
+                            f'<div style="background:#f8f5fb;border:1px solid #d4c5e0;border-radius:6px;padding:10px 12px;margin:8px 0;">'
+                            f'<div style="font-weight:700;color:#5B2C6F;margin-bottom:6px;font-size:0.95rem;">📌 {si+1}. {sn}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                        # 1行目: ↑ セクション名 ↓ 🗑
                         c1, c2, c3, c4 = st.columns([1, 6, 1, 1])
                         with c1:
                             if si > 0 and st.button("↑", key=f"sec_up_{kind}_{si}"):
@@ -678,28 +686,28 @@ if selected_key == "_master":
                             if st.button("🗑", key=f"sec_del_{kind}_{si}"):
                                 _to_delete.append(si)
 
-                        # 表示条件（引用情報ベース）
+                        # 2行目: 表示条件（引用情報ベース）- ラベル + 2プルダウン
                         _rule_current = get_section_rule(kind, sn)
                         _cur_field = _rule_current.get("field", "")
                         _cur_op = _rule_current.get("op", "")
-                        rc1, rc2, rc3 = st.columns([1, 5, 3])
+                        st.markdown(
+                            '<div style="color:#5B2C6F;font-weight:600;font-size:0.85rem;margin:4px 0 2px 4px;">'
+                            '🎯 表示条件（顧客引用情報による自動表示/非表示）</div>',
+                            unsafe_allow_html=True,
+                        )
+                        rc1, rc2 = st.columns([5, 4])
                         with rc1:
-                            st.markdown(
-                                "<div style='text-align:right;padding-top:6px;color:#666;font-size:0.85rem;'>表示条件:</div>",
-                                unsafe_allow_html=True,
-                            )
-                        with rc2:
                             _field_options = [""] + _lookup_cols
                             _field_idx = _field_options.index(_cur_field) if _cur_field in _field_options else 0
                             _new_field = st.selectbox(
                                 "判定フィールド",
                                 options=_field_options,
-                                format_func=lambda x: "（条件なし）" if x == "" else x,
+                                format_func=lambda x: "（条件なし＝常に表示）" if x == "" else x,
                                 index=_field_idx,
                                 key=f"sec_rule_field_{kind}_{si}",
                                 label_visibility="collapsed",
                             )
-                        with rc3:
+                        with rc2:
                             _op_idx = _OP_KEYS.index(_cur_op) if _cur_op in _OP_KEYS else 0
                             _new_op = st.selectbox(
                                 "条件",
@@ -710,6 +718,7 @@ if selected_key == "_master":
                                 label_visibility="collapsed",
                                 disabled=(not _new_field),
                             )
+                        st.markdown('<div style="margin-bottom:10px;"></div>', unsafe_allow_html=True)
                         # ルール変更を反映（フィールド未選択 or 「常に表示」なら削除）
                         if _new_field and _new_op:
                             _new_rule = {"field": _new_field, "op": _new_op}

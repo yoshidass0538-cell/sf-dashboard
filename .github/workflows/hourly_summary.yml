@@ -1,18 +1,8 @@
 name: Chatwork Hourly Summary
 
 on:
-  schedule:
-    # JST 10:00-18:00 = UTC 1:00-9:00 (毎日)
-    - cron: '0 1 * * *'   # 10:00 JST
-    - cron: '0 2 * * *'   # 11:00 JST
-    - cron: '0 3 * * *'   # 12:00 JST
-    - cron: '0 4 * * *'   # 13:00 JST
-    - cron: '0 5 * * *'   # 14:00 JST
-    - cron: '0 6 * * *'   # 15:00 JST
-    - cron: '0 7 * * *'   # 16:00 JST
-    - cron: '0 8 * * *'   # 17:00 JST
-    - cron: '0 9 * * *'   # 18:00 JST
-  workflow_dispatch:  # 手動実行も可能
+  # スケジュールは cron-job.org から workflow_dispatch で発火（GitHub標準cronは遅延が大きいため廃止）
+  workflow_dispatch:
 
 jobs:
   send-summary:

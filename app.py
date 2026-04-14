@@ -1522,28 +1522,58 @@ if selected_key == "ikusei_kpi":
                                         store["phase_data"][data_key] = ag_result.data
     st.stop()
 
-# エリア別年代別CX内訳: エントリ日の期間プルダウンで絞り込み
+# エリア別年代別CX内訳: エントリ日の期間プルダウンで絞り込み（年/月/日セレクタで完全日本語化）
 if selected_key == "cx_age_area":
     from datetime import date, timedelta
+    import calendar as _cal
+
     _today = date.today()
     _default_start = _today - timedelta(days=180)
-    _col_s, _col_t, _col_e = st.columns([3, 1, 3])
+    _year_options = list(range(_today.year - 5, _today.year + 1))
+
+    def _japanese_date_picker(label_prefix: str, default: date, key_prefix: str) -> date:
+        """年/月/日の3セレクタで日付入力（完全日本語）。"""
+        _y_key = f"{key_prefix}_y"
+        _m_key = f"{key_prefix}_m"
+        _d_key = f"{key_prefix}_d"
+        _y_default = st.session_state.get(_y_key, default.year)
+        _m_default = st.session_state.get(_m_key, default.month)
+        _d_default = st.session_state.get(_d_key, default.day)
+        st.markdown(f"<div style='font-size:0.85rem;color:#666;margin-bottom:2px;'>{label_prefix}</div>", unsafe_allow_html=True)
+        cy, cm, cd = st.columns([2, 2, 2])
+        with cy:
+            y = st.selectbox(
+                "年", options=_year_options,
+                index=_year_options.index(_y_default) if _y_default in _year_options else len(_year_options) - 1,
+                key=_y_key, format_func=lambda v: f"{v}年",
+                label_visibility="collapsed",
+            )
+        with cm:
+            m = st.selectbox(
+                "月", options=list(range(1, 13)),
+                index=_m_default - 1,
+                key=_m_key, format_func=lambda v: f"{v}月",
+                label_visibility="collapsed",
+            )
+        with cd:
+            _last_day = _cal.monthrange(y, m)[1]
+            _d_clamped = min(_d_default, _last_day)
+            d = st.selectbox(
+                "日", options=list(range(1, _last_day + 1)),
+                index=_d_clamped - 1,
+                key=_d_key, format_func=lambda v: f"{v}日",
+                label_visibility="collapsed",
+            )
+        return date(y, m, d)
+
+    _col_s, _col_t, _col_e = st.columns([6, 1, 6])
     with _col_s:
-        _start = st.date_input(
-            "開始日（エントリ日）",
-            value=st.session_state.get("cx_age_start", _default_start),
-            key="cx_age_start",
-            format="YYYY/MM/DD",
-        )
+        _start = _japanese_date_picker("開始日（エントリ日）", _default_start, "cx_age_start")
     with _col_t:
         st.markdown("<div style='text-align:center;padding-top:32px;font-weight:600;'>〜</div>", unsafe_allow_html=True)
     with _col_e:
-        _end = st.date_input(
-            "終了日（エントリ日）",
-            value=st.session_state.get("cx_age_end", _today),
-            key="cx_age_end",
-            format="YYYY/MM/DD",
-        )
+        _end = _japanese_date_picker("終了日（エントリ日）", _today, "cx_age_end")
+
     if _start > _end:
         st.error("開始日が終了日より後になっています。")
         st.stop()

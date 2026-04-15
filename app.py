@@ -1352,6 +1352,28 @@ if selected_key.startswith("talk_script_"):
         st.warning(f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。")
         st.stop()
 
+    # --- 商流変更アラート（直前に表示した商流と違えば警告） ---
+    _current_shoryu = (info.get("商流（引用）") or "").strip()
+    _prev_shoryu = st.session_state.get("_last_shoryu", "")
+    if _current_shoryu and _prev_shoryu and _current_shoryu != _prev_shoryu:
+        st.markdown(
+            f'<div style="background:linear-gradient(90deg,#FF6B6B,#FF8E53);'
+            f'color:#fff;padding:14px 20px;border-radius:10px;margin:10px 0 14px 0;'
+            f'box-shadow:0 3px 10px rgba(255,107,107,0.4);font-weight:700;font-size:1.05rem;'
+            f'border:2px solid #fff;">'
+            f'📞 商流が変わったのでZOOM Phoneの発信番号の変更をお願いします。'
+            f'<div style="font-size:0.85rem;font-weight:500;margin-top:4px;opacity:0.95;">'
+            f'前回: {_prev_shoryu} → 今回: {_current_shoryu}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.toast(
+            f"⚠ 商流変更：{_prev_shoryu} → {_current_shoryu} ／ ZOOM Phone発信番号の変更をお願いします",
+            icon="📞",
+        )
+    if _current_shoryu:
+        st.session_state["_last_shoryu"] = _current_shoryu
+
     # --- 顧客情報カード ---
     def _v(key: str) -> str:
         v = info.get(key, "")

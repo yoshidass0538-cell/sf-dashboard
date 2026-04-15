@@ -16,7 +16,11 @@ from google.oauth2.service_account import Credentials
 
 # --- 設定 ---
 CHATWORK_API_TOKEN = os.environ.get("CHATWORK_API_TOKEN", "")
-CHATWORK_ROOM_IDS = ["398296862", "398125674", "380105765", "422217521"]  # 260721357は2026-04-15に配信停止
+# 詳細フォーマット用（従来形式）
+ROOM_IDS_DETAILED = ["398296862", "380105765"]
+# コンパクトフォーマット用
+ROOM_IDS_COMPACT = ["422217521", "398125674"]
+CHATWORK_ROOM_IDS = ROOM_IDS_DETAILED + ROOM_IDS_COMPACT  # 260721357は2026-04-15に配信停止
 CHATWORK_API_URL = "https://api.chatwork.com/v2"
 
 # Google Sheets
@@ -198,13 +202,64 @@ def build_summary(checks, date_str, time_slots, categories, counts):
     return "\n".join(lines)
 
 
-def send_chatwork(body):
-    """全ルームにメッセージ送信。"""
+def build_summary_compact(checks, date_str, time_slots, categories, counts):
+    """コンパクト版サマリー（ROOM_IDS_COMPACT 向け）。"""
+    now = datetime.now(JST)
+    current_hour = now.hour
+
+    lines = []
+    lines.append(f"対象日: {date_str}　{now.strftime('%H:%M')}配信")
+    lines.append("※推奨＝空き多い時間（優先案内）")
+    lines.append("")
+
+    def _is_future(ts):
+        try:
+            return int(ts.split(":")[0]) >= current_hour
+        except (ValueError, IndexError):
+            return True
+
+    for cat in categories:
+        checked = []
+        unchecked = []
+        for ts in time_slots:
+            if ts in EXCLUDED_TIME_SLOTS or not _is_future(ts):
+                continue
+            key = f"{date_str}|{cat}|{ts}"
+            if checks.get(key, False):
+                checked.append(ts)
+            else:
+                unchecked.append(ts)
+
+        top = ""
+        if counts and unchecked:
+            ranked = sorted(unchecked, key=lambda t: counts.get((cat, t), 0))
+            top = ranked[0] if ranked else ""
+
+        lines.append(f"■ {cat}")
+        if not unchecked:
+            lines.append("  全時間帯 対応不可 → 翌日以降でお願いします")
+            lines.append("  推奨: なし")
+        elif not checked:
+            lines.append("  全時間帯 対応可能")
+            lines.append(f"  推奨:{top}" if top else "  推奨: なし")
+        else:
+            lines.append(f"  対応不可時間: {', '.join(checked)}")
+            lines.append(f"  推奨:{top}" if top else "  推奨: なし")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def send_chatwork(bodies_by_room):
+    """ルームIDごとに個別メッセージを送信。
+
+    bodies_by_room: dict[str, str] — {room_id: message_body}
+    """
     headers = {
         "X-ChatWorkToken": CHATWORK_API_TOKEN,
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     }
-    for rid in CHATWORK_ROOM_IDS:
+    for rid, body in bodies_by_room.items():
         try:
             resp = requests.post(
                 f"{CHATWORK_API_URL}/rooms/{rid}/messages",
@@ -231,11 +286,21 @@ def main():
         # データがなくても空メッセージは送らない
         sys.exit(0)
 
-    body = build_summary(checks, date_str, time_slots, categories, counts)
-    print("--- Message ---")
-    print(body)
+    body_detailed = build_summary(checks, date_str, time_slots, categories, counts)
+    body_compact = build_summary_compact(checks, date_str, time_slots, categories, counts)
+
+    bodies_by_room = {}
+    for rid in ROOM_IDS_DETAILED:
+        bodies_by_room[rid] = body_detailed
+    for rid in ROOM_IDS_COMPACT:
+        bodies_by_room[rid] = body_compact
+
+    print("--- Detailed ---")
+    print(body_detailed)
+    print("--- Compact ---")
+    print(body_compact)
     print("--- Sending ---")
-    send_chatwork(body)
+    send_chatwork(bodies_by_room)
     print("Done")
 
 

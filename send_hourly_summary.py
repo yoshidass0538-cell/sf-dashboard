@@ -16,7 +16,7 @@ from google.oauth2.service_account import Credentials
 
 # --- 設定 ---
 CHATWORK_API_TOKEN = os.environ.get("CHATWORK_API_TOKEN", "")
-CHATWORK_ROOM_IDS = ["398296862", "398125674", "260721357", "380105765", "422217521"]
+CHATWORK_ROOM_IDS = ["398296862", "398125674", "380105765", "422217521"]  # 260721357は2026-04-15に配信停止
 CHATWORK_API_URL = "https://api.chatwork.com/v2"
 
 # Google Sheets

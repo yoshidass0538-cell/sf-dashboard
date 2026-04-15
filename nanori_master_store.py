@@ -25,6 +25,7 @@ STORAGE_CELL = "A1"
 
 PLACEHOLDER = "{{名乗}}"
 MISSING_MARKER = "⚠名乗り未登録⚠"
+DEFAULT_TRIGGER = PLACEHOLDER
 
 
 def _get_storage_worksheet():
@@ -51,6 +52,7 @@ def _normalize_rows(rows) -> list[dict]:
             "取次商材情報": str(r.get("取次商材情報", "")).strip(),
             "商流": str(r.get("商流", "")).strip(),
             "名乗り": str(r.get("名乗り", "")).strip(),
+            "トリガー": str(r.get("トリガー", "")).strip(),
         })
     return out
 
@@ -101,27 +103,41 @@ def clear_cache():
     _shared_master.clear()
 
 
-def resolve_nanori(shozai: str, shoryu: str) -> str | None:
-    """取次商材情報＋商流でマスタを検索。一致あれば名乗り文字列、無ければNone。"""
+def resolve_row(shozai: str, shoryu: str) -> dict | None:
+    """取次商材情報＋商流で一致する行を返す。無ければNone。"""
     s1 = (shozai or "").strip()
     s2 = (shoryu or "").strip()
     if not s1 or not s2:
         return None
     for r in get_rows():
         if r["取次商材情報"] == s1 and r["商流"] == s2:
-            return r["名乗り"] or None
+            return r
     return None
 
 
 def apply_nanori_substitution(body: str, info: dict) -> str:
     """
-    本文内の `{{名乗}}` を顧客情報から解決した名乗りで置換。
-    一致する行が無い/名乗りが空なら目立つマーカーに置換して未登録を知らせる。
+    本文内の置換トリガー文字列（行ごとに設定。未設定時は `{{名乗}}`）を
+    顧客の取次商材情報＋商流で解決した名乗り文言に置換する。
+
+    一致行が無い場合は、デフォルトのプレースホルダー `{{名乗}}` を
+    未登録マーカーに置換して誤送出を防ぐ。
     """
-    if not body or PLACEHOLDER not in body:
+    if not body:
         return body
     shozai = (info.get("取次商材情報") or "").strip()
     shoryu = (info.get("商流（引用）") or "").strip()
-    nanori = resolve_nanori(shozai, shoryu)
+    row = resolve_row(shozai, shoryu)
+
+    if row is None:
+        # 未登録: デフォルトトリガーが本文中にあればマーカーに置換
+        if PLACEHOLDER in body:
+            return body.replace(PLACEHOLDER, MISSING_MARKER)
+        return body
+
+    trigger = row.get("トリガー") or DEFAULT_TRIGGER
+    nanori = row.get("名乗り") or ""
+    if not trigger or trigger not in body:
+        return body
     replacement = nanori if nanori else MISSING_MARKER
-    return body.replace(PLACEHOLDER, replacement)
+    return body.replace(trigger, replacement)

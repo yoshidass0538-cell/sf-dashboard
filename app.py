@@ -605,15 +605,16 @@ if selected_key == "_master":
 
         _rows = st.session_state[_nanori_state_key]
 
-        hc1, hc2, hc3, hc4 = st.columns([3, 2, 3, 1])
+        hc1, hc2, hc3, hc4, hc5 = st.columns([3, 2, 3, 2, 1])
         hc1.markdown("**取次商材情報**")
         hc2.markdown("**商流**")
         hc3.markdown("**名乗り（置換後の文言）**")
-        hc4.markdown("**削除**")
+        hc4.markdown("**置換トリガー文字列**")
+        hc5.markdown("**削除**")
 
         _nanori_to_delete = []
         for _ri, _row in enumerate(_rows):
-            c1, c2, c3, c4 = st.columns([3, 2, 3, 1])
+            c1, c2, c3, c4, c5 = st.columns([3, 2, 3, 2, 1])
             with c1:
                 _row["取次商材情報"] = st.text_input(
                     "商材", value=_row.get("取次商材情報", ""),
@@ -636,6 +637,13 @@ if selected_key == "_master":
                     placeholder="例: 株式会社WAF",
                 )
             with c4:
+                _row["トリガー"] = st.text_input(
+                    "トリガー", value=_row.get("トリガー", ""),
+                    key=f"nanori_trigger_{_ri}",
+                    label_visibility="collapsed",
+                    placeholder="空欄なら {{名乗}}",
+                )
+            with c5:
                 if st.button("🗑", key=f"nanori_del_{_ri}", help="この行を削除"):
                     _nanori_to_delete.append(_ri)
 
@@ -643,14 +651,14 @@ if selected_key == "_master":
             for _ri in sorted(_nanori_to_delete, reverse=True):
                 _rows.pop(_ri)
             for _i in range(len(_rows) + len(_nanori_to_delete)):
-                for _p in ("nanori_shozai_", "nanori_shoryu_", "nanori_nanori_"):
+                for _p in ("nanori_shozai_", "nanori_shoryu_", "nanori_nanori_", "nanori_trigger_"):
                     st.session_state.pop(f"{_p}{_i}", None)
             st.rerun()
 
         st.markdown("&nbsp;", unsafe_allow_html=True)
         bc1, bc2, bc3 = st.columns([1, 1, 1])
         if bc1.button("➕ 行を追加", key="nanori_add_row", use_container_width=True):
-            _rows.append({"取次商材情報": "", "商流": "", "名乗り": ""})
+            _rows.append({"取次商材情報": "", "商流": "", "名乗り": "", "トリガー": ""})
             st.rerun()
         if bc2.button("💾 名乗りマスタを保存", key="nanori_save", type="primary", use_container_width=True):
             _nanori_set_rows(_rows)

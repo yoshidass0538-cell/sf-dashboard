@@ -1936,6 +1936,13 @@ if selected_key == "day_calls":
         df_c = df_src.copy()
         totals = df_c.groupby("担当者")["コール数"].sum().sort_values(ascending=False)
         order = totals.index.tolist()
+        # 最多コール数の担当者に👑マーク（0件時はスキップ、同値は全員付与）
+        if not totals.empty and totals.iloc[0] > 0:
+            _top_val = totals.iloc[0]
+            _top_names = totals[totals == _top_val].index.tolist()
+            _rename = {n: f"👑 {n}" for n in _top_names}
+            df_c["担当者"] = df_c["担当者"].replace(_rename)
+            order = [_rename.get(n, n) for n in order]
         df_c["ラベル"] = df_c["対応ステータス"] + " " + df_c["コール数"].astype(str)
         fig = px.bar(
             df_c, y="担当者", x="コール数", color="対応ステータス",

@@ -1963,7 +1963,7 @@ if selected_key == "day_calls":
         )
         # 👑を大きく表示（y軸ラベルをHTMLスパンで拡大）
         _tick_text = [
-            n.replace("👑 ", '<span style="font-size:30px;">👑</span>&nbsp;', 1) if n.startswith("👑 ") else n
+            n.replace("👑 ", '<span style="font-size:56px;">👑</span>&nbsp;', 1) if n.startswith("👑 ") else n
             for n in order
         ]
         fig.update_yaxes(tickmode="array", tickvals=order, ticktext=_tick_text)

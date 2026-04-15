@@ -981,6 +981,89 @@ if selected_key == "_master":
                     clear_template_cache()
                     st.session_state["selected"] = "_master"
                     st.rerun()
+
+    st.divider()
+
+    with st.expander("🏢 商流別名乗りマスタ", expanded=False):
+        st.caption(
+            "トーク本文の `{{名乗}}` プレースホルダーを、顧客の「取次商材情報」と「商流」から自動で置き換えます。"
+            "新しい取次商材／商流が増えたらここに行を追加してください。"
+        )
+        from nanori_master_store import (
+            get_rows as _nanori_get_rows,
+            set_rows as _nanori_set_rows,
+            save_master as _nanori_save,
+            clear_cache as _nanori_clear_cache,
+        )
+
+        _nanori_state_key = "_nanori_rows"
+        if _nanori_state_key not in st.session_state:
+            st.session_state[_nanori_state_key] = [dict(r) for r in _nanori_get_rows()]
+
+        _rows = st.session_state[_nanori_state_key]
+
+        # ヘッダー行
+        hc1, hc2, hc3, hc4 = st.columns([3, 2, 3, 1])
+        hc1.markdown("**取次商材情報**")
+        hc2.markdown("**商流**")
+        hc3.markdown("**名乗り（置換後の文言）**")
+        hc4.markdown("**削除**")
+
+        _nanori_to_delete = []
+        for _ri, _row in enumerate(_rows):
+            c1, c2, c3, c4 = st.columns([3, 2, 3, 1])
+            with c1:
+                _row["取次商材情報"] = st.text_input(
+                    "商材", value=_row.get("取次商材情報", ""),
+                    key=f"nanori_shozai_{_ri}",
+                    label_visibility="collapsed",
+                    placeholder="例: So-net光_004",
+                )
+            with c2:
+                _row["商流"] = st.text_input(
+                    "商流", value=_row.get("商流", ""),
+                    key=f"nanori_shoryu_{_ri}",
+                    label_visibility="collapsed",
+                    placeholder="例: 株式会社WAF",
+                )
+            with c3:
+                _row["名乗り"] = st.text_input(
+                    "名乗り", value=_row.get("名乗り", ""),
+                    key=f"nanori_nanori_{_ri}",
+                    label_visibility="collapsed",
+                    placeholder="例: 株式会社WAF",
+                )
+            with c4:
+                if st.button("🗑", key=f"nanori_del_{_ri}", help="この行を削除"):
+                    _nanori_to_delete.append(_ri)
+
+        if _nanori_to_delete:
+            for _ri in sorted(_nanori_to_delete, reverse=True):
+                _rows.pop(_ri)
+            # text_input session_state が古いインデックスに残るのでクリア
+            for _i in range(len(_rows) + len(_nanori_to_delete)):
+                for _p in ("nanori_shozai_", "nanori_shoryu_", "nanori_nanori_"):
+                    st.session_state.pop(f"{_p}{_i}", None)
+            st.rerun()
+
+        st.markdown("&nbsp;", unsafe_allow_html=True)
+        bc1, bc2, bc3 = st.columns([1, 1, 1])
+        if bc1.button("➕ 行を追加", key="nanori_add_row", use_container_width=True):
+            _rows.append({"取次商材情報": "", "商流": "", "名乗り": ""})
+            st.rerun()
+        if bc2.button("💾 名乗りマスタを保存", key="nanori_save", type="primary", use_container_width=True):
+            _nanori_set_rows(_rows)
+            ok, msg = _nanori_save()
+            st.toast(msg, icon="✅" if ok else "⚠️")
+            if ok:
+                st.session_state["selected"] = "_master"
+                st.rerun()
+        if bc3.button("⟳ 再読み込み", key="nanori_reload", use_container_width=True):
+            _nanori_clear_cache()
+            st.session_state.pop(_nanori_state_key, None)
+            st.session_state["selected"] = "_master"
+            st.rerun()
+
     st.stop()
 
 metric = get_metric(selected_key)
@@ -1377,6 +1460,10 @@ if selected_key.startswith("talk_script_"):
         # Sonet の動的処理を適用
         if kind == "Sonet":
             body = apply_dynamic_processing(body, info)
+
+        # 商流別名乗りの差し込み（{{名乗}} → 取次商材情報＋商流で解決）
+        from nanori_master_store import apply_nanori_substitution as _apply_nanori
+        body = _apply_nanori(body, info)
 
         st.markdown(
             f'<div style="background:{kind_color};color:#fff;padding:8px 14px;'

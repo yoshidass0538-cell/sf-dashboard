@@ -1961,6 +1961,12 @@ if selected_key == "day_calls":
             margin=dict(l=10, r=10, t=40, b=10),
             bargap=0.25,
         )
+        # 👑を大きく表示（y軸ラベルをHTMLスパンで拡大）
+        _tick_text = [
+            n.replace("👑 ", '<span style="font-size:30px;">👑</span>&nbsp;', 1) if n.startswith("👑 ") else n
+            for n in order
+        ]
+        fig.update_yaxes(tickmode="array", tickvals=order, ticktext=_tick_text)
         st.plotly_chart(fig, use_container_width=True)
         # 内訳テーブル（折りたたみ）
         with st.expander("内訳"):

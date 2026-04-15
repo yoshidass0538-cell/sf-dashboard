@@ -103,22 +103,22 @@ def clear_cache():
     _shared_master.clear()
 
 
-def resolve_row(shozai: str, shoryu: str) -> dict | None:
-    """取次商材情報＋商流で一致する行を返す。無ければNone。"""
+def resolve_rows(shozai: str, shoryu: str) -> list[dict]:
+    """取次商材情報＋商流で一致する全行を返す。"""
     s1 = (shozai or "").strip()
     s2 = (shoryu or "").strip()
     if not s1 or not s2:
-        return None
-    for r in get_rows():
-        if r["取次商材情報"] == s1 and r["商流"] == s2:
-            return r
-    return None
+        return []
+    return [r for r in get_rows() if r["取次商材情報"] == s1 and r["商流"] == s2]
 
 
 def apply_nanori_substitution(body: str, info: dict) -> str:
     """
     本文内の置換トリガー文字列（行ごとに設定。未設定時は `{{名乗}}`）を
     顧客の取次商材情報＋商流で解決した名乗り文言に置換する。
+
+    同じ取次商材情報＋商流に複数行登録されている場合は、全行順に適用する
+    （名乗り／発信番号など複数トリガーを同一商流に紐付けるケース）。
 
     一致行が無い場合は、デフォルトのプレースホルダー `{{名乗}}` を
     未登録マーカーに置換して誤送出を防ぐ。
@@ -127,17 +127,18 @@ def apply_nanori_substitution(body: str, info: dict) -> str:
         return body
     shozai = (info.get("取次商材情報") or "").strip()
     shoryu = (info.get("商流（引用）") or "").strip()
-    row = resolve_row(shozai, shoryu)
+    rows = resolve_rows(shozai, shoryu)
 
-    if row is None:
-        # 未登録: デフォルトトリガーが本文中にあればマーカーに置換
+    if not rows:
         if PLACEHOLDER in body:
             return body.replace(PLACEHOLDER, MISSING_MARKER)
         return body
 
-    trigger = row.get("トリガー") or DEFAULT_TRIGGER
-    nanori = row.get("名乗り") or ""
-    if not trigger or trigger not in body:
-        return body
-    replacement = nanori if nanori else MISSING_MARKER
-    return body.replace(trigger, replacement)
+    for row in rows:
+        trigger = row.get("トリガー") or DEFAULT_TRIGGER
+        if not trigger or trigger not in body:
+            continue
+        nanori = row.get("名乗り") or ""
+        replacement = nanori if nanori else MISSING_MARKER
+        body = body.replace(trigger, replacement)
+    return body

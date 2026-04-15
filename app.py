@@ -675,6 +675,77 @@ if selected_key == "_master":
 
     st.divider()
 
+    with st.expander("🔁 置換表", expanded=False):
+        st.caption(
+            "トーク本文中のトリガー文字列を置換後の文言に一律で差し替えます。"
+            "条件なしで全トークに適用されます。"
+        )
+        from replace_master_store import (
+            get_rows as _rep_get_rows,
+            set_rows as _rep_set_rows,
+            save_master as _rep_save,
+            clear_cache as _rep_clear_cache,
+        )
+
+        _rep_state_key = "_replace_rows"
+        if _rep_state_key not in st.session_state:
+            st.session_state[_rep_state_key] = [dict(r) for r in _rep_get_rows()]
+        _rep_rows = st.session_state[_rep_state_key]
+
+        rhc1, rhc2, rhc3 = st.columns([3, 3, 1])
+        rhc1.markdown("**置換トリガー文字列**")
+        rhc2.markdown("**置換後の文言**")
+        rhc3.markdown("**削除**")
+
+        _rep_to_delete = []
+        for _ri, _row in enumerate(_rep_rows):
+            rc1, rc2, rc3 = st.columns([3, 3, 1])
+            with rc1:
+                _row["トリガー"] = st.text_input(
+                    "トリガー", value=_row.get("トリガー", ""),
+                    key=f"rep_trigger_{_ri}",
+                    label_visibility="collapsed",
+                    placeholder="置換前の文字列",
+                )
+            with rc2:
+                _row["置換後"] = st.text_input(
+                    "置換後", value=_row.get("置換後", ""),
+                    key=f"rep_after_{_ri}",
+                    label_visibility="collapsed",
+                    placeholder="置換後の文言",
+                )
+            with rc3:
+                if st.button("🗑", key=f"rep_del_{_ri}", help="この行を削除"):
+                    _rep_to_delete.append(_ri)
+
+        if _rep_to_delete:
+            for _ri in sorted(_rep_to_delete, reverse=True):
+                _rep_rows.pop(_ri)
+            for _i in range(len(_rep_rows) + len(_rep_to_delete)):
+                for _p in ("rep_trigger_", "rep_after_"):
+                    st.session_state.pop(f"{_p}{_i}", None)
+            st.rerun()
+
+        st.markdown("&nbsp;", unsafe_allow_html=True)
+        rbc1, rbc2, rbc3 = st.columns([1, 1, 1])
+        if rbc1.button("➕ 行を追加", key="rep_add_row", use_container_width=True):
+            _rep_rows.append({"トリガー": "", "置換後": ""})
+            st.rerun()
+        if rbc2.button("💾 置換表を保存", key="rep_save", type="primary", use_container_width=True):
+            _rep_set_rows(_rep_rows)
+            ok, msg = _rep_save()
+            st.toast(msg, icon="✅" if ok else "⚠️")
+            if ok:
+                st.session_state["selected"] = "_master"
+                st.rerun()
+        if rbc3.button("⟳ 再読み込み", key="rep_reload", use_container_width=True):
+            _rep_clear_cache()
+            st.session_state.pop(_rep_state_key, None)
+            st.session_state["selected"] = "_master"
+            st.rerun()
+
+    st.divider()
+
     with st.expander("📞 トークスクリプト編集", expanded=False):
         # 編集するトークスクリプトの種別を動的に生成
         _talk_script_options = ["（選択してください）"] + [b["label"] for b in get_boards()]
@@ -1469,6 +1540,10 @@ if selected_key.startswith("talk_script_"):
         # 商流別名乗りの差し込み（{{名乗}} → 取次商材情報＋商流で解決）
         from nanori_master_store import apply_nanori_substitution as _apply_nanori
         body = _apply_nanori(body, info)
+
+        # 汎用置換表の適用（条件なし一律置換）
+        from replace_master_store import apply_replace_substitution as _apply_replace
+        body = _apply_replace(body)
 
         st.markdown(
             f'<div style="background:{kind_color};color:#fff;padding:8px 14px;'

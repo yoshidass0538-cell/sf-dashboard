@@ -1460,6 +1460,23 @@ if selected_key.startswith("talk_script_"):
         unsafe_allow_html=True,
     )
 
+    # --- 前確OKコメント引用（最長Description） ---
+    _account_id = (info.get("取引先 ID") or "").strip()
+    if _account_id:
+        try:
+            from zenkaku_store import get_zenkaku_ok_comment
+            _zk = get_zenkaku_ok_comment(_sf(), _account_id)
+        except Exception as _zk_err:
+            _zk = {"description": "", "activity_date": "", "found": False}
+        if _zk["found"]:
+            import re as _re
+            _desc = _zk["description"]
+            _m = _re.search(r"案内料金[：:]\s*([0-9,]+\s*円)", _desc)
+            _ryokin = _m.group(1).replace(" ", "") if _m else "—"
+            _expander_label = f"📋 前確OKコメント引用（{_zk['activity_date']}）　案内料金: {_ryokin}"
+            with st.expander(_expander_label, expanded=False):
+                st.code(_desc, language=None)
+
     # --- LINEテンプレ（折りたたみ） ---
     import html as _html
     from talk_template_store import get_templates as _get_tpl_for_line, LINE_TEMPLATE_KEYS

@@ -1,10 +1,8 @@
 name: Reset Orikaeshi Checks
 
 on:
-  schedule:
-    # 毎日 09:00 JST = 00:00 UTC
-    - cron: '0 0 * * *'
-  workflow_dispatch:  # 手動実行も可能
+  # スケジュールは cron-job.org から workflow_dispatch で発火（GitHub標準cronは遅延が大きいため廃止）
+  workflow_dispatch:
 
 jobs:
   reset:

@@ -1394,6 +1394,27 @@ if selected_key.startswith("talk_script_"):
     except (ValueError, TypeError):
         _age_display = str(_age_raw) if _age_raw not in (None, "") else "—"
 
+    # 前確OKコメントから案内料金 / CB案内を抽出（Account ID単位で5分キャッシュ）
+    _account_id = (info.get("取引先 ID") or "").strip()
+    _zk = {"description": "", "activity_date": "", "found": False}
+    _ryokin_display = "—"
+    _cb_display = "—"
+    if _account_id:
+        try:
+            from zenkaku_store import get_zenkaku_ok_comment
+            _zk = get_zenkaku_ok_comment(_sf(), _account_id)
+        except Exception:
+            pass
+        if _zk["found"]:
+            import re as _re
+            _desc_raw = _zk["description"]
+            _m_r = _re.search(r"案内料金[：:]\s*([0-9,]+\s*円)", _desc_raw)
+            if _m_r:
+                _ryokin_display = _m_r.group(1).replace(" ", "")
+            _m_cb = _re.search(r"CB案内[：:]\s*([^\r\n]+)", _desc_raw)
+            if _m_cb:
+                _cb_display = _m_cb.group(1).strip()
+
     st.markdown(
         f"""
         <div style="
@@ -1454,34 +1475,22 @@ if selected_key.startswith("talk_script_"):
                 <td style="padding:4px 8px;color:#666;">住所</td>
                 <td colspan="3" style="padding:4px 8px;font-weight:600;">{_v("住所結合")}</td>
             </tr>
+            <tr>
+                <td style="padding:4px 8px;color:#666;">案内料金</td>
+                <td style="padding:4px 8px;font-weight:600;">{_ryokin_display}</td>
+                <td style="padding:4px 8px;color:#666;">CB案内</td>
+                <td style="padding:4px 8px;font-weight:600;">{_cb_display}</td>
+            </tr>
         </table>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # --- 前確OKコメント引用（最長Description） — ボタン押下時のみSFクエリ ---
-    _account_id = (info.get("取引先 ID") or "").strip()
-    if _account_id:
-        _zk_state_key = f"_zk_loaded_{_account_id}"
-        if st.button("📋 前確OKコメントを読み込む", key=f"zk_btn_{_account_id}"):
-            st.session_state[_zk_state_key] = True
-        if st.session_state.get(_zk_state_key):
-            try:
-                from zenkaku_store import get_zenkaku_ok_comment
-                _zk = get_zenkaku_ok_comment(_sf(), _account_id)
-            except Exception:
-                _zk = {"description": "", "activity_date": "", "found": False}
-            if _zk["found"]:
-                import re as _re
-                _desc = _zk["description"]
-                _m = _re.search(r"案内料金[：:]\s*([0-9,]+\s*円)", _desc)
-                _ryokin = _m.group(1).replace(" ", "") if _m else "—"
-                _expander_label = f"📋 前確OKコメント引用（{_zk['activity_date']}）　案内料金: {_ryokin}"
-                with st.expander(_expander_label, expanded=True):
-                    st.code(_desc, language=None)
-            else:
-                st.info("前確OKコメントが見つかりませんでした")
+    # --- 前確OKコメント全文（折りたたみ） ---
+    if _zk["found"]:
+        with st.expander(f"📋 前確OKコメント全文（{_zk['activity_date']}）", expanded=False):
+            st.code(_zk["description"], language=None)
 
     # --- LINEテンプレ（折りたたみ） ---
     import html as _html

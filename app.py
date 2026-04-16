@@ -2175,7 +2175,9 @@ if selected_key == "orikaeshi_kensu":
         st.divider()
 
     if changed:
-        save_checks(checks)
+        ok, msg = save_checks(checks)
+        if not ok:
+            st.error(f"⚠️ チェック状態の保存に失敗しました: {msg}")
 
     st.stop()
 

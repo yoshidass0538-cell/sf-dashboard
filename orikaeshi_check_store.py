@@ -3,12 +3,10 @@
 
 - 保存先: ikusei用スプレッドシート内の `orikaeshi_check_data` ワークシートのA1セル
 - 全ユーザー共有（st.cache_resource）
-- 5秒スロットリング
 - キー形式: "日付|種別|時間帯" → true
 """
 
 import json
-import time
 
 import streamlit as st
 import gspread
@@ -53,20 +51,13 @@ def get_checks() -> dict:
     return _shared_check_cache().get("checks", {})
 
 
-_last_save = {"t": 0.0}
-
-
 def save_checks(checks: dict) -> tuple[bool, str]:
-    """チェック状態をGoogle Sheetsに保存（5秒スロットリング）。"""
-    now = time.time()
-    if now - _last_save["t"] < 5:
-        return False, "保存スキップ（5秒以内の連続保存）"
+    """チェック状態をGoogle Sheetsに保存。"""
     try:
         ws = _get_ws()
         ws.update_acell(CELL, json.dumps(checks, ensure_ascii=False))
         cache = _shared_check_cache()
         cache["checks"] = checks
-        _last_save["t"] = now
         return True, "保存完了"
     except Exception as e:
         return False, f"保存エラー: {e}"

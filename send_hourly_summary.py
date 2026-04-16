@@ -230,10 +230,11 @@ def build_summary_compact(checks, date_str, time_slots, categories, counts):
             else:
                 unchecked.append(ts)
 
-        top = ""
+        tops = []
         if counts and unchecked:
             ranked = sorted(unchecked, key=lambda t: counts.get((cat, t), 0))
-            top = ranked[0] if ranked else ""
+            tops = sorted(ranked[:3])
+        top_str = ", ".join(tops) if tops else ""
 
         lines.append(f"■ {cat}")
         if not unchecked:
@@ -241,10 +242,10 @@ def build_summary_compact(checks, date_str, time_slots, categories, counts):
             lines.append("  推奨: なし")
         elif not checked:
             lines.append("  全時間帯 対応可能")
-            lines.append(f"  推奨:{top}" if top else "  推奨: なし")
+            lines.append(f"  推奨:{top_str}" if top_str else "  推奨: なし")
         else:
             lines.append(f"  対応不可時間: {', '.join(checked)}")
-            lines.append(f"  推奨:{top}" if top else "  推奨: なし")
+            lines.append(f"  推奨:{top_str}" if top_str else "  推奨: なし")
         lines.append("")
 
     return "\n".join(lines).rstrip()

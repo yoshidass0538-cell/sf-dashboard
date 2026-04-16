@@ -178,7 +178,7 @@ def build_summary(checks, date_str, time_slots, categories, counts):
 
         if not unchecked:
             lines.append(f"■ {cat}")
-            lines.append("  全時間帯🆖 → 翌日以降でお願いします\n")
+            lines.append("  全時間帯❌ → 翌日以降でお願いします\n")
         elif not checked:
             lines.append(f"■ {cat}")
             lines.append("  全時間帯 対応可能")
@@ -189,7 +189,7 @@ def build_summary(checks, date_str, time_slots, categories, counts):
                 lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
             lines.append("")
         else:
-            ng_str = ", ".join(f"{t}台🆖" for t in checked)
+            ng_str = ", ".join(f"{t}台❌" for t in checked)
             lines.append(f"■ {cat}")
             lines.append(f"  対応不可時間: {ng_str}")
             if counts and unchecked:
@@ -239,13 +239,13 @@ def build_summary_compact(checks, date_str, time_slots, categories, counts):
 
         lines.append(f"■ {cat}")
         if not unchecked:
-            lines.append("  全時間帯🆖 → 翌日以降でお願いします")
+            lines.append("  全時間帯❌ → 翌日以降でお願いします")
             lines.append("  推奨: なし")
         elif not checked:
             lines.append("  全時間帯 対応可能")
             lines.append(f"  推奨:{top_str}" if top_str else "  推奨: なし")
         else:
-            ng_str = ", ".join(f"{t}台🆖" for t in checked)
+            ng_str = ", ".join(f"{t}台❌" for t in checked)
             lines.append(f"  {ng_str}")
             lines.append(f"  推奨:{top_str}" if top_str else "  推奨: なし")
         lines.append("")

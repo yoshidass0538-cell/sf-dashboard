@@ -79,7 +79,7 @@ def build_immediate_message(date_str: str, time_slot: str, category: str) -> str
     return (
         f"[toall]\n"
         f"[info][title]折返し件数チェック[/title]"
-        f"{category}は{time_slot}台🆖\n"
+        f"{category}は{time_slot}台❌\n"
         f"他時間もしくは翌日以降でのヒアリングをお願いします。[/info]"
     )
 
@@ -96,7 +96,7 @@ def send_all_checked(date_str: str, category: str) -> list[dict]:
         f"[toall]\n"
         f"[info][title]折返し件数チェック[/title]"
         f"{category}\n"
-        f"全時間帯🆖 翌日以降でヒアリングお願いします[/info]"
+        f"全時間帯❌ 翌日以降でヒアリングお願いします[/info]"
     )
     return send_message(body)
 
@@ -133,7 +133,7 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
 
         if not unchecked:
             lines.append(f"■ {cat}")
-            lines.append("  全時間帯🆖 → 翌日以降でお願いします\n")
+            lines.append("  全時間帯❌ → 翌日以降でお願いします\n")
         elif not checked:
             lines.append(f"■ {cat}")
             lines.append("  全時間帯 対応可能")
@@ -144,7 +144,7 @@ def build_summary_message(checks: dict, date_str: str, all_time_slots: list[str]
                 lines.append(f"  時設推奨時間帯: {', '.join(top_with_count)}")
             lines.append("")
         else:
-            ng_str = ", ".join(f"{t}台🆖" for t in checked)
+            ng_str = ", ".join(f"{t}台❌" for t in checked)
             lines.append(f"■ {cat}")
             lines.append(f"  対応不可時間: {ng_str}")
             if counts and unchecked:

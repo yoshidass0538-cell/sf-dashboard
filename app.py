@@ -122,7 +122,7 @@ def _sf():
 
 
 # ボードを開くたびに毎回取得（キャッシュなし）
-_REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift"}
+_REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift", "next_month_shift"}
 # 5分キャッシュ
 _CACHE_5MIN_KEYS = {"orikaeshi_kensu"}
 # 2時間キャッシュ
@@ -2226,7 +2226,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
-    if metric.key in ("cs_shift", "shinsetsu_shift"):
+    if metric.key in ("cs_shift", "shinsetsu_shift", "next_month_shift"):
         # AgGrid: 行ドラッグで並び替え可能
         import numpy as np
         df_ag = pd.DataFrame(
@@ -2237,6 +2237,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             "1週間後FC": {"headerBg": "#4A6FA5", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#f0f4fa", "fg": "#1a2a3a"},
             "促進": {"headerBg": "#2E8B57", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#edf7f1", "fg": "#1a2f22"},
             "TOTAL": {"headerBg": "#D4850A", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#fdf5e9", "fg": "#2a1f0a"},
+            "責任者用": {"headerBg": "#8B5CF6", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#f3effe", "fg": "#2d1a5e"},
         }
         ag_t = AG_THEME.get(metric.category, AG_THEME["1週間後FC"])
         custom_css = {

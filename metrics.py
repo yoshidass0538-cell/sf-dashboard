@@ -510,6 +510,112 @@ def fetch_shinsetsu_fc_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return {f"新設FCシフト ({year_label}{month_label})": df}
 
 
+# --- 翌月シフト（責任者用） ---
+
+# 促進全体メンバー（表示順）
+_NEXT_MONTH_ALL_ORDER = [
+    "吉田颯", "室谷慧", "原田綾子", "金澤駿平", "吉本将吾",
+    "大滝紀香", "堀田輝斗", "角田心華", "佐々木彩乃", "葛西翼",
+    "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香", "勘七瞬",
+]
+_NEXT_MONTH_ALL_SET = {n for n in _NEXT_MONTH_ALL_ORDER}
+
+# サブグループ（表示順）
+_NM_FC_ORDER = ["室谷慧", "原田綾子", "金澤駿平", "吉本将吾", "大滝紀香", "角田心華", "菊地隆真"]
+_NM_FC_SET = {n for n in _NM_FC_ORDER}
+
+_NM_SOKUSHIN_ORDER = ["葛西翼", "雨貝一生", "半田さくら", "栗田優衣", "高橋真友香", "勘七瞬"]
+_NM_SOKUSHIN_SET = {n for n in _NM_SOKUSHIN_ORDER}
+
+_NM_TIMEE_ORDER = ["佐々木彩乃", "堀田輝斗"]
+_NM_TIMEE_SET = {n for n in _NM_TIMEE_ORDER}
+
+
+def _build_shift_df(records, visible_days, member_set, order_list):
+    """共通: レコードからシフトDataFrameを構築する。"""
+    def _fmt(t):
+        if not t:
+            return ""
+        return str(t)[:5]
+
+    rows = []
+    for r in records:
+        owner = (r.get("Field128__r") or {}).get("Name") or "(不明)"
+        normalized = owner.replace(" ", "").replace("\u3000", "")
+        if normalized not in member_set:
+            continue
+        row = {"担当者": owner}
+        for day, sf_, ef in visible_days:
+            s = _fmt(r.get(sf_))
+            e = _fmt(r.get(ef))
+            if s and e:
+                row[f"{day}"] = f"{s}-{e}"
+            elif s:
+                row[f"{day}"] = s
+            else:
+                row[f"{day}"] = ""
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    def _rank(name: str) -> int:
+        norm = (name or "").replace(" ", "").replace("\u3000", "")
+        for i, key in enumerate(order_list):
+            if key in norm:
+                return i
+        return len(order_list)
+    return df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True)
+
+
+def fetch_next_month_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """翌月のシフトを4グループに分けて返す。"""
+    today = pd.Timestamp.today()
+    # 翌月を算出
+    if today.month == 12:
+        nm_year, nm_month = today.year + 1, 1
+    else:
+        nm_year, nm_month = today.year, today.month + 1
+
+    year_label = f"{nm_year}年"
+    month_label = f"{nm_month}月"
+
+    import calendar
+    last_day = calendar.monthrange(nm_year, nm_month)[1]
+
+    field_list = ["Field128__r.Name"]
+    for _, s, e in SHIFT_DAY_FIELDS:
+        field_list += [s, e]
+    soql = (
+        f"SELECT {', '.join(field_list)} FROM CustomObject11__c "
+        f"WHERE Field1__c = '{year_label}' AND Field2__c = '{month_label}' "
+        f"AND Field128__r.Field13__c = 'CS促進' "
+        f"ORDER BY Field128__r.Name"
+    )
+    rs = sf.query_all(soql)["records"]
+
+    # 翌月は全日表示（1日〜末日）
+    visible_days = [t for t in SHIFT_DAY_FIELDS if t[0] <= last_day]
+
+    title_prefix = f"{year_label}{month_label}"
+    empty = pd.DataFrame()
+
+    if not rs:
+        return {
+            f"促進全体 ({title_prefix})": empty,
+            f"1週間後FCシフト ({title_prefix})": empty,
+            f"促進シフト ({title_prefix})": empty,
+            f"タイミー部隊シフト ({title_prefix})": empty,
+        }
+
+    return {
+        f"促進全体 ({title_prefix})": _build_shift_df(rs, visible_days, _NEXT_MONTH_ALL_SET, _NEXT_MONTH_ALL_ORDER),
+        f"1週間後FCシフト ({title_prefix})": _build_shift_df(rs, visible_days, _NM_FC_SET, _NM_FC_ORDER),
+        f"促進シフト ({title_prefix})": _build_shift_df(rs, visible_days, _NM_SOKUSHIN_SET, _NM_SOKUSHIN_ORDER),
+        f"タイミー部隊シフト ({title_prefix})": _build_shift_df(rs, visible_days, _NM_TIMEE_SET, _NM_TIMEE_ORDER),
+    }
+
+
 def _shift_hours(start: str, end: str) -> float:
     """"HH:MM" 形式の開始/終了から稼働時間(h)を返す。14:00-15:00 を跨ぐ場合は休憩-1h。"""
     if not start or not end:
@@ -1605,6 +1711,13 @@ METRICS: list[Metric] = [
         category="促進",
     ),
     # --- 責任者用 ---
+    Metric(
+        key="next_month_shift",
+        label="促進翌月シフト",
+        description="翌月のシフト一覧（促進全体・1週間後FC・促進・タイミー部隊）",
+        fetch=fetch_next_month_shift,
+        category="責任者用",
+    ),
     Metric(
         key="ikusei_kpi",
         label="育成KPI",

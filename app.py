@@ -2255,7 +2255,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
         if metric.key == "next_month_shift" and not df_ag.empty:
             day_counts = {}
             for col in df_ag.columns:
-                if col != "担当者":
+                if col not in ("担当者", "合計"):
                     day_counts[col] = int((df_ag[col] != "").sum())
         else:
             day_counts = {}
@@ -2271,6 +2271,9 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             if col == "担当者":
                 width = max(130, max_len * 18 + 30)
                 gb.configure_column(col, rowDrag=True, pinned="left", width=width, suppressSizeToFit=True)
+            elif col == "合計":
+                width = max(70, max_len * 9 + 16)
+                gb.configure_column(col, pinned="left", width=width, suppressSizeToFit=True)
             elif col in day_counts:
                 header_label = f"{col}\n({day_counts[col]}人)"
                 width = max(60, max_len * 9 + 16)

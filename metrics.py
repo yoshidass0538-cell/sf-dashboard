@@ -376,6 +376,24 @@ SHIFT_DAY_FIELDS = [
 ]
 
 
+def _add_total_hours_column(df: pd.DataFrame) -> pd.DataFrame:
+    """シフトDataFrameの担当者列の右横に合計実働時間列を挿入する。"""
+    if df.empty:
+        return df
+    day_cols = [c for c in df.columns if c != "担当者"]
+    totals = []
+    for _, row in df.iterrows():
+        total = 0.0
+        for col in day_cols:
+            val = str(row.get(col, ""))
+            if "-" in val:
+                parts = val.split("-", 1)
+                total += _shift_hours(parts[0].strip(), parts[1].strip())
+        totals.append(f"{total:.1f}h")
+    df.insert(1, "合計", totals)
+    return df
+
+
 def fetch_cs_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
     today = pd.Timestamp.today()
     year_label = f"{today.year}年"
@@ -443,7 +461,7 @@ def fetch_cs_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
         return len(order)
     if not df.empty:
         df = df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True)
-    return {f"1週間FCシフト ({year_label}{month_label})": df}
+    return {f"1週間FCシフト ({year_label}{month_label})": _add_total_hours_column(df)}
 
 
 SHINSETSU_FC_OWNERS = {
@@ -507,7 +525,7 @@ def fetch_shinsetsu_fc_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
         return len(SHINSETSU_FC_ORDER)
     if not df.empty:
         df = df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True)
-    return {f"新設FCシフト ({year_label}{month_label})": df}
+    return {f"新設FCシフト ({year_label}{month_label})": _add_total_hours_column(df)}
 
 
 # --- 翌月シフト（責任者用） ---
@@ -565,7 +583,7 @@ def _build_shift_df(records, visible_days, member_set, order_list):
             if key in norm:
                 return i
         return len(order_list)
-    return df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True)
+    return _add_total_hours_column(df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True))
 
 
 def fetch_next_month_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:

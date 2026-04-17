@@ -327,6 +327,12 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
         row["キャンセル率"] = pct(cancel_n)
         row["7日以内キャンセル数"] = int(cancel7_n)
         row["7日以内キャンセル率"] = pct(cancel7_n)
+        # 申込日からN日目キャンセル（当日=0日目〜7日目）
+        for d in range(8):
+            label = "当日" if d == 0 else f"{d}日目"
+            cx_d = int((diff == d).sum())
+            row[f"{label}CX数"] = cx_d
+            row[f"{label}CX率"] = pct(cx_d)
         out_rows.append(row)
 
     result = pd.DataFrame(out_rows)

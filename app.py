@@ -2380,6 +2380,36 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             """,
             unsafe_allow_html=True,
         )
+        # 開通進捗: 特定列以降をハイライト（NURO=4日目〜, ソネット=5日目〜）
+        highlight_from = None
+        if title and "NURO" in title:
+            highlight_from = "4日目CX数"
+        elif title and "ソネット" in title:
+            highlight_from = "5日目CX数"
+        if highlight_from and highlight_from in df.columns:
+            import re
+            col_idx = list(df.columns).index(highlight_from)
+            def _highlight_row(m):
+                tag = m.group(0)
+                cells = re.findall(r"<(th|td)\b[^>]*>.*?</\1>", tag, re.DOTALL)
+                if not cells:
+                    return tag
+                for i, cell in enumerate(cells):
+                    if i >= col_idx:
+                        new_cell = re.sub(r"<(th|td)\b", r'<\1 class="cx-hl"', cell, count=1)
+                        tag = tag.replace(cell, new_cell, 1)
+                return tag
+            html = re.sub(r"<tr\b[^>]*>.*?</tr>", _highlight_row, html, flags=re.DOTALL)
+            hl_css = f"""
+            .{css_class} .cx-hl {{
+                background: #C0392B !important;
+                color: #ffffff !important;
+            }}
+            .{css_class} tr:hover .cx-hl {{
+                background: #A93226 !important;
+            }}
+            """
+            st.markdown(f"<style>{hl_css}</style>", unsafe_allow_html=True)
         table_html = html.replace("<table", f'<table class="{css_class}"', 1)
         st.markdown(f'<div class="responsive-table-wrapper">{table_html}</div>', unsafe_allow_html=True)
     st.download_button(

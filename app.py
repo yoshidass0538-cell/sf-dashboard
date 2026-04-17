@@ -2261,21 +2261,25 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             else:
                 width = max(60, max_len * 9 + 16)
                 gb.configure_column(col, width=width, suppressSizeToFit=True)
-        gb.configure_grid_options(
+        grid_opts = dict(
             rowDragManaged=True,
             animateRows=True,
             suppressHorizontalScroll=False,
             alwaysShowHorizontalScroll=True,
         )
-        AgGrid(
-            df_ag,
-            gridOptions=gb.build(),
-            height=max(200, 45 + 32 * len(df_ag)),
+        ag_kwargs = dict(
             theme="balham",
             allow_unsafe_jscode=True,
             custom_css=custom_css,
             key=f"aggrid_{metric.key}_{key_suffix}",
         )
+        if metric.key == "next_month_shift":
+            grid_opts["domLayout"] = "autoHeight"
+            gb.configure_grid_options(**grid_opts)
+            AgGrid(df_ag, gridOptions=gb.build(), **ag_kwargs)
+        else:
+            gb.configure_grid_options(**grid_opts)
+            AgGrid(df_ag, gridOptions=gb.build(), height=max(200, 45 + 32 * len(df_ag)), **ag_kwargs)
     else:
         # カテゴリ別配色
         THEME = {

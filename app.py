@@ -2247,6 +2247,19 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             ".ag-row-odd": {"background-color": ag_t["oddBg"]},
             ".ag-row-even": {"background-color": ag_t["evenBg"]},
         }
+        if metric.key == "next_month_shift":
+            custom_css[".ag-header-row"] = {"height": "50px"}
+            custom_css[".ag-header-cell"] = {**custom_css[".ag-header-cell"], "height": "50px", "padding-top": "4px"}
+            custom_css[".ag-header-cell-label"] = {"justify-content": "center", "white-space": "pre-wrap", "text-align": "center", "line-height": "1.2"}
+        # 翌月シフト: 日付列ヘッダーに出勤人数を付与
+        if metric.key == "next_month_shift" and not df_ag.empty:
+            day_counts = {}
+            for col in df_ag.columns:
+                if col != "担当者":
+                    day_counts[col] = int((df_ag[col] != "").sum())
+        else:
+            day_counts = {}
+
         gb = GridOptionsBuilder.from_dataframe(df_ag)
         gb.configure_default_column(resizable=False, sortable=False, filter=False, suppressSizeToFit=True,
                                     cellStyle={"textAlign": "center", "display": "flex", "alignItems": "center", "justifyContent": "center"})
@@ -2258,6 +2271,10 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             if col == "担当者":
                 width = max(130, max_len * 18 + 30)
                 gb.configure_column(col, rowDrag=True, pinned="left", width=width, suppressSizeToFit=True)
+            elif col in day_counts:
+                header_label = f"{col}\n({day_counts[col]}人)"
+                width = max(60, max_len * 9 + 16)
+                gb.configure_column(col, headerName=header_label, width=width, suppressSizeToFit=True)
             else:
                 width = max(60, max_len * 9 + 16)
                 gb.configure_column(col, width=width, suppressSizeToFit=True)

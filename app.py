@@ -122,7 +122,7 @@ def _sf():
 
 
 # ボードを開くたびに毎回取得（キャッシュなし）
-_REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift", "next_month_shift"}
+_REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift", "next_month_shift", "call_history"}
 # 5分キャッシュ
 _CACHE_5MIN_KEYS = {"orikaeshi_kensu"}
 # 2時間キャッシュ

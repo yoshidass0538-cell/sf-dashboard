@@ -1066,6 +1066,179 @@ def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
     }
 
 
+def _phone_to_e164(phone: str) -> str | None:
+    """電話番号を Zoom Call Log の E.164 形式（+81xxx）に正規化。"""
+    import re
+    if not phone:
+        return None
+    digits = re.sub(r"[^0-9]", "", str(phone))
+    if not digits:
+        return None
+    if digits.startswith("0"):
+        return "+81" + digits[1:]
+    if not digits.startswith("+"):
+        return "+" + digits
+    return digits
+
+
+def _duration_to_sec(dur: str) -> int:
+    """'mm:ss' または 'hh:mm:ss' を秒数に変換。"""
+    if not dur:
+        return 0
+    parts = str(dur).split(":")
+    try:
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    except ValueError:
+        pass
+    return 0
+
+
+def _sec_to_mmss(sec: int) -> str:
+    if sec <= 0:
+        return "-"
+    return f"{sec // 60:02d}:{sec % 60:02d}"
+
+
+def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
+    """本日の CS促進メンバー の架電履歴（留守以外）をリアルタイム取得。
+    - 対応区分/対応ステータス/コール結果/コメント/通話時間/依頼種別変更 を表示
+    - 通話時間: Zoom Call Log (connected) を電話番号で紐付け
+    - 依頼種別変更: 同一Accountの前回Task (ActivityDate<TODAY) の Field3__c と比較
+    """
+    # 1. CS促進メンバー取得
+    members_rs = sf.query_all(
+        "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
+    )["records"]
+    cs_names = {
+        (r.get("Name") or "").replace(" ", "").replace("\u3000", "")
+        for r in members_rs
+    }
+    cs_names.discard("")
+    if not cs_names:
+        return pd.DataFrame(columns=[
+            "対応日時", "担当者", "対応区分", "対応ステータス",
+            "コール結果", "コメント", "通話時間", "依頼種別変更",
+        ])
+
+    # 2. 本日の Task（留守以外、コール結果入力済み）
+    tasks_rs = sf.query_all(
+        "SELECT Id, Owner.Name, Field1_del__c, Field2_del__c, Field3_del__c, "
+        "Field4_del__c, Field3__c, Description, AccountId, Account.X1__c "
+        "FROM Task "
+        "WHERE ActivityDate = TODAY "
+        "AND Field4_del__c != null "
+        "AND Field4_del__c != '留守' "
+        "ORDER BY Field1_del__c DESC NULLS LAST"
+    )["records"]
+
+    # CS促進メンバーで絞り込み
+    def _norm(n: str) -> str:
+        return (n or "").replace(" ", "").replace("\u3000", "")
+
+    target = [t for t in tasks_rs if _norm((t.get("Owner") or {}).get("Name")) in cs_names]
+    if not target:
+        return pd.DataFrame(columns=[
+            "対応日時", "担当者", "対応区分", "対応ステータス",
+            "コール結果", "コメント", "通話時間", "依頼種別変更",
+        ])
+
+    # 3. 前回Task（同一Account、ActivityDate<TODAY の最新1件）から旧依頼種別を取得
+    account_ids = {t.get("AccountId") for t in target if t.get("AccountId")}
+    prev_field3: dict[str, str | None] = {}
+    if account_ids:
+        ids_str = ",".join(f"'{a}'" for a in account_ids)
+        prev_rs = sf.query_all(
+            f"SELECT AccountId, Field3__c, Field1_del__c "
+            f"FROM Task "
+            f"WHERE AccountId IN ({ids_str}) "
+            f"AND ActivityDate < TODAY "
+            f"AND Field1_del__c != null "
+            f"ORDER BY Field1_del__c DESC"
+        )["records"]
+        # AccountIdごとに最初（= 最新）の値を採用
+        for r in prev_rs:
+            aid = r.get("AccountId")
+            if aid and aid not in prev_field3:
+                prev_field3[aid] = r.get("Field3__c")
+
+    # 4. Zoom Call Log (本日 connected) を担当者×電話番号でインデックス化
+    zoom_rs = sf.query_all(
+        "SELECT Owner.Name, ZVC__Callee_Phone_Number__c, ZVC__Call_Duration__c "
+        "FROM ZVC__Zoom_Call_Log__c "
+        "WHERE CreatedDate = TODAY "
+        "AND ZVC__Call_Result__c = 'connected'"
+    )["records"]
+    # {(担当者norm, phone_e164): [duration_sec, ...]}
+    zoom_idx: dict[tuple[str, str], list[int]] = {}
+    for z in zoom_rs:
+        owner_norm = _norm((z.get("Owner") or {}).get("Name"))
+        if owner_norm not in cs_names:
+            continue
+        phone = z.get("ZVC__Callee_Phone_Number__c")
+        if not phone:
+            continue
+        key = (owner_norm, phone)
+        zoom_idx.setdefault(key, []).append(_duration_to_sec(z.get("ZVC__Call_Duration__c")))
+
+    # 5. 各Taskの通話時間を引き当て（電話番号の一致件数ぶんの先頭を消費）
+    from datetime import datetime, timezone, timedelta as _td
+    jst = timezone(_td(hours=9))
+
+    rows = []
+    for t in target:
+        owner = (t.get("Owner") or {}).get("Name", "")
+        owner_norm = _norm(owner)
+        acc = t.get("Account") or {}
+        phone_e164 = _phone_to_e164(acc.get("X1__c"))
+
+        # 通話時間: 担当者×電話番号の Zoom ログのうち、先頭から1件消費
+        talk_sec = 0
+        if phone_e164:
+            bucket = zoom_idx.get((owner_norm, phone_e164)) or []
+            if bucket:
+                talk_sec = bucket.pop(0)  # 1件ずつ割り当て
+        talk_disp = _sec_to_mmss(talk_sec)
+
+        # 依頼種別変更
+        new_val = t.get("Field3__c")
+        old_val = prev_field3.get(t.get("AccountId"))
+        def _disp(v):
+            return v if v else "-"
+        if (new_val or None) == (old_val or None):
+            rireki_disp = "-"
+        else:
+            rireki_disp = f"{_disp(old_val)}→{_disp(new_val)}"
+
+        # 対応日時（JSTの HH:MM）
+        tdt_raw = t.get("Field1_del__c")
+        time_disp = ""
+        if tdt_raw:
+            try:
+                dt = datetime.fromisoformat(tdt_raw.replace("Z", "+00:00"))
+                time_disp = dt.astimezone(jst).strftime("%H:%M")
+            except Exception:
+                time_disp = tdt_raw
+
+        rows.append({
+            "対応日時": time_disp,
+            "担当者": owner,
+            "対応区分": t.get("Field3_del__c") or "",
+            "対応ステータス": t.get("Field2_del__c") or "",
+            "コール結果": t.get("Field4_del__c") or "",
+            "コメント": (t.get("Description") or "").replace("\n", " / ")[:200],
+            "通話時間": talk_disp,
+            "依頼種別変更": rireki_disp,
+        })
+
+    return pd.DataFrame(rows, columns=[
+        "対応日時", "担当者", "対応区分", "対応ステータス",
+        "コール結果", "コメント", "通話時間", "依頼種別変更",
+    ])
+
+
 def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """
     仮計算: 2025/12以降の月別で、商材別(ソネット/NURO)に
@@ -1747,6 +1920,13 @@ METRICS: list[Metric] = [
         label="育成KPI",
         description="育成KPI（準備中）",
         fetch=lambda sf: pd.DataFrame(),
+        category="責任者用",
+    ),
+    Metric(
+        key="call_history",
+        label="通話履歴",
+        description="本日のCS促進メンバーの架電履歴（留守以外）。リアルタイム取得",
+        fetch=fetch_call_history,
         category="責任者用",
     ),
 ]

@@ -1115,38 +1115,35 @@ def fetch_call_history(sf: Salesforce, start_date: str | None = None, end_date: 
         start_date = _today
     if not end_date:
         end_date = _today
-    # 1. CS促進メンバー取得
-    members_rs = sf.query_all(
-        "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
+    # 1. 所属部署=CS促進 のユーザーIDを取得（User.Department で厳密絞り込み）
+    users_rs = sf.query_all(
+        "SELECT Id, Name FROM User WHERE Department = 'CS促進' AND IsActive = true"
     )["records"]
-    cs_names = {
-        (r.get("Name") or "").replace(" ", "").replace("\u3000", "")
-        for r in members_rs
-    }
-    cs_names.discard("")
-    if not cs_names:
+    cs_user_ids = {r["Id"] for r in users_rs}
+    if not cs_user_ids:
         return pd.DataFrame(columns=[
             "対応日", "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
             "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
         ])
 
-    # 2. 期間内の Task（留守以外、コール結果入力済み）
+    # 2. 期間内の Task（CS促進ユーザー、留守以外、コール結果入力済み）
+    ids_literal = ",".join(f"'{u}'" for u in cs_user_ids)
     tasks_rs = sf.query_all(
-        "SELECT Id, Owner.Name, Field1_del__c, Field2_del__c, Field3_del__c, "
+        "SELECT Id, Owner.Name, OwnerId, Field1_del__c, Field2_del__c, Field3_del__c, "
         "Field4_del__c, Field3__c, Description, AccountId, Account.X1__c "
         "FROM Task "
         f"WHERE ActivityDate >= {start_date} "
         f"AND ActivityDate <= {end_date} "
+        f"AND OwnerId IN ({ids_literal}) "
         "AND Field4_del__c != null "
         "AND Field4_del__c != '留守' "
         "ORDER BY Field1_del__c DESC NULLS LAST"
     )["records"]
 
-    # CS促進メンバーで絞り込み
     def _norm(n: str) -> str:
         return (n or "").replace(" ", "").replace("\u3000", "")
 
-    target = [t for t in tasks_rs if _norm((t.get("Owner") or {}).get("Name")) in cs_names]
+    target = tasks_rs
     if not target:
         return pd.DataFrame(columns=[
             "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
@@ -1172,20 +1169,19 @@ def fetch_call_history(sf: Salesforce, start_date: str | None = None, end_date: 
             if aid and aid not in prev_field3:
                 prev_field3[aid] = r.get("Field3__c")
 
-    # 4. Zoom Call Log (期間内 connected) を担当者×電話番号でインデックス化
+    # 4. Zoom Call Log (期間内 connected, CS促進ユーザー) を担当者×電話番号でインデックス化
     zoom_rs = sf.query_all(
-        "SELECT Owner.Name, ZVC__Callee_Phone_Number__c, ZVC__Call_Duration__c "
+        "SELECT Owner.Name, OwnerId, ZVC__Callee_Phone_Number__c, ZVC__Call_Duration__c "
         "FROM ZVC__Zoom_Call_Log__c "
         f"WHERE DAY_ONLY(CreatedDate) >= {start_date} "
         f"AND DAY_ONLY(CreatedDate) <= {end_date} "
+        f"AND OwnerId IN ({ids_literal}) "
         "AND ZVC__Call_Result__c = 'connected'"
     )["records"]
     # {(担当者norm, phone_e164): [duration_sec, ...]}
     zoom_idx: dict[tuple[str, str], list[int]] = {}
     for z in zoom_rs:
         owner_norm = _norm((z.get("Owner") or {}).get("Name"))
-        if owner_norm not in cs_names:
-            continue
         phone = z.get("ZVC__Callee_Phone_Number__c")
         if not phone:
             continue

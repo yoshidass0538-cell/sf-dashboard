@@ -1998,6 +1998,8 @@ if selected_key == "call_history":
         gb = GridOptionsBuilder.from_dataframe(df_disp)
         gb.configure_default_column(
             sortable=True, resizable=True, editable=False,
+            type=["textColumn"],
+            cellDataType="text",
             cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4"},
         )
         _col_widths = {

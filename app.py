@@ -2012,6 +2012,8 @@ if selected_key == "call_history":
                 gb.configure_column(col, width=w, suppressSizeToFit=True)
         gb.configure_column("コメント", flex=3, minWidth=300, wrapText=True, autoHeight=True,
                             cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5"})
+        # セル内テキストを範囲選択してコピーできるように（編集は不可のまま）
+        gb.configure_grid_options(enableCellTextSelection=True, ensureDomOrder=True)
 
         AgGrid(
             df_disp,

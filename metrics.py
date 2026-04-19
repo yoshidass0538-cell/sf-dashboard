@@ -1119,8 +1119,8 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
     cs_names.discard("")
     if not cs_names:
         return pd.DataFrame(columns=[
-            "対応日時", "担当者", "対応区分", "対応ステータス",
-            "コール結果", "コメント", "通話時間", "依頼種別変更",
+            "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
+            "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
         ])
 
     # 2. 本日の Task（留守以外、コール結果入力済み）
@@ -1141,8 +1141,8 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
     target = [t for t in tasks_rs if _norm((t.get("Owner") or {}).get("Name")) in cs_names]
     if not target:
         return pd.DataFrame(columns=[
-            "対応日時", "担当者", "対応区分", "対応ステータス",
-            "コール結果", "コメント", "通話時間", "依頼種別変更",
+            "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
+            "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
         ])
 
     # 3. 前回Task（同一Account、ActivityDate<TODAY の最新1件）から旧依頼種別を取得
@@ -1202,15 +1202,17 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
                 talk_sec = bucket.pop(0)  # 1件ずつ割り当て
         talk_disp = _sec_to_mmss(talk_sec)
 
-        # 依頼種別変更
+        # 依頼種別変更（変更前/変更後 を分離）
         new_val = t.get("Field3__c")
         old_val = prev_field3.get(t.get("AccountId"))
         def _disp(v):
             return v if v else "-"
         if (new_val or None) == (old_val or None):
-            rireki_disp = "-"
+            before_disp = "-"
+            after_disp = "-"
         else:
-            rireki_disp = f"{_disp(old_val)}→{_disp(new_val)}"
+            before_disp = _disp(old_val)
+            after_disp = _disp(new_val)
 
         # 対応日時（JSTの HH:MM）
         tdt_raw = t.get("Field1_del__c")
@@ -1222,20 +1224,28 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
             except Exception:
                 time_disp = tdt_raw
 
+        # コメントの改行・復帰コードを整形（空行は捨てて / で連結）
+        import re as _re
+        raw_desc = t.get("Description") or ""
+        _lines = [ln.strip() for ln in _re.split(r"[\r\n]+", raw_desc) if ln.strip()]
+        desc_clean = " / ".join(_lines)[:200]
+
         rows.append({
             "対応日時": time_disp,
             "担当者": owner,
+            "電話番号": acc.get("X1__c") or "",
             "対応区分": t.get("Field3_del__c") or "",
             "対応ステータス": t.get("Field2_del__c") or "",
             "コール結果": t.get("Field4_del__c") or "",
-            "コメント": (t.get("Description") or "").replace("\n", " / ")[:200],
+            "コメント": desc_clean,
             "通話時間": talk_disp,
-            "依頼種別変更": rireki_disp,
+            "依頼種別 変更前": before_disp,
+            "依頼種別 変更後": after_disp,
         })
 
     return pd.DataFrame(rows, columns=[
-        "対応日時", "担当者", "対応区分", "対応ステータス",
-        "コール結果", "コメント", "通話時間", "依頼種別変更",
+        "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
+        "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
     ])
 
 

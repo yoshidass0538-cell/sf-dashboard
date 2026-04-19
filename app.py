@@ -1962,11 +1962,15 @@ if selected_key == "call_history":
 
     df_ch = fetched if isinstance(fetched, pd.DataFrame) else next(iter(fetched.values()))
 
-    # 電話番号検索バー（ハイフン有無を無視した数字一致）
-    phone_q = st.text_input(
+    # 更新ボタン ＋ 電話番号検索バー
+    _col_reload, _col_search = st.columns([1, 5])
+    if _col_reload.button("🔄 更新", key="call_history_reload", use_container_width=True):
+        st.rerun()
+    phone_q = _col_search.text_input(
         "📞 電話番号で検索（ハイフン有無どちらでもOK）",
         key="call_history_phone_search",
         placeholder="例: 080-1234-5678 or 08012345678 or 1234",
+        label_visibility="collapsed",
     )
     if phone_q and not df_ch.empty:
         q_digits = _re_ch.sub(r"[^0-9]", "", phone_q)

@@ -1956,7 +1956,7 @@ else:
         st.error(f"取得に失敗しました: {e}")
         st.stop()
 
-# 通話履歴: フィルター付き AgGrid 表示（電話番号検索バー付き）
+# 通話履歴: 列値選択フィルター + 電話番号検索、全行autoHeight表示
 if selected_key == "call_history":
     import re as _re_ch
 
@@ -1974,23 +1974,32 @@ if selected_key == "call_history":
             _phone_digits = df_ch["電話番号"].astype(str).str.replace(r"[^0-9]", "", regex=True)
             df_ch = df_ch[_phone_digits.str.contains(q_digits, na=False)]
 
-    st.caption(f"表示件数: {len(df_ch)}件  （各列のヘッダー下の入力欄・フィルターアイコンで絞り込みできます）")
+    # --- 列値選択フィルター（multiselect） ---
+    _filter_cols = [
+        "対応日", "担当者", "対応区分", "対応ステータス", "コール結果",
+        "依頼種別 変更前", "依頼種別 変更後",
+    ]
+    with st.expander("🔎 フィルター（列の値から選択 / 複数選択可 / 空欄は絞り込まない）", expanded=False):
+        _fc = st.columns(len(_filter_cols))
+        for _i, _col in enumerate(_filter_cols):
+            if _col not in df_ch.columns:
+                continue
+            _opts = sorted(v for v in df_ch[_col].dropna().unique().tolist() if str(v) != "")
+            _sel = _fc[_i].multiselect(_col, _opts, key=f"ch_filt_{_col}")
+            if _sel:
+                df_ch = df_ch[df_ch[_col].isin(_sel)]
+
+    st.caption(f"表示件数: {len(df_ch)}件")
 
     if df_ch.empty:
         st.info("該当データはありません。")
     else:
-        # 空白・None除去
         df_disp = df_ch.fillna("").astype(str)
         gb = GridOptionsBuilder.from_dataframe(df_disp)
         gb.configure_default_column(
-            filter=True,
-            sortable=True,
-            resizable=True,
-            editable=False,
-            floatingFilter=True,
+            sortable=True, resizable=True, editable=False,
             cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4"},
         )
-        # 列幅とスタイル調整
         _col_widths = {
             "対応日": 110, "対応日時": 80, "担当者": 110, "電話番号": 130,
             "対応区分": 90, "対応ステータス": 170, "コール結果": 100,
@@ -2001,11 +2010,11 @@ if selected_key == "call_history":
                 gb.configure_column(col, width=w, suppressSizeToFit=True)
         gb.configure_column("コメント", flex=3, minWidth=300, wrapText=True, autoHeight=True,
                             cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5"})
+        gb.configure_grid_options(domLayout="autoHeight")
 
         AgGrid(
             df_disp,
             gridOptions=gb.build(),
-            height=min(max(200, 45 + 42 * len(df_disp)), 800),
             theme="balham",
             allow_unsafe_jscode=True,
             custom_css={

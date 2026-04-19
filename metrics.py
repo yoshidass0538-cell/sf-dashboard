@@ -1221,7 +1221,7 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
         if tdt_raw:
             try:
                 dt = datetime.fromisoformat(tdt_raw.replace("Z", "+00:00")).astimezone(jst)
-                date_disp = dt.strftime("%Y-%m-%d")
+                date_disp = dt.strftime("%Y/%m/%d")
                 time_disp = dt.strftime("%H:%M")
             except Exception:
                 time_disp = tdt_raw

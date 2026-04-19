@@ -1119,7 +1119,7 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
     cs_names.discard("")
     if not cs_names:
         return pd.DataFrame(columns=[
-            "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
+            "対応日", "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
             "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
         ])
 
@@ -1214,13 +1214,15 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
             before_disp = _disp(old_val)
             after_disp = _disp(new_val)
 
-        # 対応日時（JSTの HH:MM）
+        # 対応日時（JSTの YYYY-MM-DD / HH:MM）
         tdt_raw = t.get("Field1_del__c")
+        date_disp = ""
         time_disp = ""
         if tdt_raw:
             try:
-                dt = datetime.fromisoformat(tdt_raw.replace("Z", "+00:00"))
-                time_disp = dt.astimezone(jst).strftime("%H:%M")
+                dt = datetime.fromisoformat(tdt_raw.replace("Z", "+00:00")).astimezone(jst)
+                date_disp = dt.strftime("%Y-%m-%d")
+                time_disp = dt.strftime("%H:%M")
             except Exception:
                 time_disp = tdt_raw
 
@@ -1231,6 +1233,7 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
         desc_clean = " / ".join(_lines)[:200]
 
         rows.append({
+            "対応日": date_disp,
             "対応日時": time_disp,
             "担当者": owner,
             "電話番号": acc.get("X1__c") or "",
@@ -1244,7 +1247,7 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
         })
 
     return pd.DataFrame(rows, columns=[
-        "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
+        "対応日", "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",
         "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
     ])
 

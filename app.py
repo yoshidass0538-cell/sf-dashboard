@@ -1956,6 +1956,76 @@ else:
         st.error(f"取得に失敗しました: {e}")
         st.stop()
 
+# 通話履歴: フィルター付き AgGrid 表示（電話番号検索バー付き）
+if selected_key == "call_history":
+    import re as _re_ch
+
+    df_ch = fetched if isinstance(fetched, pd.DataFrame) else next(iter(fetched.values()))
+
+    # 電話番号検索バー（ハイフン有無を無視した数字一致）
+    phone_q = st.text_input(
+        "📞 電話番号で検索（ハイフン有無どちらでもOK）",
+        key="call_history_phone_search",
+        placeholder="例: 080-1234-5678 or 08012345678 or 1234",
+    )
+    if phone_q and not df_ch.empty:
+        q_digits = _re_ch.sub(r"[^0-9]", "", phone_q)
+        if q_digits:
+            _phone_digits = df_ch["電話番号"].astype(str).str.replace(r"[^0-9]", "", regex=True)
+            df_ch = df_ch[_phone_digits.str.contains(q_digits, na=False)]
+
+    st.caption(f"表示件数: {len(df_ch)}件  （各列のヘッダー下の入力欄・フィルターアイコンで絞り込みできます）")
+
+    if df_ch.empty:
+        st.info("該当データはありません。")
+    else:
+        # 空白・None除去
+        df_disp = df_ch.fillna("").astype(str)
+        gb = GridOptionsBuilder.from_dataframe(df_disp)
+        gb.configure_default_column(
+            filter=True,
+            sortable=True,
+            resizable=True,
+            editable=False,
+            floatingFilter=True,
+            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4"},
+        )
+        # 列幅とスタイル調整
+        _col_widths = {
+            "対応日": 110, "対応日時": 80, "担当者": 110, "電話番号": 130,
+            "対応区分": 90, "対応ステータス": 170, "コール結果": 100,
+            "通話時間": 90, "依頼種別 変更前": 160, "依頼種別 変更後": 160,
+        }
+        for col, w in _col_widths.items():
+            if col in df_disp.columns:
+                gb.configure_column(col, width=w, suppressSizeToFit=True)
+        gb.configure_column("コメント", flex=3, minWidth=300, wrapText=True, autoHeight=True,
+                            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5"})
+
+        AgGrid(
+            df_disp,
+            gridOptions=gb.build(),
+            height=min(max(200, 45 + 42 * len(df_disp)), 800),
+            theme="balham",
+            allow_unsafe_jscode=True,
+            custom_css={
+                ".ag-header-cell": {"background-color": "#8B5CF6", "color": "#fff",
+                                     "font-weight": "bold", "text-align": "center"},
+                ".ag-header-cell-label": {"justify-content": "center"},
+                ".ag-row-odd": {"background-color": "#ffffff"},
+                ".ag-row-even": {"background-color": "#f3effe"},
+            },
+            key="aggrid_call_history",
+        )
+        st.download_button(
+            "CSV ダウンロード",
+            df_ch.to_csv(index=False).encode("utf-8-sig"),
+            file_name="call_history.csv",
+            mime="text/csv",
+            key="dl_call_history",
+        )
+    st.stop()
+
 # DAYコール数: 帯グラフ表示
 if selected_key == "day_calls":
     import plotly.express as px

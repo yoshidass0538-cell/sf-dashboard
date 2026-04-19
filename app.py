@@ -1949,6 +1949,9 @@ if selected_key == "cx_age_area":
     except Exception as e:
         st.error(f"取得に失敗しました: {e}")
         st.stop()
+elif selected_key == "call_history":
+    # 後の call_history 専用ブロックで期間指定fetchするため、ここではスキップ
+    fetched = None
 else:
     try:
         fetched = _load(selected_key)
@@ -1956,22 +1959,47 @@ else:
         st.error(f"取得に失敗しました: {e}")
         st.stop()
 
-# 通話履歴: 列値選択フィルター + 電話番号検索、全行autoHeight表示
+# 通話履歴: 期間指定 + フィルター + 電話番号検索
 if selected_key == "call_history":
     import re as _re_ch
+    from datetime import date as _date_ch
 
-    df_ch = fetched if isinstance(fetched, pd.DataFrame) else next(iter(fetched.values()))
-
-    # 更新ボタン ＋ 電話番号検索バー
-    _col_reload, _col_search = st.columns([1, 5])
-    if _col_reload.button("🔄 更新", key="call_history_reload", use_container_width=True):
+    # 期間・更新・電話番号検索を1行に配置
+    _today_ch = _date_ch.today()
+    _c_start, _c_end, _c_reload, _c_search = st.columns([2, 2, 1, 4])
+    _start_d = _c_start.date_input(
+        "開始日", value=_today_ch, key="call_history_start", format="YYYY/MM/DD",
+    )
+    _end_d = _c_end.date_input(
+        "終了日", value=_today_ch, key="call_history_end", format="YYYY/MM/DD",
+    )
+    _c_reload.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    if _c_reload.button("🔄 更新", key="call_history_reload", use_container_width=True):
         st.rerun()
-    phone_q = _col_search.text_input(
-        "📞 電話番号で検索（ハイフン有無どちらでもOK）",
+    _c_search.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    phone_q = _c_search.text_input(
+        "📞 電話番号で検索",
         key="call_history_phone_search",
-        placeholder="例: 080-1234-5678 or 08012345678 or 1234",
+        placeholder="例: 080-1234-5678 / 08012345678 / 1234",
         label_visibility="collapsed",
     )
+
+    if _start_d > _end_d:
+        st.error("開始日が終了日より後になっています。")
+        st.stop()
+
+    # 期間指定でフェッチ
+    from metrics import fetch_call_history
+    try:
+        with st.spinner("取得中..."):
+            df_ch = fetch_call_history(
+                _sf(),
+                start_date=_start_d.strftime("%Y-%m-%d"),
+                end_date=_end_d.strftime("%Y-%m-%d"),
+            )
+    except Exception as e:
+        st.error(f"取得に失敗しました: {e}")
+        st.stop()
     if phone_q and not df_ch.empty:
         q_digits = _re_ch.sub(r"[^0-9]", "", phone_q)
         if q_digits:

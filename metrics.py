@@ -1102,12 +1102,19 @@ def _sec_to_mmss(sec: int) -> str:
     return f"{sec // 60:02d}:{sec % 60:02d}"
 
 
-def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
-    """本日の CS促進メンバー の架電履歴（留守以外）をリアルタイム取得。
+def fetch_call_history(sf: Salesforce, start_date: str | None = None, end_date: str | None = None) -> pd.DataFrame:
+    """CS促進メンバー の架電履歴（留守以外）を期間指定で取得。
     - 対応区分/対応ステータス/コール結果/コメント/通話時間/依頼種別変更 を表示
     - 通話時間: Zoom Call Log (connected) を電話番号で紐付け
-    - 依頼種別変更: 同一Accountの前回Task (ActivityDate<TODAY) の Field3__c と比較
+    - 依頼種別変更: 同一Accountの「開始日より前」の最新Task Field3__c と比較
+    - 省略時: 本日のみ（リアルタイム用途のデフォルト）
     """
+    from datetime import date as _date
+    _today = _date.today().strftime("%Y-%m-%d")
+    if not start_date:
+        start_date = _today
+    if not end_date:
+        end_date = _today
     # 1. CS促進メンバー取得
     members_rs = sf.query_all(
         "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
@@ -1123,12 +1130,13 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
             "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
         ])
 
-    # 2. 本日の Task（留守以外、コール結果入力済み）
+    # 2. 期間内の Task（留守以外、コール結果入力済み）
     tasks_rs = sf.query_all(
         "SELECT Id, Owner.Name, Field1_del__c, Field2_del__c, Field3_del__c, "
         "Field4_del__c, Field3__c, Description, AccountId, Account.X1__c "
         "FROM Task "
-        "WHERE ActivityDate = TODAY "
+        f"WHERE ActivityDate >= {start_date} "
+        f"AND ActivityDate <= {end_date} "
         "AND Field4_del__c != null "
         "AND Field4_del__c != '留守' "
         "ORDER BY Field1_del__c DESC NULLS LAST"
@@ -1145,7 +1153,7 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
             "コール結果", "コメント", "通話時間", "依頼種別 変更前", "依頼種別 変更後",
         ])
 
-    # 3. 前回Task（同一Account、ActivityDate<TODAY の最新1件）から旧依頼種別を取得
+    # 3. 前回Task（同一Account、ActivityDate < start_date の最新1件）から旧依頼種別を取得
     account_ids = {t.get("AccountId") for t in target if t.get("AccountId")}
     prev_field3: dict[str, str | None] = {}
     if account_ids:
@@ -1154,7 +1162,7 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
             f"SELECT AccountId, Field3__c, Field1_del__c "
             f"FROM Task "
             f"WHERE AccountId IN ({ids_str}) "
-            f"AND ActivityDate < TODAY "
+            f"AND ActivityDate < {start_date} "
             f"AND Field1_del__c != null "
             f"ORDER BY Field1_del__c DESC"
         )["records"]
@@ -1164,11 +1172,12 @@ def fetch_call_history(sf: Salesforce) -> pd.DataFrame:
             if aid and aid not in prev_field3:
                 prev_field3[aid] = r.get("Field3__c")
 
-    # 4. Zoom Call Log (本日 connected) を担当者×電話番号でインデックス化
+    # 4. Zoom Call Log (期間内 connected) を担当者×電話番号でインデックス化
     zoom_rs = sf.query_all(
         "SELECT Owner.Name, ZVC__Callee_Phone_Number__c, ZVC__Call_Duration__c "
         "FROM ZVC__Zoom_Call_Log__c "
-        "WHERE CreatedDate = TODAY "
+        f"WHERE DAY_ONLY(CreatedDate) >= {start_date} "
+        f"AND DAY_ONLY(CreatedDate) <= {end_date} "
         "AND ZVC__Call_Result__c = 'connected'"
     )["records"]
     # {(担当者norm, phone_e164): [duration_sec, ...]}

@@ -27,6 +27,9 @@ DERBY_TAB = "SO新設プリティーダービー用"
 LOOKUP_SHEET_ID = "1iNtEakg4U4C3p7uQlVcJIzojnUd8uW5Ykl8swQRQD5U"
 LOOKUP_TAB = "1週間後FC該当案件"
 
+# 代コン不備該当案件 lookup用
+DAICON_LOOKUP_TAB = "代コン不備該当案件"
+
 # 「1週間後FC該当案件」に引用する列（レポートのラベル名で指定）
 LOOKUP_COLUMNS = [
     "取引先名",
@@ -108,6 +111,7 @@ _SOQL_FIELDS = [
     ("Field43__c", "エリア（東西）"),
     ("Field6__c", "建物区分（設置先）"),
     ("Field228__c", "開通後ホーム電話案内"),
+    ("Field113__c", "開通ステータス"),
     ("Id", "取引先 ID"),
     ("Field109__c", "対応ステータス"),
     ("Field144__c", "促進ステータス"),
@@ -300,6 +304,110 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
     return found_headers, extracted
 
 
+DAICON_LOOKUP_COLUMNS = [
+    "取引先名",
+    "申込者氏名",
+    "申込者氏名（フリガナ）",
+    "申込時工事取得状況",
+    "案件進捗管理: エントリ日",
+    "工事予定日（引用）",
+    "開通日（引用）",
+    "決済登録日（引用）",
+    "status大区分（引用）",
+    "開通ステータス",
+    "【Lｽﾃｯﾌﾟ】突合完了日（引用）",
+    "利用回線",
+    "開通後ホーム電話案内",
+    "ダイコンステータス",
+    "1次ダイコン理由", "1次ダイコン備考",
+    "2次ダイコン理由", "2次ダイコン備考",
+    "3次ダイコン理由", "3次ダイコン備考",
+    "4次ダイコン理由", "4次ダイコン備考",
+    "5次ダイコン理由", "5次ダイコン備考",
+    "6次ダイコン理由", "6次ダイコン備考",
+    "7次ダイコン理由", "7次ダイコン備考",
+    "8次ダイコン理由", "8次ダイコン備考",
+    "9次ダイコン理由", "9次ダイコン備考",
+    "10次ダイコン理由", "10次ダイコン備考",
+    "取次商材情報",
+    "年齢",
+    "利用携帯＆利用台数",
+    "商流（引用）",
+    "住所結合",
+    "郵便番号(設置先)",
+    "エリア（東西）",
+    "取引先 ID",
+]
+
+
+def extract_daicon_fubi_data(headers: list[str], rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
+    """
+    代コン不備解消用の抽出。
+    条件:
+      - ダイコンステータス or 1〜10次ダイコン理由のいずれかに値
+      - キャンセル日（引用）が空欄
+      - 開通ステータスが「キャンセル」ではない
+      - status大区分 が 95 キャンセル済み / 88 退会受付済み(回線廃止手続き中) / 50 開通済み ではない
+    """
+    col_indices = []
+    found_headers = []
+    for col_name in DAICON_LOOKUP_COLUMNS:
+        if col_name in headers:
+            col_indices.append(headers.index(col_name))
+            found_headers.append(col_name)
+        else:
+            print(f"  WARNING: 列 '{col_name}' がレポートに見つかりません（スキップ）")
+
+    daikon_idx = headers.index("ダイコンステータス") if "ダイコンステータス" in headers else -1
+    reason_idxs = [headers.index(f"{n}次ダイコン理由") for n in range(1, 11) if f"{n}次ダイコン理由" in headers]
+    cancel_idx = headers.index("キャンセル日（引用）") if "キャンセル日（引用）" in headers else -1
+    kaitsu_idx = headers.index("開通ステータス") if "開通ステータス" in headers else -1
+    status_idx = headers.index("status大区分（引用）") if "status大区分（引用）" in headers else -1
+
+    EXCLUDE_STATUS = {
+        "95 キャンセル済み",
+        "88 退会受付済み(回線廃止手続き中)",
+        "50 開通済み",
+    }
+
+    extracted = []
+    skipped = 0
+    for row in rows:
+        # キャンセル日が入っていたら除外
+        if cancel_idx >= 0 and cancel_idx < len(row) and row[cancel_idx].strip():
+            skipped += 1
+            continue
+
+        # 開通ステータスがキャンセルなら除外
+        if kaitsu_idx >= 0 and kaitsu_idx < len(row) and row[kaitsu_idx].strip() == "キャンセル":
+            skipped += 1
+            continue
+
+        # status大区分が除外対象なら除外
+        if status_idx >= 0 and status_idx < len(row) and row[status_idx].strip() in EXCLUDE_STATUS:
+            skipped += 1
+            continue
+
+        # ダイコンステータス or 1〜10次ダイコン理由のいずれかに値
+        has_daikon = False
+        if daikon_idx >= 0 and daikon_idx < len(row) and row[daikon_idx].strip():
+            has_daikon = True
+        else:
+            for ri in reason_idxs:
+                if ri < len(row) and row[ri].strip():
+                    has_daikon = True
+                    break
+        if not has_daikon:
+            skipped += 1
+            continue
+
+        extracted.append([row[i] if i < len(row) else "" for i in col_indices])
+
+    print(f"  フィルター: ダイコン値あり & キャンセル日空 & 開通ST≠キャンセル & status大区分除外={EXCLUDE_STATUS}")
+    print(f"  → {len(extracted)}行（除外: {skipped}行）")
+    return found_headers, extracted
+
+
 def main():
     print("=== SF Report → Google Sheets Sync ===")
 
@@ -321,6 +429,14 @@ def main():
     print("3. 1週間後FC該当案件タブに必要列を書込中...")
     lookup_headers, lookup_rows = extract_lookup_data(headers, rows)
     write_to_sheet(client, LOOKUP_SHEET_ID, LOOKUP_TAB, lookup_headers, lookup_rows)
+
+    # API制限回避
+    time.sleep(3)
+
+    # 4. 代コン不備該当案件タブに書込
+    print("4. 代コン不備該当案件タブに必要列を書込中...")
+    daicon_headers, daicon_rows = extract_daicon_fubi_data(headers, rows)
+    write_to_sheet(client, LOOKUP_SHEET_ID, DAICON_LOOKUP_TAB, daicon_headers, daicon_rows)
 
     print("=== 完了 ===")
 

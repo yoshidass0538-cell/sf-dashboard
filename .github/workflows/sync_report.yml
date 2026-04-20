@@ -1,11 +1,8 @@
 name: Sync SF Report to Google Sheets
 
 on:
-  schedule:
-    # 毎日 10:00 JST = 01:00 UTC, 19:00 JST = 10:00 UTC
-    - cron: '0 1 * * *'   # 10:00 JST
-    - cron: '0 10 * * *'  # 19:00 JST
-  workflow_dispatch:  # 手動実行も可能
+  # スケジュールは cron-job.org から workflow_dispatch で発火（GitHub標準cronは遅延が大きいため廃止）
+  workflow_dispatch:
 
 jobs:
   sync:

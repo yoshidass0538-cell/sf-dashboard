@@ -250,13 +250,14 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
     """
     全データからLOOKUP_COLUMNSだけ抽出。
     フィルター:
-      - エントリ日が過去90日以内
+      - エントリ日が過去60日以内
       - status大区分が 95 キャンセル済み / 96 解約済み は除外
+      - キャンセル日（引用）が入っている案件は除外
     """
     from datetime import datetime, timezone, timedelta
     JST = timezone(timedelta(hours=9))
     now = datetime.now(JST)
-    date_from = (now - timedelta(days=90)).date()
+    date_from = (now - timedelta(days=60)).date()
 
     col_indices = []
     found_headers = []
@@ -271,6 +272,7 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
     entry_idx = headers.index("案件進捗管理: エントリ日") if "案件進捗管理: エントリ日" in headers else -1
     status_idx = headers.index("status大区分（引用）") if "status大区分（引用）" in headers else -1
     shozai_idx = headers.index("取次商材情報") if "取次商材情報" in headers else -1
+    cancel_idx = headers.index("キャンセル日（引用）") if "キャンセル日（引用）" in headers else -1
     EXCLUDE_STATUS = {"95 キャンセル済み", "96 解約済み", "キャンセル"}
     EXCLUDE_SHOZAI = {"AU光_010"}
 
@@ -291,6 +293,12 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
                 skipped += 1
                 continue
 
+        # キャンセル日が入っていたら除外
+        if cancel_idx >= 0 and cancel_idx < len(row):
+            if row[cancel_idx].strip():
+                skipped += 1
+                continue
+
         # エントリ日フィルター（過去60日以内）
         if entry_idx >= 0 and entry_idx < len(row):
             entry_str = row[entry_idx].strip()
@@ -308,7 +316,7 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
 
         extracted.append([row[i] if i < len(row) else "" for i in col_indices])
 
-    print(f"  フィルター: エントリ日>={date_from}, status除外={EXCLUDE_STATUS}, 商材除外={EXCLUDE_SHOZAI}")
+    print(f"  フィルター: エントリ日>={date_from}, キャンセル日空, status除外={EXCLUDE_STATUS}, 商材除外={EXCLUDE_SHOZAI}")
     print(f"  → {len(extracted)}行（除外: {skipped}行）")
     return found_headers, extracted
 

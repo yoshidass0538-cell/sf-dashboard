@@ -2111,7 +2111,6 @@ if selected_key == "1week_cx_check":
             cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4"},
         )
         _widths = {
-            "申込受付番号": 140,
             "担当者": 110,
             "1週間後FC完了履歴日": 140,
             "キャンセル日": 110,
@@ -2122,6 +2121,11 @@ if selected_key == "1week_cx_check":
         for col, w in _widths.items():
             if col in df_disp.columns:
                 gb.configure_column(col, width=w, suppressSizeToFit=True)
+        gb.configure_column(
+            "申込受付番号",
+            minWidth=200, wrapText=True, autoHeight=True,
+            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4"},
+        )
         gb.configure_column(
             "キャンセル対応コメント",
             flex=3, minWidth=300, wrapText=True, autoHeight=True,

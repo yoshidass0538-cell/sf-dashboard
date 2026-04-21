@@ -2042,6 +2042,10 @@ if selected_key.startswith("talk_script_"):
                 continue
             _body = _apply_nanori_sk(_body, info)
             _body = _apply_replace_sk(_body)
+            # ○○光 を顧客の利用回線で自動置換
+            _riyou_kaisen_sk = (info.get("利用回線") or "").strip()
+            if _riyou_kaisen_sk and "○○光" in _body:
+                _body = _body.replace("○○光", _riyou_kaisen_sk)
             _safe = _html_sk.escape(_body).replace("\n", "<br>").replace(" ", "&nbsp;")
             st.markdown(
                 f'<div style="background:#E8F5E9;border-left:4px solid #2E8B57;'

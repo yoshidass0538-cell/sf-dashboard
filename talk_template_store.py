@@ -80,6 +80,29 @@ SONET_FUBI_KEYS = [
     "詳細確認待ち",
 ]
 
+# 促進用トーク（代コン不備解消用）の5種テンプレートキー
+SONET_SOKUSHIN_KEYS = [
+    "工事取得3者間",
+    "番ポ不備FC",
+    "住所確認FC",
+    "現地調査3者間",
+    "有派遣変更3者間",
+]
+
+# 促進用トーク 階層構造: 商材 → カテゴリ → テンプレ
+# 将来: "NURO光", "AU" などの商材、"工事停滞", "開通前停滞" などのカテゴリを追加可能
+SONET_SOKUSHIN_HIERARCHY: dict[str, dict[str, list[str]]] = {
+    "So-net光": {
+        "不備停滞": list(SONET_SOKUSHIN_KEYS),
+    },
+}
+
+# 各テンプレの初期セクション構成
+SOKUSHIN_DEFAULT_SECTIONS = ["アプローチ", "説明", "締め"]
+
+# 促進用トーク デフォルト（空テンプレ。マスタで編集する想定）
+DEFAULT_SONET_SOKUSHIN: dict[str, str] = {k: "" for k in SONET_SOKUSHIN_KEYS}
+
 # 締めセクションのバリエーションキー（Sonetのみ）
 SONET_CLOSING_KEYS = [
     "利用回線あり",
@@ -680,6 +703,8 @@ def _parse_defaults_from_source() -> dict[str, dict[str, str]]:
     out["Sonet_fubi"] = dict(DEFAULT_SONET_FUBI)
     # 締めの2種（利用回線あり/不明）もハードコードのデフォルトを使う
     out["Sonet_closing"] = dict(DEFAULT_SONET_CLOSING)
+    # 促進用5種（代コン不備解消用）もハードコードのデフォルト
+    out["Sonet_sokushin"] = dict(DEFAULT_SONET_SOKUSHIN)
     # LINEテンプレ（Sonet/NUROそれぞれ3種）はソースシートから取得
     from talk_script_store import load_line_templates
     try:
@@ -706,6 +731,22 @@ def select_fubi_key(daikon_status: str, koji_yotei_hi: str) -> str:
     if s == "工事日調整希望":
         return "工事取得"
     return s
+
+
+_SOKUSHIN_MAPPING = {
+    "工事日調整希望": "工事取得3者間",
+    "API工事取得": "工事取得3者間",
+    "番ポ不備": "番ポ不備FC",
+    "住所確認": "住所確認FC",
+    "現地調査必要": "現地調査3者間",
+    "有派遣へ変更必要": "有派遣変更3者間",
+}
+
+
+def select_sokushin_key(daikon_status: str) -> str:
+    """ダイコンステータスから促進用トークのテンプレキーを決定。未対応値は空文字。"""
+    s = (daikon_status or "").strip()
+    return _SOKUSHIN_MAPPING.get(s, "")
 
 
 def apply_furigana_substitution(body: str, furigana: str) -> str:
@@ -841,6 +882,11 @@ def _deserialize(raw: str) -> dict:
         data["Sonet_closing"] = {}
     for key in SONET_CLOSING_KEYS:
         data["Sonet_closing"].setdefault(key, DEFAULT_SONET_CLOSING.get(key, ""))
+    # 促進用5種（Sonet_sokushin）も欠けてればデフォルトで埋める
+    if "Sonet_sokushin" not in data:
+        data["Sonet_sokushin"] = {}
+    for key in SONET_SOKUSHIN_KEYS:
+        data["Sonet_sokushin"].setdefault(key, DEFAULT_SONET_SOKUSHIN.get(key, ""))
     # LINEテンプレ（Sonet_line / NURO_line）も欠けてればソースシートから補完
     for store_key in ("Sonet_line", "NURO_line"):
         if store_key not in data:
@@ -942,6 +988,100 @@ def update_section_rule(kind: str, section_name: str, rule: dict):
         kind_rules[section_name] = rule
     else:
         kind_rules.pop(section_name, None)
+
+
+# ======================================================================
+# 促進用トーク: セクション / ルール / 本文 / LINEテンプレ API
+# ======================================================================
+
+def _ensure_sokushin_structure(templates: dict, template_key: str):
+    """
+    促進用トーク のデータ構造を保証。
+    - 旧形式 (str): 新形式 {"アプローチ":"", "説明": str, "締め":""} に移行
+    - 新形式 (dict): 不足セクションを空文字で補完
+    - セクション構成が未登録なら _sections に初期登録
+    """
+    sokushin = templates.setdefault("Sonet_sokushin", {})
+    current = sokushin.get(template_key)
+
+    templates.setdefault("_sections", {})
+    sec_kind = f"sokushin_{template_key}"
+    if sec_kind not in templates["_sections"]:
+        templates["_sections"][sec_kind] = list(SOKUSHIN_DEFAULT_SECTIONS)
+    sections = templates["_sections"][sec_kind]
+
+    if isinstance(current, str):
+        new_struct = {sec: "" for sec in sections}
+        if "説明" in sections:
+            new_struct["説明"] = current
+        elif sections:
+            new_struct[sections[0]] = current
+        sokushin[template_key] = new_struct
+    elif not isinstance(current, dict):
+        sokushin[template_key] = {sec: "" for sec in sections}
+    else:
+        for sec in sections:
+            current.setdefault(sec, "")
+
+
+def get_sokushin_sections(template_key: str) -> list[str]:
+    """促進用トーク テンプレのセクション構成を取得。"""
+    templates = _shared_templates()
+    _ensure_sokushin_structure(templates, template_key)
+    return list(templates["_sections"][f"sokushin_{template_key}"])
+
+
+def update_sokushin_sections(template_key: str, sections: list[str]):
+    """促進用トーク テンプレのセクション構成を更新。"""
+    templates = _shared_templates()
+    _ensure_sokushin_structure(templates, template_key)
+    sec_kind = f"sokushin_{template_key}"
+    templates["_sections"][sec_kind] = list(sections)
+    text_map = templates["Sonet_sokushin"].setdefault(template_key, {})
+    for sec in sections:
+        text_map.setdefault(sec, "")
+
+
+def get_sokushin_text(template_key: str, section_name: str) -> str:
+    """促進用トーク テンプレの指定セクションの本文を取得。"""
+    templates = _shared_templates()
+    _ensure_sokushin_structure(templates, template_key)
+    return str(templates["Sonet_sokushin"][template_key].get(section_name, ""))
+
+
+def update_sokushin_text(template_key: str, section_name: str, text: str):
+    """促進用トーク テンプレの指定セクションの本文を更新。"""
+    templates = _shared_templates()
+    _ensure_sokushin_structure(templates, template_key)
+    templates["Sonet_sokushin"][template_key][section_name] = text
+
+
+def get_sokushin_section_rule(template_key: str, section_name: str) -> dict:
+    """促進用トーク テンプレの指定セクションの表示ルールを取得。"""
+    return get_section_rule(f"sokushin_{template_key}", section_name)
+
+
+def update_sokushin_section_rule(template_key: str, section_name: str, rule: dict):
+    """促進用トーク テンプレの指定セクションの表示ルールを更新。"""
+    update_section_rule(f"sokushin_{template_key}", section_name, rule)
+
+
+def get_sokushin_line_templates(template_key: str) -> dict[str, str]:
+    """促進用トーク テンプレの LINEテンプレ（完了/留守/留守完了）を取得。"""
+    templates = _shared_templates()
+    line_store = templates.setdefault("Sonet_sokushin_line", {})
+    entry = line_store.setdefault(template_key, {})
+    for k in LINE_TEMPLATE_KEYS:
+        entry.setdefault(k, "")
+    return dict(entry)
+
+
+def update_sokushin_line_template(template_key: str, line_key: str, text: str):
+    """促進用トーク テンプレの LINEテンプレを更新。"""
+    templates = _shared_templates()
+    line_store = templates.setdefault("Sonet_sokushin_line", {})
+    entry = line_store.setdefault(template_key, {})
+    entry[line_key] = text
 
 
 def evaluate_section_rule(rule: dict, info: dict) -> bool:

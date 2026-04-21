@@ -1066,20 +1066,49 @@ def update_sokushin_section_rule(template_key: str, section_name: str, rule: dic
     update_section_rule(f"sokushin_{template_key}", section_name, rule)
 
 
-def get_sokushin_line_templates(template_key: str) -> dict[str, str]:
-    """促進用トーク テンプレの LINEテンプレ（完了/留守/留守完了）を取得。"""
-    templates = _shared_templates()
+def _ensure_sokushin_line_structure(templates: dict, template_key: str):
+    """LINEテンプレのヘッダリストを保証。未設定ならデフォルト3種で初期化。"""
+    templates.setdefault("_sokushin_line_sections", {})
+    if template_key not in templates["_sokushin_line_sections"]:
+        templates["_sokushin_line_sections"][template_key] = list(LINE_TEMPLATE_KEYS)
     line_store = templates.setdefault("Sonet_sokushin_line", {})
     entry = line_store.setdefault(template_key, {})
-    for k in LINE_TEMPLATE_KEYS:
+    for k in templates["_sokushin_line_sections"][template_key]:
         entry.setdefault(k, "")
-    return dict(entry)
+
+
+def get_sokushin_line_headers(template_key: str) -> list[str]:
+    """促進用トーク テンプレの LINEテンプレヘッダーリスト取得。"""
+    templates = _shared_templates()
+    _ensure_sokushin_line_structure(templates, template_key)
+    return list(templates["_sokushin_line_sections"][template_key])
+
+
+def update_sokushin_line_headers(template_key: str, headers: list[str]):
+    """LINEテンプレヘッダーリストを更新。"""
+    templates = _shared_templates()
+    _ensure_sokushin_line_structure(templates, template_key)
+    templates["_sokushin_line_sections"][template_key] = list(headers)
+    line_store = templates["Sonet_sokushin_line"]
+    entry = line_store.setdefault(template_key, {})
+    for h in headers:
+        entry.setdefault(h, "")
+
+
+def get_sokushin_line_templates(template_key: str) -> dict[str, str]:
+    """促進用トーク テンプレの LINEテンプレ（header → 本文）を取得。"""
+    templates = _shared_templates()
+    _ensure_sokushin_line_structure(templates, template_key)
+    line_store = templates["Sonet_sokushin_line"]
+    entry = line_store.get(template_key, {})
+    return {h: entry.get(h, "") for h in templates["_sokushin_line_sections"][template_key]}
 
 
 def update_sokushin_line_template(template_key: str, line_key: str, text: str):
     """促進用トーク テンプレの LINEテンプレを更新。"""
     templates = _shared_templates()
-    line_store = templates.setdefault("Sonet_sokushin_line", {})
+    _ensure_sokushin_line_structure(templates, template_key)
+    line_store = templates["Sonet_sokushin_line"]
     entry = line_store.setdefault(template_key, {})
     entry[line_key] = text
 

@@ -820,8 +820,9 @@ if selected_key == "_master":
                 """セクション構成・表示条件エディタ"""
                 current_sections = get_sokushin_sections(tmpl_key)
                 _sec_order_key = f"_sk_sec_order_{tmpl_key}"
-                if _sec_order_key not in st.session_state:
-                    st.session_state[_sec_order_key] = list(current_sections)
+                # キャッシュを真実の源として毎回同期（eager update_sokushin_sections で
+                # キャッシュは常に最新に保たれる）
+                st.session_state[_sec_order_key] = list(current_sections)
                 _sec_list = st.session_state[_sec_order_key]
 
                 _to_delete: list[int] = []
@@ -1035,25 +1036,110 @@ if selected_key == "_master":
                         update_sokushin_text(tmpl_key, sn, new_val)
 
             def _render_sokushin_line_editor(tmpl_key: str):
-                """LINEテンプレエディタ"""
+                """LINEテンプレエディタ（動的ヘッダー: 追加/改名/削除可）"""
+                from talk_template_store import (
+                    get_sokushin_line_headers,
+                    update_sokushin_line_headers,
+                )
+                headers = get_sokushin_line_headers(tmpl_key)
+                _hdr_key = f"_sk_line_hdr_{tmpl_key}"
+                st.session_state[_hdr_key] = list(headers)
+                _hdr_list = st.session_state[_hdr_key]
+
+                def _clear_line_widget_states(tk: str, max_idx: int):
+                    for _ki in range(max_idx):
+                        for _prefix in (
+                            f"sk_line_hdr_name_{tk}_",
+                            f"sk_line_text_{tk}_",
+                        ):
+                            st.session_state.pop(f"{_prefix}{_ki}", None)
+
+                _line_renamed: dict[int, str] = {}
+                _line_to_delete: list[int] = []
+
                 line_map = get_sokushin_line_templates(tmpl_key)
-                for lk in LINE_TEMPLATE_KEYS:
+
+                for li, lk in enumerate(_hdr_list):
                     st.markdown(
                         f'<div style="background:#FFF3E0;border-left:4px solid #E65100;'
-                        f'padding:6px 12px;margin:10px 0 4px 0;border-radius:4px;font-weight:600;color:#BF360C;">'
-                        f'💬 {lk}</div>',
+                        f'padding:6px 12px;margin:10px 0 4px 0;border-radius:4px;font-weight:600;color:#BF360C;'
+                        f'display:flex;align-items:center;gap:8px;">'
+                        f'<span style="background:#E65100;color:#fff;border-radius:50%;width:24px;height:24px;'
+                        f'display:inline-flex;align-items:center;justify-content:center;font-size:0.85rem;">💬</span>'
+                        f'<span style="flex:1;">{lk}</span></div>',
                         unsafe_allow_html=True,
                     )
+                    hc1, hc2, hc3, hc4 = st.columns([8, 1, 1, 1])
+                    with hc1:
+                        _new_hdr = st.text_input(
+                            f"line_hdr_{li}",
+                            value=lk,
+                            key=f"sk_line_hdr_name_{tmpl_key}_{li}",
+                            label_visibility="collapsed",
+                            placeholder="ヘッダー名",
+                        )
+                        if _new_hdr != lk:
+                            _line_renamed[li] = _new_hdr
+                    with hc2:
+                        if li > 0 and st.button("⬆", key=f"sk_line_up_{tmpl_key}_{li}", help="上に移動"):
+                            _hdr_list[li], _hdr_list[li - 1] = _hdr_list[li - 1], _hdr_list[li]
+                            _clear_line_widget_states(tmpl_key, len(_hdr_list) + 5)
+                            update_sokushin_line_headers(tmpl_key, _hdr_list)
+                            st.rerun()
+                    with hc3:
+                        if li < len(_hdr_list) - 1 and st.button("⬇", key=f"sk_line_down_{tmpl_key}_{li}", help="下に移動"):
+                            _hdr_list[li], _hdr_list[li + 1] = _hdr_list[li + 1], _hdr_list[li]
+                            _clear_line_widget_states(tmpl_key, len(_hdr_list) + 5)
+                            update_sokushin_line_headers(tmpl_key, _hdr_list)
+                            st.rerun()
+                    with hc4:
+                        if st.button("🗑", key=f"sk_line_del_{tmpl_key}_{li}", help="削除"):
+                            _line_to_delete.append(li)
+
                     current = line_map.get(lk, "")
                     new_val = st.text_area(
                         lk,
                         value=current,
                         height=160,
-                        key=f"sk_line_{tmpl_key}_{lk}",
+                        key=f"sk_line_text_{tmpl_key}_{li}",
                         label_visibility="collapsed",
                     )
                     if new_val != current:
                         update_sokushin_line_template(tmpl_key, lk, new_val)
+
+                for li, newname in _line_renamed.items():
+                    if not newname.strip():
+                        continue
+                    old = _hdr_list[li]
+                    _hdr_list[li] = newname
+                    old_text = line_map.get(old, "")
+                    update_sokushin_line_template(tmpl_key, newname, old_text)
+
+                if _line_to_delete:
+                    for li in sorted(_line_to_delete, reverse=True):
+                        if 0 <= li < len(_hdr_list):
+                            _hdr_list.pop(li)
+                    _clear_line_widget_states(tmpl_key, len(_hdr_list) + len(_line_to_delete) + 5)
+                    update_sokushin_line_headers(tmpl_key, _hdr_list)
+                    st.rerun()
+
+                st.markdown("---")
+                _add_lc1, _add_lc2 = st.columns([5, 1])
+                _new_hdr_name = _add_lc1.text_input(
+                    "新しいLINEテンプレを追加",
+                    key=f"sk_line_hdr_add_input_{tmpl_key}",
+                    placeholder="ヘッダー名を入力（例: 不在LINE）",
+                    label_visibility="collapsed",
+                )
+                if _add_lc2.button("＋追加", key=f"sk_line_hdr_add_btn_{tmpl_key}", use_container_width=True):
+                    nm = (_new_hdr_name or "").strip()
+                    if nm and nm not in _hdr_list:
+                        _hdr_list.append(nm)
+                        st.session_state.pop(f"sk_line_hdr_add_input_{tmpl_key}", None)
+                        update_sokushin_line_headers(tmpl_key, _hdr_list)
+                        st.rerun()
+
+                update_sokushin_line_headers(tmpl_key, _hdr_list)
 
             # ===== 3段タブ（商材 → カテゴリ → テンプレ） =====
             _product_names = list(SONET_SOKUSHIN_HIERARCHY.keys())
@@ -1904,7 +1990,7 @@ if selected_key.startswith("talk_script_"):
             get_sokushin_section_rule,
             evaluate_section_rule as _eval_rule_sk,
             get_sokushin_line_templates,
-            LINE_TEMPLATE_KEYS as _LINE_KEYS_SK,
+            get_sokushin_line_headers as _get_sk_line_headers,
         )
         from nanori_master_store import apply_nanori_substitution as _apply_nanori_sk
         from replace_master_store import apply_replace_substitution as _apply_replace_sk
@@ -1957,10 +2043,11 @@ if selected_key.startswith("talk_script_"):
 
         # LINEテンプレ（折りたたみ）
         _line_map_sk = get_sokushin_line_templates(_sokushin_key)
-        if any(_line_map_sk.values()):
+        _line_headers_sk = _get_sk_line_headers(_sokushin_key)
+        if any(_line_map_sk.values()) and _line_headers_sk:
             with st.expander("💬 LINEテンプレ", expanded=False):
-                _line_tabs = st.tabs(_LINE_KEYS_SK)
-                for _tab, _lk in zip(_line_tabs, _LINE_KEYS_SK):
+                _line_tabs = st.tabs(_line_headers_sk)
+                for _tab, _lk in zip(_line_tabs, _line_headers_sk):
                     with _tab:
                         _body_line = _line_map_sk.get(_lk, "")
                         if not _body_line:

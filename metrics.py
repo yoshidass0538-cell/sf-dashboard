@@ -281,12 +281,21 @@ def fetch_1week_cx_check(sf: Salesforce) -> pd.DataFrame:
 
     empty = pd.DataFrame(columns=_CX_CHECK_COLUMNS)
 
+    users_rs = sf.query_all(
+        "SELECT Id FROM User WHERE Department = 'CS促進' AND IsActive = true"
+    )["records"]
+    cs_user_ids = {r["Id"] for r in users_rs}
+    if not cs_user_ids:
+        return empty
+    ids_literal = ",".join(f"'{u}'" for u in cs_user_ids)
+
     fc_records = sf.query_all(
         "SELECT WhatId, Owner.Name, ActivityDate "
         "FROM Task "
         "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
         "AND Field4_del__c = '完了' "
         f"AND ActivityDate >= {start_date} "
+        f"AND OwnerId IN ({ids_literal}) "
         "AND WhatId != null"
     )["records"]
 

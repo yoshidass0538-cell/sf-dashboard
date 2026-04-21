@@ -259,6 +259,146 @@ def _fetch_1week_cancel_reasons(sf: Salesforce, date_literal: str = "THIS_MONTH"
     return tables
 
 
+_CX_CHECK_COLUMNS = [
+    "申込受付番号",
+    "担当者",
+    "1週間後FC完了履歴日",
+    "キャンセル日",
+    "キャンセル対応コメント",
+    "キャンセル理由（大）",
+    "キャンセル理由（中）",
+    "キャンセル理由（小）",
+]
+
+
+def fetch_1week_cx_check(sf: Salesforce) -> pd.DataFrame:
+    """1週間後CXチェック: 過去3ヶ月で「対応ステータス=フォローコール（1週間後FC）」
+    かつ「コール結果=完了」の Task を残した担当者別に、その後キャンセルになった
+    Account の一覧を返す。並び順は1週間後FC完了履歴日の降順。"""
+    from datetime import datetime, timedelta
+
+    start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+
+    empty = pd.DataFrame(columns=_CX_CHECK_COLUMNS)
+
+    fc_records = sf.query_all(
+        "SELECT WhatId, Owner.Name, ActivityDate "
+        "FROM Task "
+        "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
+        "AND Field4_del__c = '完了' "
+        f"AND ActivityDate >= {start_date} "
+        "AND WhatId != null"
+    )["records"]
+
+    fc_map: dict[str, list] = {}
+    for r in fc_records:
+        wid = r.get("WhatId")
+        if not wid or not wid.startswith("001"):
+            continue
+        owner_name = r["Owner"]["Name"] if r.get("Owner") else "(不明)"
+        fc_map.setdefault(wid, []).append((owner_name, r.get("ActivityDate")))
+
+    if not fc_map:
+        return empty
+
+    account_ids = list(fc_map.keys())
+    account_map: dict[str, dict] = {}
+    for i in range(0, len(account_ids), 200):
+        chunk = account_ids[i : i + 200]
+        ids_str = ",".join(f"'{x}'" for x in chunk)
+        rs = sf.query_all(
+            "SELECT Id, Field63__c, Field119__c, Field234__c, Field80__c, Field235__c "
+            "FROM Account "
+            f"WHERE Id IN ({ids_str}) "
+            "AND Field233__c = true "
+            "AND Field119__c != null"
+        )["records"]
+        for r in rs:
+            account_map[r["Id"]] = {
+                "受付No": r.get("Field63__c") or "",
+                "キャンセル日": r.get("Field119__c") or "",
+                "大": r.get("Field234__c") or "",
+                "中": r.get("Field80__c") or "",
+                "小": r.get("Field235__c") or "",
+            }
+
+    if not account_map:
+        return empty
+
+    valid_rows: list[dict] = []
+    for wid, fc_list in fc_map.items():
+        acc = account_map.get(wid)
+        if not acc:
+            continue
+        cancel_date = acc["キャンセル日"]
+        if not cancel_date:
+            continue
+        eligible = [
+            (owner, fc_date)
+            for owner, fc_date in fc_list
+            if fc_date and fc_date <= cancel_date
+        ]
+        if not eligible:
+            continue
+        eligible.sort(key=lambda x: x[1], reverse=True)
+        owner, fc_date = eligible[0]
+        valid_rows.append({
+            "account_id": wid,
+            "owner": owner,
+            "fc_date": fc_date,
+            "cancel_date": cancel_date,
+            "受付No": acc["受付No"],
+            "大": acc["大"],
+            "中": acc["中"],
+            "小": acc["小"],
+        })
+
+    if not valid_rows:
+        return empty
+
+    valid_ids = [r["account_id"] for r in valid_rows]
+    cancel_task_map: dict[str, list] = {}
+    for i in range(0, len(valid_ids), 200):
+        chunk = valid_ids[i : i + 200]
+        ids_str = ",".join(f"'{x}'" for x in chunk)
+        rs = sf.query_all(
+            "SELECT WhatId, ActivityDate, Description "
+            "FROM Task "
+            f"WHERE WhatId IN ({ids_str}) "
+            "AND Field2_del__c = 'キャンセル対応' "
+            "AND Field4_del__c != '留守' "
+            "ORDER BY ActivityDate DESC"
+        )["records"]
+        for r in rs:
+            wid = r.get("WhatId")
+            if not wid:
+                continue
+            cancel_task_map.setdefault(wid, []).append(
+                (r.get("ActivityDate") or "", r.get("Description") or "")
+            )
+
+    rows = []
+    for r in valid_rows:
+        tasks = cancel_task_map.get(r["account_id"], [])
+        top3 = [(d, desc) for d, desc in tasks if desc][:3]
+        comment_text = "\n---\n".join(f"[{d}] {desc}" for d, desc in top3)
+        rows.append({
+            "申込受付番号": r["受付No"],
+            "担当者": r["owner"],
+            "1週間後FC完了履歴日": r["fc_date"],
+            "キャンセル日": r["cancel_date"],
+            "キャンセル対応コメント": comment_text,
+            "キャンセル理由（大）": r["大"],
+            "キャンセル理由（中）": r["中"],
+            "キャンセル理由（小）": r["小"],
+        })
+
+    df = pd.DataFrame(rows, columns=_CX_CHECK_COLUMNS)
+    if not df.empty:
+        df = df.sort_values("1週間後FC完了履歴日", ascending=False).reset_index(drop=True)
+    return df
+
+
 # ----------------------------------------------------------------------
 # 指標レジストリ
 # ----------------------------------------------------------------------
@@ -1850,6 +1990,13 @@ METRICS: list[Metric] = [
         label="折返し件数",
         description="後確待ち管理シートから今日と明日の時間別折返件数を表示",
         fetch=fetch_orikaeshi_kensu,
+        category="TOTAL",
+    ),
+    Metric(
+        key="1week_cx_check",
+        label="１週間後CXチェック",
+        description="過去3ヶ月で1週間後FC完了→キャンセルになった案件一覧（活動完了日で絞り込み可）",
+        fetch=fetch_1week_cx_check,
         category="TOTAL",
     ),
     Metric(

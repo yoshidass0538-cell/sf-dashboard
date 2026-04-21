@@ -124,7 +124,7 @@ def _sf():
 # ボードを開くたびに毎回取得（キャッシュなし）
 _REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift", "next_month_shift", "call_history"}
 # 5分キャッシュ
-_CACHE_5MIN_KEYS = {"orikaeshi_kensu"}
+_CACHE_5MIN_KEYS = {"orikaeshi_kensu", "1week_cx_check"}
 # 2時間キャッシュ
 _CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly", "kari_keisan", "cx_age_area"}
 # 毎日11:00更新（日次キャッシュ）
@@ -1952,6 +1952,9 @@ if selected_key == "cx_age_area":
 elif selected_key == "call_history":
     # 後の call_history 専用ブロックで期間指定fetchするため、ここではスキップ
     fetched = None
+elif selected_key == "1week_cx_check":
+    # 後の 1week_cx_check 専用ブロックで表示するため、ここではスキップ
+    fetched = None
 else:
     try:
         fetched = _load(selected_key)
@@ -2068,6 +2071,87 @@ if selected_key == "call_history":
             file_name="call_history.csv",
             mime="text/csv",
             key="dl_call_history",
+        )
+    st.stop()
+
+# １週間後CXチェック: 活動完了日プルダウンで絞り込み
+if selected_key == "1week_cx_check":
+    try:
+        df_cx = _load_5min("1week_cx_check")
+    except Exception as e:
+        st.error(f"取得に失敗しました: {e}")
+        st.stop()
+
+    if df_cx is None or df_cx.empty:
+        st.info("該当データはありません。")
+        st.stop()
+
+    _dates = sorted(
+        {d for d in df_cx["1週間後FC完了履歴日"].dropna().tolist() if d},
+        reverse=True,
+    )
+    _opts = ["全て"] + list(_dates)
+    _sel = st.selectbox(
+        "活動完了日で絞り込み",
+        options=_opts,
+        key="1week_cx_date_sel",
+    )
+
+    df_view = df_cx if _sel == "全て" else df_cx[df_cx["1週間後FC完了履歴日"] == _sel]
+    st.caption(f"表示件数: {len(df_view)}件")
+
+    if df_view.empty:
+        st.info("該当データはありません。")
+    else:
+        df_disp = df_view.fillna("").astype(str)
+        gb = GridOptionsBuilder.from_dataframe(df_disp)
+        gb.configure_default_column(
+            sortable=True, resizable=True, editable=False,
+            type=["textColumn"], cellDataType="text",
+            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.4"},
+        )
+        _widths = {
+            "申込受付番号": 140,
+            "担当者": 110,
+            "1週間後FC完了履歴日": 140,
+            "キャンセル日": 110,
+            "キャンセル理由（大）": 140,
+            "キャンセル理由（中）": 140,
+            "キャンセル理由（小）": 140,
+        }
+        for col, w in _widths.items():
+            if col in df_disp.columns:
+                gb.configure_column(col, width=w, suppressSizeToFit=True)
+        gb.configure_column(
+            "キャンセル対応コメント",
+            flex=3, minWidth=300, wrapText=True, autoHeight=True,
+            cellStyle={"textAlign": "left", "whiteSpace": "pre-wrap", "lineHeight": "1.5"},
+        )
+        gb.configure_grid_options(enableCellTextSelection=True, ensureDomOrder=True)
+
+        AgGrid(
+            df_disp,
+            gridOptions=gb.build(),
+            height=1200,
+            theme="balham",
+            allow_unsafe_jscode=True,
+            custom_css={
+                ".ag-header-cell": {
+                    "background-color": "#4A6FA5", "color": "#fff",
+                    "font-weight": "bold", "text-align": "center",
+                },
+                ".ag-header-cell-label": {"justify-content": "center"},
+                ".ag-row-odd": {"background-color": "#ffffff"},
+                ".ag-row-even": {"background-color": "#f0f4fa"},
+            },
+            key="aggrid_1week_cx_check",
+        )
+        st.download_button(
+            "CSV ダウンロード",
+            df_view.to_csv(index=False).encode("utf-8-sig"),
+            file_name="1week_cx_check.csv",
+            mime="text/csv",
+            key="dl_1week_cx_check",
         )
     st.stop()
 

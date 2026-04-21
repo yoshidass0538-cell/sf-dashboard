@@ -1174,11 +1174,24 @@ if selected_key == "_master":
                 type="primary",
                 use_container_width=True,
             ):
-                ok, msg = save_templates()
-                st.toast(msg, icon="✅" if ok else "⚠️")
-                if ok:
-                    st.session_state["selected"] = "_master"
-                    st.rerun()
+                # 保存サイズを事前チェック（Google Sheets セル上限 50000 chars）
+                import json as _json_sk
+                _tpl_dump = _json_sk.dumps(get_templates(), ensure_ascii=False)
+                _size_kb = len(_tpl_dump.encode("utf-8")) / 1024
+                if len(_tpl_dump) > 48000:
+                    st.error(
+                        f"⚠ 保存データが大きすぎます（{_size_kb:.1f}KB、"
+                        f"{len(_tpl_dump)}文字）。Google Sheets セル上限50000文字に近いため、"
+                        f"保存できない可能性があります。テンプレの本文を短くしてください。"
+                    )
+                else:
+                    ok, msg = save_templates()
+                    st.toast(f"{msg} ({_size_kb:.1f}KB)", icon="✅" if ok else "⚠️")
+                    if ok:
+                        # キャッシュをクリアして次回アクセス時に Sheet から再読み込み
+                        clear_template_cache()
+                        st.session_state["selected"] = "_master"
+                        st.rerun()
             if col_reload_sk.button(
                 "⟳ 再読み込み",
                 key="talk_reload_sokushin_only",

@@ -250,13 +250,13 @@ def extract_lookup_data(headers: list[str], rows: list[list[str]]) -> tuple[list
     """
     全データからLOOKUP_COLUMNSだけ抽出。
     フィルター:
-      - エントリ日が過去60日以内
+      - エントリ日が過去90日以内
       - status大区分が 95 キャンセル済み / 96 解約済み は除外
     """
     from datetime import datetime, timezone, timedelta
     JST = timezone(timedelta(hours=9))
     now = datetime.now(JST)
-    date_from = (now - timedelta(days=30)).date()
+    date_from = (now - timedelta(days=90)).date()
 
     col_indices = []
     found_headers = []

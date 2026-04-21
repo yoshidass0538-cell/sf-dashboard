@@ -1970,35 +1970,6 @@ if selected_key.startswith("talk_script_"):
         with st.expander(f"📋 前確OKコメント全文（{_zk['activity_date']}）", expanded=False):
             st.code(_zk["description"], language=None)
 
-    # --- LINEテンプレ（折りたたみ） ---
-    import html as _html
-    from talk_template_store import get_templates as _get_tpl_for_line, LINE_TEMPLATE_KEYS
-    _all_templates_for_line = _get_tpl_for_line()
-    _line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
-    line_templates = _all_templates_for_line.get(_line_store_key, {})
-    if any(line_templates.values()):
-        with st.expander("💬 LINEテンプレ", expanded=False):
-            line_tabs = st.tabs(LINE_TEMPLATE_KEYS)
-            from replace_master_store import apply_replace_substitution as _apply_replace_line
-            from nanori_master_store import apply_nanori_substitution as _apply_nanori_line
-            for tab, lkey in zip(line_tabs, LINE_TEMPLATE_KEYS):
-                with tab:
-                    body = line_templates.get(lkey, "")
-                    if not body:
-                        st.info("（テンプレなし）")
-                        continue
-                    # 名乗り＋置換表を適用（トーク本文と同じ扱い）
-                    body = _apply_nanori_line(body, info)
-                    body = _apply_replace_line(body)
-                    safe = _html.escape(body).replace("\n", "<br>").replace(" ", "&nbsp;")
-                    st.markdown(
-                        f'<div style="background:rgba(255,255,255,0.9);border-left:4px solid #06C755;'
-                        f'border-radius:6px;padding:14px 20px;font-size:0.92rem;line-height:1.7;'
-                        f'color:#1a1a1a;box-shadow:0 1px 4px rgba(0,0,0,0.06);white-space:pre-wrap;">'
-                        f'{safe}</div>',
-                        unsafe_allow_html=True,
-                    )
-
     # 促進用トーク（代コン不備）：ダイコンステータスに応じて5種テンプレから選択表示
     if _board_suffix == "sokushin":
         import html as _html_sk

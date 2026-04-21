@@ -825,6 +825,12 @@ if selected_key == "_master":
                 st.session_state[_sec_order_key] = list(current_sections)
                 _sec_list = st.session_state[_sec_order_key]
 
+                # デバッグ: 現在のキャッシュとセッション状態を表示
+                st.caption(
+                    f"🔎 debug | cache: {current_sections} | "
+                    f"session: {st.session_state.get(_sec_order_key)}"
+                )
+
                 _to_delete: list[int] = []
                 _renamed: dict[int, str] = {}
 

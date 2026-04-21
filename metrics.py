@@ -281,16 +281,13 @@ def fetch_1week_cx_check(sf: Salesforce) -> pd.DataFrame:
 
     empty = pd.DataFrame(columns=_CX_CHECK_COLUMNS)
 
-    members_rs = sf.query_all(
-        "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
+    users_rs = sf.query_all(
+        "SELECT Id FROM User WHERE Department = 'CS促進' AND IsActive = true"
     )["records"]
-    cs_names = {
-        (r.get("Name") or "").replace(" ", "").replace("\u3000", "")
-        for r in members_rs
-    }
-    cs_names.discard("")
-    if not cs_names:
+    cs_user_ids = {r["Id"] for r in users_rs}
+    if not cs_user_ids:
         return empty
+    ids_literal = ",".join(f"'{u}'" for u in cs_user_ids)
 
     fc_records = sf.query_all(
         "SELECT WhatId, Owner.Name, ActivityDate "
@@ -298,6 +295,7 @@ def fetch_1week_cx_check(sf: Salesforce) -> pd.DataFrame:
         "WHERE Field2_del__c = 'フォローコール（1週間後FC）' "
         "AND Field4_del__c = '完了' "
         f"AND ActivityDate >= {start_date} "
+        f"AND OwnerId IN ({ids_literal}) "
         "AND WhatId != null"
     )["records"]
 
@@ -306,10 +304,7 @@ def fetch_1week_cx_check(sf: Salesforce) -> pd.DataFrame:
         wid = r.get("WhatId")
         if not wid or not wid.startswith("001"):
             continue
-        owner_name = r["Owner"]["Name"] if r.get("Owner") else ""
-        owner_norm = owner_name.replace(" ", "").replace("\u3000", "")
-        if owner_norm not in cs_names:
-            continue
+        owner_name = r["Owner"]["Name"] if r.get("Owner") else "(不明)"
         fc_map.setdefault(wid, []).append((owner_name, r.get("ActivityDate")))
 
     if not fc_map:

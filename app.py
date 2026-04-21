@@ -817,19 +817,39 @@ if selected_key == "_master":
             _SK_OPS_NEED_VALUE = {"eq", "ne", "contains", "not_contains", "starts_with", "lt", "gt", "le", "ge"}
 
             def _render_sokushin_section_config(tmpl_key: str):
-                """セクション構成・表示条件エディタ"""
-                current_sections = get_sokushin_sections(tmpl_key)
-                _sec_order_key = f"_sk_sec_order_{tmpl_key}"
-                # キャッシュを真実の源として毎回同期（eager update_sokushin_sections で
-                # キャッシュは常に最新に保たれる）
-                st.session_state[_sec_order_key] = list(current_sections)
-                _sec_list = st.session_state[_sec_order_key]
+                """セクション構成・表示条件エディタ。
+                セッション状態を使わず、キャッシュを真実の源として毎回フレッシュに扱う。
+                各操作は即キャッシュ更新 + Sheet保存 + rerun。"""
+                _sec_list = list(get_sokushin_sections(tmpl_key))
 
-                # デバッグ: 現在のキャッシュとセッション状態を表示
-                st.caption(
-                    f"🔎 debug | cache: {current_sections} | "
-                    f"session: {st.session_state.get(_sec_order_key)}"
-                )
+                def _clear_sec_widget_states(tk: str, max_idx: int):
+                    """セクション関連の widget state を全て破棄（並び替え/削除後）"""
+                    for _ki in range(max_idx):
+                        for _prefix in (
+                            f"sk_sec_name_{tk}_",
+                            f"sk_sec_rule_mode_{tk}_",
+                            f"sk_sec_rule_field_{tk}_",
+                            f"sk_sec_rule_value_{tk}_",
+                            f"sk_sec_rule_op_{tk}_",
+                        ):
+                            st.session_state.pop(f"{_prefix}{_ki}", None)
+
+                def _persist_now(new_list):
+                    """キャッシュ更新 + Sheetへ即座に保存（throttle無視）。"""
+                    import time as _time_p
+                    from talk_template_store import (
+                        _shared_templates as _st_p,
+                        _get_storage_worksheet as _ws_p,
+                        _serialize as _ser_p,
+                        TEMPLATE_CELL as _cell_p,
+                        _last_save as _ls_p,
+                    )
+                    update_sokushin_sections(tmpl_key, new_list)
+                    try:
+                        _ws_p().update_acell(_cell_p, _ser_p(_st_p()))
+                        _ls_p["t"] = _time_p.time()
+                    except Exception:
+                        pass  # 失敗してもキャッシュは更新済みなのでUIは継続
 
                 _to_delete: list[int] = []
                 _renamed: dict[int, str] = {}
@@ -872,29 +892,17 @@ if selected_key == "_master":
                         )
                         if new_name != sn:
                             _renamed[si] = new_name
-                    def _clear_sec_widget_states(tk: str, max_idx: int):
-                        """セクション関連の widget state を全て破棄（並び替え/削除後）"""
-                        for _ki in range(max_idx):
-                            for _prefix in (
-                                f"sk_sec_name_{tk}_",
-                                f"sk_sec_rule_mode_{tk}_",
-                                f"sk_sec_rule_field_{tk}_",
-                                f"sk_sec_rule_value_{tk}_",
-                                f"sk_sec_rule_op_{tk}_",
-                            ):
-                                st.session_state.pop(f"{_prefix}{_ki}", None)
-
                     with cn2:
                         if si > 0 and st.button("⬆", key=f"sk_sec_up_{tmpl_key}_{si}", help="上に移動"):
                             _sec_list[si], _sec_list[si - 1] = _sec_list[si - 1], _sec_list[si]
                             _clear_sec_widget_states(tmpl_key, len(_sec_list) + 5)
-                            update_sokushin_sections(tmpl_key, _sec_list)
+                            _persist_now(_sec_list)
                             st.rerun()
                     with cn3:
                         if si < len(_sec_list) - 1 and st.button("⬇", key=f"sk_sec_down_{tmpl_key}_{si}", help="下に移動"):
                             _sec_list[si], _sec_list[si + 1] = _sec_list[si + 1], _sec_list[si]
                             _clear_sec_widget_states(tmpl_key, len(_sec_list) + 5)
-                            update_sokushin_sections(tmpl_key, _sec_list)
+                            _persist_now(_sec_list)
                             st.rerun()
                     with cn4:
                         if st.button("🗑", key=f"sk_sec_del_{tmpl_key}_{si}", help="削除"):
@@ -975,26 +983,31 @@ if selected_key == "_master":
                     if _new_rule != _rule_current:
                         update_sokushin_section_rule(tmpl_key, sn, _new_rule)
 
-                # 名前変更 / 削除を反映
-                for si, newname in _renamed.items():
-                    if not newname.strip():
-                        continue
-                    old = _sec_list[si]
-                    _sec_list[si] = newname
-                    # テキスト・ルールも引き継ぎ
-                    old_text = get_sokushin_text(tmpl_key, old)
-                    update_sokushin_text(tmpl_key, newname, old_text)
-                    old_rule = get_sokushin_section_rule(tmpl_key, old)
-                    if old_rule:
-                        update_sokushin_section_rule(tmpl_key, newname, old_rule)
-                        update_sokushin_section_rule(tmpl_key, old, {})
+                # 名前変更を反映（Sheet永続化含む）
+                if _renamed:
+                    for si, newname in _renamed.items():
+                        if not newname.strip():
+                            continue
+                        old = _sec_list[si]
+                        _sec_list[si] = newname
+                        # テキスト・ルールも引き継ぎ
+                        old_text = get_sokushin_text(tmpl_key, old)
+                        update_sokushin_text(tmpl_key, newname, old_text)
+                        old_rule = get_sokushin_section_rule(tmpl_key, old)
+                        if old_rule:
+                            update_sokushin_section_rule(tmpl_key, newname, old_rule)
+                            update_sokushin_section_rule(tmpl_key, old, {})
+                    _persist_now(_sec_list)
+                    # rerun で widget keys 再生成
+                    _clear_sec_widget_states(tmpl_key, len(_sec_list) + 5)
+                    st.rerun()
 
                 if _to_delete:
                     for si in sorted(_to_delete, reverse=True):
                         if 0 <= si < len(_sec_list):
                             _sec_list.pop(si)
                     _clear_sec_widget_states(tmpl_key, len(_sec_list) + len(_to_delete) + 5)
-                    update_sokushin_sections(tmpl_key, _sec_list)
+                    _persist_now(_sec_list)
                     st.rerun()
 
                 # セクション追加
@@ -1011,11 +1024,8 @@ if selected_key == "_master":
                     if nm and nm not in _sec_list:
                         _sec_list.append(nm)
                         st.session_state.pop(f"sk_sec_add_input_{tmpl_key}", None)
-                        update_sokushin_sections(tmpl_key, _sec_list)
+                        _persist_now(_sec_list)
                         st.rerun()
-
-                # 構成の永続化
-                update_sokushin_sections(tmpl_key, _sec_list)
 
             def _render_sokushin_text_editor(tmpl_key: str):
                 """トーク編集エディタ（各セクションのtext_area）"""

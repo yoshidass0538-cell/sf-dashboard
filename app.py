@@ -2032,11 +2032,40 @@ if selected_key.startswith("talk_script_"):
             st.info(f"「{_sokushin_key}」のセクションが未定義です。マスタ画面で構成を設定してください。")
             st.stop()
 
+        # 現回線SB / 現回線AU系 セクションの表示判定（利用回線→利用携帯の優先順）
+        _SB_SECTION_NAME = "現回線SB\u3000おうちの電話"
+        _AU_SECTION_NAME = "現回線AU系\u3000ホームプラス電話"
+        _AU_KAISEN = {"BIGLOBE光", "T-COM光", "auひかり", "ソネット光", "ニフティ光"}
+        _SB_KAISEN = {"ソフトバンク光"}
+        _SB_MOBILE_KW = ["softbank", "ソフトバンク", "y!mobile", "ワイモバイル"]
+        _AU_MOBILE_KW = ["kddi", "uq", "povo", "au"]
+        _riyou_kaisen_raw = (info.get("利用回線") or "").strip()
+        _riyou_mobile_lower = (info.get("利用携帯＆利用台数") or "").strip().lower()
+        _show_sb = False
+        _show_au = False
+        if _riyou_kaisen_raw in _AU_KAISEN:
+            _show_au = True
+        elif _riyou_kaisen_raw in _SB_KAISEN:
+            _show_sb = True
+        else:
+            if any(kw in _riyou_mobile_lower for kw in _SB_MOBILE_KW):
+                _show_sb = True
+            elif any(kw in _riyou_mobile_lower for kw in _AU_MOBILE_KW):
+                _show_au = True
+
         _rendered_any = False
         for _sec_name in _sections_sk:
-            _rule = get_sokushin_section_rule(_sokushin_key, _sec_name)
-            if not _eval_rule_sk(_rule, info):
-                continue
+            # 現回線SB/AU系は専用ロジック、それ以外は通常のルール評価
+            if _sec_name == _SB_SECTION_NAME:
+                if not _show_sb:
+                    continue
+            elif _sec_name == _AU_SECTION_NAME:
+                if not _show_au:
+                    continue
+            else:
+                _rule = get_sokushin_section_rule(_sokushin_key, _sec_name)
+                if not _eval_rule_sk(_rule, info):
+                    continue
             _body = get_sokushin_text(_sokushin_key, _sec_name)
             if not _body:
                 continue

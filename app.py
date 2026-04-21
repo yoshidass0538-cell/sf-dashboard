@@ -865,17 +865,29 @@ if selected_key == "_master":
                         )
                         if new_name != sn:
                             _renamed[si] = new_name
+                    def _clear_sec_widget_states(tk: str, max_idx: int):
+                        """セクション関連の widget state を全て破棄（並び替え/削除後）"""
+                        for _ki in range(max_idx):
+                            for _prefix in (
+                                f"sk_sec_name_{tk}_",
+                                f"sk_sec_rule_mode_{tk}_",
+                                f"sk_sec_rule_field_{tk}_",
+                                f"sk_sec_rule_value_{tk}_",
+                                f"sk_sec_rule_op_{tk}_",
+                            ):
+                                st.session_state.pop(f"{_prefix}{_ki}", None)
+
                     with cn2:
                         if si > 0 and st.button("⬆", key=f"sk_sec_up_{tmpl_key}_{si}", help="上に移動"):
                             _sec_list[si], _sec_list[si - 1] = _sec_list[si - 1], _sec_list[si]
-                            for _i in range(len(_sec_list)):
-                                st.session_state.pop(f"sk_sec_name_{tmpl_key}_{_i}", None)
+                            _clear_sec_widget_states(tmpl_key, len(_sec_list) + 5)
+                            update_sokushin_sections(tmpl_key, _sec_list)
                             st.rerun()
                     with cn3:
                         if si < len(_sec_list) - 1 and st.button("⬇", key=f"sk_sec_down_{tmpl_key}_{si}", help="下に移動"):
                             _sec_list[si], _sec_list[si + 1] = _sec_list[si + 1], _sec_list[si]
-                            for _i in range(len(_sec_list)):
-                                st.session_state.pop(f"sk_sec_name_{tmpl_key}_{_i}", None)
+                            _clear_sec_widget_states(tmpl_key, len(_sec_list) + 5)
+                            update_sokushin_sections(tmpl_key, _sec_list)
                             st.rerun()
                     with cn4:
                         if st.button("🗑", key=f"sk_sec_del_{tmpl_key}_{si}", help="削除"):
@@ -970,11 +982,13 @@ if selected_key == "_master":
                         update_sokushin_section_rule(tmpl_key, newname, old_rule)
                         update_sokushin_section_rule(tmpl_key, old, {})
 
-                for si in sorted(_to_delete, reverse=True):
-                    if 0 <= si < len(_sec_list):
-                        _sec_list.pop(si)
-                    for _i in range(len(_sec_list) + 1):
-                        st.session_state.pop(f"sk_sec_name_{tmpl_key}_{_i}", None)
+                if _to_delete:
+                    for si in sorted(_to_delete, reverse=True):
+                        if 0 <= si < len(_sec_list):
+                            _sec_list.pop(si)
+                    _clear_sec_widget_states(tmpl_key, len(_sec_list) + len(_to_delete) + 5)
+                    update_sokushin_sections(tmpl_key, _sec_list)
+                    st.rerun()
 
                 # セクション追加
                 st.markdown("---")
@@ -990,6 +1004,7 @@ if selected_key == "_master":
                     if nm and nm not in _sec_list:
                         _sec_list.append(nm)
                         st.session_state.pop(f"sk_sec_add_input_{tmpl_key}", None)
+                        update_sokushin_sections(tmpl_key, _sec_list)
                         st.rerun()
 
                 # 構成の永続化

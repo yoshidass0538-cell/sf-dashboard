@@ -1529,9 +1529,9 @@ def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
 
 def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """
-    仮計算: 2026/1-4月エントリで、レコード所有企業(Field108__c)が
-    株式会社GIFT以外のソネット/NURO取次のエントリー件数を
-    【レコード所有企業 × 月】で集計。商材別に2シート。
+    仮計算: 2026/1-4月エントリで、ソネット/NURO取次のエントリー件数を
+    【レコード所有企業 × 月】で集計。
+    4シート構成: [ソネット (GIFT外)] [NURO (GIFT外)] [株式会社GIFT ソネット] [株式会社GIFT NURO]
     総計行の下に N日後CX件数(N=3,4,5) と差引件数を月別に追加。
     CX判定: 開通日(Field130__c)空 AND キャンセル日(Field119__c)がエントリ日から丁度N日後。
     """
@@ -1542,30 +1542,48 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
     PERIOD_END = "2026-05-01"  # exclusive
     MONTH_COLS = ["2026/01エントリー", "2026/02エントリー", "2026/03エントリー", "2026/04エントリー"]
     CX_DAY_THRESHOLDS = [3, 4, 5]
+    GIFT = "株式会社GIFT"
 
+    # GIFT / 非GIFT 両方取得
     soql = (
         "SELECT Field156__c, Field232__c, Field108__c, Field119__c, Field130__c "
         "FROM Account "
         f"WHERE Field156__c >= {PERIOD_START} "
         f"AND Field156__c < {PERIOD_END} "
-        "AND Field108__c != '株式会社GIFT' "
         "AND (Field232__c LIKE 'NURO光_%' OR Field232__c LIKE 'So-net光_%')"
     )
     try:
         records = sf.query_all(soql)["records"]
     except Exception as e:
         err_df = pd.DataFrame({"エラー": [f"取得失敗: {e}"]})
-        return {"ソネット": err_df, "NURO": err_df}
+        return {
+            "ソネット": err_df, "NURO": err_df,
+            "株式会社GIFT ソネット": err_df, "株式会社GIFT NURO": err_df,
+        }
 
-    # {"ソネット": {company: {month_key: count}}, "NURO": {...}}
-    stats: dict[str, dict[str, dict[str, int]]] = {
-        "ソネット": defaultdict(lambda: defaultdict(int)),
-        "NURO": defaultdict(lambda: defaultdict(int)),
-    }
-    # CX集計: {"ソネット": {month_key: {N日: count}}, "NURO": {...}}
-    cx_stats: dict[str, dict[str, dict[int, int]]] = {
-        "ソネット": defaultdict(lambda: defaultdict(int)),
-        "NURO": defaultdict(lambda: defaultdict(int)),
+    # stats[bucket][kind][company][month_key] = count
+    # cx_stats[bucket][kind][month_key][N日] = count
+    def _make_stats():
+        return {
+            "非GIFT": {
+                "ソネット": defaultdict(lambda: defaultdict(int)),
+                "NURO": defaultdict(lambda: defaultdict(int)),
+            },
+            "GIFT": {
+                "ソネット": defaultdict(lambda: defaultdict(int)),
+                "NURO": defaultdict(lambda: defaultdict(int)),
+            },
+        }
+    stats = _make_stats()
+    cx_stats: dict[str, dict[str, dict[str, dict[int, int]]]] = {
+        "非GIFT": {
+            "ソネット": defaultdict(lambda: defaultdict(int)),
+            "NURO": defaultdict(lambda: defaultdict(int)),
+        },
+        "GIFT": {
+            "ソネット": defaultdict(lambda: defaultdict(int)),
+            "NURO": defaultdict(lambda: defaultdict(int)),
+        },
     }
 
     for r in records:
@@ -1587,11 +1605,12 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
             continue
 
         company = (r.get("Field108__c") or "（未入力）").strip() or "（未入力）"
-        stats[kind][company][month_key] += 1
+        bucket = "GIFT" if company == GIFT else "非GIFT"
+        stats[bucket][kind][company][month_key] += 1
 
         # CX判定: 開通日なし AND キャンセル日あり AND 差分日数が閾値と一致
         if r.get("Field130__c"):
-            continue  # 開通済みは CX ではない
+            continue
         cancel_date_str = r.get("Field119__c")
         if not cancel_date_str:
             continue
@@ -1601,10 +1620,10 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
             continue
         days_diff = (cancel_d - d).days
         if days_diff in CX_DAY_THRESHOLDS:
-            cx_stats[kind][month_key][days_diff] += 1
+            cx_stats[bucket][kind][month_key][days_diff] += 1
 
-    def _build_df(kind: str) -> pd.DataFrame:
-        data = stats[kind]
+    def _build_df(bucket: str, kind: str) -> pd.DataFrame:
+        data = stats[bucket][kind]
         if not data:
             empty_row = {"レコード所有企業": "—"}
             for m in MONTH_COLS:
@@ -1623,24 +1642,21 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
             row["合計"] = total
             rows.append(row)
 
-        # 合計件数降順
         rows.sort(key=lambda x: x["合計"], reverse=True)
 
-        # 総計行
         grand = {"レコード所有企業": "総計"}
         for m in MONTH_COLS:
             grand[m] = sum(r[m] for r in rows)
         grand["合計"] = sum(r["合計"] for r in rows)
         rows.append(grand)
 
-        # N日後CX件数行 + 差引件数行
         for thresh in CX_DAY_THRESHOLDS:
             cx_row = {"レコード所有企業": f"{thresh}日後CX件数"}
             diff_row = {"レコード所有企業": f"{thresh}日後CX差引件数"}
             cx_total = 0
             diff_total = 0
             for m in MONTH_COLS:
-                cx_cnt = cx_stats[kind].get(m, {}).get(thresh, 0)
+                cx_cnt = cx_stats[bucket][kind].get(m, {}).get(thresh, 0)
                 diff_cnt = grand[m] - cx_cnt
                 cx_row[m] = cx_cnt
                 diff_row[m] = diff_cnt
@@ -1654,8 +1670,10 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
         return pd.DataFrame(rows)
 
     return {
-        "ソネット": _build_df("ソネット"),
-        "NURO": _build_df("NURO"),
+        "ソネット": _build_df("非GIFT", "ソネット"),
+        "NURO": _build_df("非GIFT", "NURO"),
+        "株式会社GIFT ソネット": _build_df("GIFT", "ソネット"),
+        "株式会社GIFT NURO": _build_df("GIFT", "NURO"),
     }
 
 

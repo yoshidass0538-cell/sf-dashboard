@@ -2836,10 +2836,17 @@ if selected_key == "shuchi":
         update_row as _sh_update_row,
         toggle_confirmation as _sh_toggle_conf,
     )
-    from tool_members_store import get_member_names as _sh_get_members
+
+    # 確認対象メンバーは固定3名
+    _SH_CONFIRM_MEMBERS = ["室谷 慧", "原田 綾子", "佐々木 彩乃"]
+
+    def _sh_all_confirmed(row: dict) -> bool:
+        return all(
+            bool(row.get("confirmations", {}).get(m, {}).get("checked"))
+            for m in _SH_CONFIRM_MEMBERS
+        )
 
     _sh_rows = _sh_load_rows()
-    _sh_members = _sh_get_members()
 
     # 編集中の行がない時のみ自動リロード（5秒）
     _sh_editing = any(
@@ -2853,10 +2860,15 @@ if selected_key == "shuchi":
             st.warning("streamlit-autorefresh が未インストール（手動リロードしてください）")
 
     st.subheader("📢 周知ボード")
-    st.caption("マルチユーザー対応・編集/追加中以外は 5秒毎に自動更新。変更は即座に全員へ反映されます。")
+    st.caption(
+        "確認者: 室谷 / 原田 / 佐々木（3名全員がチェックすると下部の「過去の周知」へ移動）。"
+        "マルチユーザー対応・編集/追加中以外は 5秒毎に自動更新。"
+    )
 
     # 並び順: 周知日 昇順（新しいものが下）
     _sh_rows.sort(key=lambda r: (r.get("shuchi_date", ""), r.get("id", "")))
+    _sh_active = [r for r in _sh_rows if not _sh_all_confirmed(r)]
+    _sh_archived = [r for r in _sh_rows if _sh_all_confirmed(r)]
 
     # === 周知追加 ===
     if st.session_state.get("sh_add_mode", False):
@@ -2899,18 +2911,39 @@ if selected_key == "shuchi":
 
     st.divider()
 
-    if not _sh_rows:
-        st.info("周知はまだありません。「➕ 周知を追加」から作成してください。")
-        st.stop()
+    def _sh_render_confirm_grid(row: dict, key_prefix: str, interactive: bool = True):
+        """確認チェックボックス群を描画（3列固定）。"""
+        _mcols = st.columns(len(_SH_CONFIRM_MEMBERS))
+        for _j, _m in enumerate(_SH_CONFIRM_MEMBERS):
+            with _mcols[_j]:
+                _conf = row["confirmations"].get(_m, {})
+                _checked = bool(_conf.get("checked"))
+                _confd = _conf.get("confirmed_at", "")
+                _new_chk = st.checkbox(
+                    _m,
+                    value=_checked,
+                    key=f"{key_prefix}_{row['id']}_{_m}",
+                    disabled=not interactive,
+                )
+                if _checked and _confd:
+                    st.caption(f"✓ 確認日: {_confd}")
+                elif _checked:
+                    st.caption("✓ 確認済み")
+                else:
+                    st.caption("—")
+                if interactive and _new_chk != _checked:
+                    _sh_toggle_conf(row["id"], _m, _new_chk)
+                    st.rerun()
 
-    # === 各行 ===
-    for _r in _sh_rows:
+    # === アクティブな周知 ===
+    if not _sh_active:
+        st.info("未完了の周知はありません。" + (f"（過去の周知 {len(_sh_archived)}件 は下部から閲覧できます）" if _sh_archived else ""))
+    for _r in _sh_active:
         _rid = _r["id"]
         _edit_mode = st.session_state.get(f"sh_edit_mode_{_rid}", False)
 
         with st.container(border=True):
             if _edit_mode:
-                # 編集モード
                 try:
                     _cur_d = _sh_datetime.strptime(_r["shuchi_date"], "%Y-%m-%d").date()
                 except (ValueError, TypeError):
@@ -2936,7 +2969,6 @@ if selected_key == "shuchi":
                     st.session_state.pop(f"sh_edit_content_{_rid}", None)
                     st.rerun()
             else:
-                # 表示モード
                 _hc1, _hc2, _hc3, _hc4 = st.columns([2, 6, 1, 1])
                 _hc1.markdown(f"**📅 {_r['shuchi_date'] or '(日付未設定)'}**")
                 _body = (_r["content"] or "_(内容未入力)_").replace("\n", "  \n")
@@ -2956,26 +2988,39 @@ if selected_key == "shuchi":
                 if st.session_state.get(_del_confirm_key):
                     st.warning("削除するには🗑をもう一度押してください")
 
-            # 確認チェックボックス
             st.caption("確認状況")
-            _chunk = 5
-            for _i in range(0, len(_sh_members), _chunk):
-                _grp = _sh_members[_i:_i + _chunk]
-                _mcols = st.columns(_chunk)
-                for _j, _m in enumerate(_grp):
-                    with _mcols[_j]:
-                        _conf = _r["confirmations"].get(_m, {})
-                        _checked = bool(_conf.get("checked"))
-                        _confd = _conf.get("confirmed_at", "")
-                        _label = _m + (f"  ({_confd})" if _checked and _confd else "")
-                        _new_chk = st.checkbox(
-                            _label,
-                            value=_checked,
-                            key=f"sh_chk_{_rid}_{_m}",
-                        )
-                        if _new_chk != _checked:
-                            _sh_toggle_conf(_rid, _m, _new_chk)
-                            st.rerun()
+            _sh_render_confirm_grid(_r, key_prefix="sh_chk", interactive=True)
+
+    # === 過去の周知（全員確認済）プルダウン ===
+    if _sh_archived:
+        st.divider()
+        with st.expander(f"📦 過去の周知（確認完了 {len(_sh_archived)}件）", expanded=False):
+            _ar_sorted = sorted(
+                _sh_archived,
+                key=lambda r: (r.get("shuchi_date", ""), r.get("id", "")),
+                reverse=True,
+            )
+            _ar_labels = [
+                f"{r['shuchi_date']} | {(r['content'][:40] + '…') if len(r['content']) > 40 else r['content']}"
+                for r in _ar_sorted
+            ]
+            _sel = st.selectbox(
+                "周知を選択",
+                options=range(len(_ar_sorted)),
+                format_func=lambda i: _ar_labels[i],
+                key="sh_archived_select",
+            )
+            _ar = _ar_sorted[_sel] if 0 <= _sel < len(_ar_sorted) else None
+            if _ar is not None:
+                with st.container(border=True):
+                    st.markdown(f"**📅 {_ar['shuchi_date']}**")
+                    st.markdown((_ar["content"] or "_(内容未入力)_").replace("\n", "  \n"))
+                    st.caption("確認状況（チェックを外すと「未完了」へ戻ります）")
+                    _sh_render_confirm_grid(_ar, key_prefix="sh_ar_chk", interactive=True)
+                    if st.button("🗑 この周知を削除", key=f"sh_ar_del_{_ar['id']}"):
+                        _sh_delete_row(_ar["id"])
+                        st.session_state.pop("sh_archived_select", None)
+                        st.rerun()
     st.stop()
 
 # 折返し件数: 件数テーブル＋セルごとチェックボックス

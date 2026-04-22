@@ -1530,16 +1530,18 @@ def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
 def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """
     仮計算: 2026/1-4月エントリで、レコード所有企業(Field108__c)が
-    株式会社GIFT以外のソネット/NURO取次のエントリー件数を月別に集計。
+    株式会社GIFT以外のソネット/NURO取次のエントリー件数を
+    【レコード所有企業 × 月】で集計。商材別に2シート。
     """
     from collections import defaultdict
     from datetime import datetime
 
     PERIOD_START = "2026-01-01"
     PERIOD_END = "2026-05-01"  # exclusive
+    MONTH_COLS = ["2026/01エントリー", "2026/02エントリー", "2026/03エントリー", "2026/04エントリー"]
 
     soql = (
-        "SELECT Field156__c, Field232__c "
+        "SELECT Field156__c, Field232__c, Field108__c "
         "FROM Account "
         f"WHERE Field156__c >= {PERIOD_START} "
         f"AND Field156__c < {PERIOD_END} "
@@ -1549,9 +1551,14 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
     try:
         records = sf.query_all(soql)["records"]
     except Exception as e:
-        return {"仮計算": pd.DataFrame({"エラー": [f"取得失敗: {e}"]})}
+        err_df = pd.DataFrame({"エラー": [f"取得失敗: {e}"]})
+        return {"ソネット": err_df, "NURO": err_df}
 
-    counts: dict[str, dict[str, int]] = defaultdict(lambda: {"ソネット": 0, "NURO": 0})
+    # {"ソネット": {company: {month_key: count}}, "NURO": {...}}
+    stats: dict[str, dict[str, dict[str, int]]] = {
+        "ソネット": defaultdict(lambda: defaultdict(int)),
+        "NURO": defaultdict(lambda: defaultdict(int)),
+    }
     for r in records:
         entry_date_str = r.get("Field156__c")
         if not entry_date_str:
@@ -1564,22 +1571,48 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
 
         shozai = r.get("Field232__c") or ""
         if shozai.startswith("NURO光_"):
-            counts[month_key]["NURO"] += 1
+            kind = "NURO"
         elif shozai.startswith("So-net光_"):
-            counts[month_key]["ソネット"] += 1
+            kind = "ソネット"
+        else:
+            continue
 
-    rows = []
-    for month_key in sorted(counts.keys(), reverse=True):
-        s = counts[month_key]
-        rows.append({
-            "月": month_key,
-            "ソネット": s["ソネット"],
-            "NURO": s["NURO"],
-            "合計": s["ソネット"] + s["NURO"],
-        })
-    if not rows:
-        return {"仮計算": pd.DataFrame({"月": ["—"], "ソネット": [0], "NURO": [0], "合計": [0]})}
-    return {"仮計算": pd.DataFrame(rows)}
+        company = (r.get("Field108__c") or "（未入力）").strip() or "（未入力）"
+        stats[kind][company][month_key] += 1
+
+    def _build_df(kind: str) -> pd.DataFrame:
+        data = stats[kind]
+        if not data:
+            empty_row = {"レコード所有企業": "—"}
+            for m in MONTH_COLS:
+                empty_row[m] = 0
+            empty_row["合計"] = 0
+            return pd.DataFrame([empty_row])
+
+        rows = []
+        for company, months in data.items():
+            row = {"レコード所有企業": company}
+            total = 0
+            for m in MONTH_COLS:
+                cnt = months.get(m, 0)
+                row[m] = cnt
+                total += cnt
+            row["合計"] = total
+            rows.append(row)
+
+        # 合計件数降順で並べ、末尾に総計行
+        rows.sort(key=lambda x: x["合計"], reverse=True)
+        grand = {"レコード所有企業": "総計"}
+        for m in MONTH_COLS:
+            grand[m] = sum(r[m] for r in rows)
+        grand["合計"] = sum(r["合計"] for r in rows)
+        rows.append(grand)
+        return pd.DataFrame(rows)
+
+    return {
+        "ソネット": _build_df("ソネット"),
+        "NURO": _build_df("NURO"),
+    }
 
 
 def fetch_cx_age_area(

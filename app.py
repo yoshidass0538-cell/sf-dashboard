@@ -2561,6 +2561,9 @@ elif selected_key == "call_history":
 elif selected_key == "1week_cx_check":
     # 後の 1week_cx_check 専用ブロックで表示するため、ここではスキップ
     fetched = None
+elif selected_key == "shuchi":
+    # 周知ボード（リアルタイム）— 後の専用ブロックで表示
+    fetched = None
 else:
     try:
         fetched = _load(selected_key)
@@ -2821,6 +2824,158 @@ if selected_key == "day_calls":
     for chart_title, chart_df in fetched.items():
         _render_bar_chart(chart_title, chart_df)
         st.divider()
+    st.stop()
+
+# 周知ボード: マルチユーザー・リアルタイム編集
+if selected_key == "shuchi":
+    from datetime import date as _sh_date, datetime as _sh_datetime
+    from shuchi_store import (
+        load_rows as _sh_load_rows,
+        add_row as _sh_add_row,
+        delete_row as _sh_delete_row,
+        update_row as _sh_update_row,
+        toggle_confirmation as _sh_toggle_conf,
+    )
+    from tool_members_store import get_member_names as _sh_get_members
+
+    _sh_rows = _sh_load_rows()
+    _sh_members = _sh_get_members()
+
+    # 編集中の行がない時のみ自動リロード（5秒）
+    _sh_editing = any(
+        st.session_state.get(f"sh_edit_mode_{r['id']}", False) for r in _sh_rows
+    ) or st.session_state.get("sh_add_mode", False)
+    if not _sh_editing:
+        try:
+            from streamlit_autorefresh import st_autorefresh as _sh_autorefresh
+            _sh_autorefresh(interval=5000, key="sh_autorefresh")
+        except ImportError:
+            st.warning("streamlit-autorefresh が未インストール（手動リロードしてください）")
+
+    st.subheader("📢 周知ボード")
+    st.caption("マルチユーザー対応・編集/追加中以外は 5秒毎に自動更新。変更は即座に全員へ反映されます。")
+
+    # 並び順: 周知日 昇順（新しいものが下）
+    _sh_rows.sort(key=lambda r: (r.get("shuchi_date", ""), r.get("id", "")))
+
+    # === 周知追加 ===
+    if st.session_state.get("sh_add_mode", False):
+        with st.container(border=True):
+            st.markdown("**➕ 周知を追加**")
+            _add_c1, _add_c2 = st.columns([1, 3])
+            with _add_c1:
+                _new_date = st.date_input(
+                    "周知日",
+                    value=_sh_date.today(),
+                    key="sh_add_new_date",
+                )
+            with _add_c2:
+                _new_content = st.text_area(
+                    "周知内容",
+                    value=st.session_state.get("sh_add_new_content_val", ""),
+                    key="sh_add_new_content",
+                    height=120,
+                )
+            _btn_c1, _btn_c2, _ = st.columns([1, 1, 4])
+            if _btn_c1.button("追加", type="primary", key="sh_add_submit"):
+                ok, msg = _sh_add_row(_new_date.isoformat(), _new_content)
+                if ok:
+                    st.session_state["sh_add_mode"] = False
+                    st.session_state.pop("sh_add_new_content_val", None)
+                    st.session_state.pop("sh_add_new_date", None)
+                    st.session_state.pop("sh_add_new_content", None)
+                    st.rerun()
+                else:
+                    st.error(msg)
+            if _btn_c2.button("キャンセル", key="sh_add_cancel"):
+                st.session_state["sh_add_mode"] = False
+                st.session_state.pop("sh_add_new_date", None)
+                st.session_state.pop("sh_add_new_content", None)
+                st.rerun()
+    else:
+        if st.button("➕ 周知を追加", type="primary", key="sh_add_open"):
+            st.session_state["sh_add_mode"] = True
+            st.rerun()
+
+    st.divider()
+
+    if not _sh_rows:
+        st.info("周知はまだありません。「➕ 周知を追加」から作成してください。")
+        st.stop()
+
+    # === 各行 ===
+    for _r in _sh_rows:
+        _rid = _r["id"]
+        _edit_mode = st.session_state.get(f"sh_edit_mode_{_rid}", False)
+
+        with st.container(border=True):
+            if _edit_mode:
+                # 編集モード
+                try:
+                    _cur_d = _sh_datetime.strptime(_r["shuchi_date"], "%Y-%m-%d").date()
+                except (ValueError, TypeError):
+                    _cur_d = _sh_date.today()
+                _ec1, _ec2 = st.columns([1, 3])
+                _new_d = _ec1.date_input(
+                    "周知日", value=_cur_d, key=f"sh_edit_date_{_rid}"
+                )
+                _new_c = _ec2.text_area(
+                    "周知内容", value=_r["content"],
+                    key=f"sh_edit_content_{_rid}", height=120,
+                )
+                _ebc1, _ebc2, _ = st.columns([1, 1, 4])
+                if _ebc1.button("保存", type="primary", key=f"sh_edit_save_{_rid}"):
+                    _sh_update_row(_rid, shuchi_date=_new_d.isoformat(), content=_new_c)
+                    st.session_state.pop(f"sh_edit_mode_{_rid}", None)
+                    st.session_state.pop(f"sh_edit_date_{_rid}", None)
+                    st.session_state.pop(f"sh_edit_content_{_rid}", None)
+                    st.rerun()
+                if _ebc2.button("キャンセル", key=f"sh_edit_cancel_{_rid}"):
+                    st.session_state.pop(f"sh_edit_mode_{_rid}", None)
+                    st.session_state.pop(f"sh_edit_date_{_rid}", None)
+                    st.session_state.pop(f"sh_edit_content_{_rid}", None)
+                    st.rerun()
+            else:
+                # 表示モード
+                _hc1, _hc2, _hc3, _hc4 = st.columns([2, 6, 1, 1])
+                _hc1.markdown(f"**📅 {_r['shuchi_date'] or '(日付未設定)'}**")
+                _body = (_r["content"] or "_(内容未入力)_").replace("\n", "  \n")
+                _hc2.markdown(_body)
+                if _hc3.button("✏️", key=f"sh_edit_btn_{_rid}", help="編集"):
+                    st.session_state[f"sh_edit_mode_{_rid}"] = True
+                    st.rerun()
+                _del_confirm_key = f"sh_del_confirm_{_rid}"
+                if _hc4.button("🗑", key=f"sh_del_btn_{_rid}", help="削除（もう一度押すと確定）"):
+                    if st.session_state.get(_del_confirm_key):
+                        _sh_delete_row(_rid)
+                        st.session_state.pop(_del_confirm_key, None)
+                        st.rerun()
+                    else:
+                        st.session_state[_del_confirm_key] = True
+                        st.rerun()
+                if st.session_state.get(_del_confirm_key):
+                    st.warning("削除するには🗑をもう一度押してください")
+
+            # 確認チェックボックス
+            st.caption("確認状況")
+            _chunk = 5
+            for _i in range(0, len(_sh_members), _chunk):
+                _grp = _sh_members[_i:_i + _chunk]
+                _mcols = st.columns(_chunk)
+                for _j, _m in enumerate(_grp):
+                    with _mcols[_j]:
+                        _conf = _r["confirmations"].get(_m, {})
+                        _checked = bool(_conf.get("checked"))
+                        _confd = _conf.get("confirmed_at", "")
+                        _label = _m + (f"  ({_confd})" if _checked and _confd else "")
+                        _new_chk = st.checkbox(
+                            _label,
+                            value=_checked,
+                            key=f"sh_chk_{_rid}_{_m}",
+                        )
+                        if _new_chk != _checked:
+                            _sh_toggle_conf(_rid, _m, _new_chk)
+                            st.rerun()
     st.stop()
 
 # 折返し件数: 件数テーブル＋セルごとチェックボックス

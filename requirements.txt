@@ -4,6 +4,7 @@ streamlit
 pandas
 streamlit-aggrid
 streamlit-sortables
+streamlit-autorefresh
 plotly
 gspread
 google-auth

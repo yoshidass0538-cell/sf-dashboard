@@ -2247,6 +2247,13 @@ METRICS: list[Metric] = [
         category="責任者用",
     ),
     Metric(
+        key="shuchi",
+        label="周知",
+        description="メンバーへの周知事項を掲示・各メンバーが確認チェック（リアルタイム共有）",
+        fetch=lambda sf: {"dummy": pd.DataFrame()},
+        category="責任者用",
+    ),
+    Metric(
         key="ikusei_kpi",
         label="育成KPI",
         description="育成KPI（準備中）",

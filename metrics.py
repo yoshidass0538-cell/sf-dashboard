@@ -1650,20 +1650,20 @@ def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
         grand["合計"] = sum(r["合計"] for r in rows)
         rows.append(grand)
 
+        # 差引は前の差引から当該N日後CX件数を累積減算（月別）
+        running = {m: grand[m] for m in MONTH_COLS}
         for thresh in CX_DAY_THRESHOLDS:
             cx_row = {"レコード所有企業": f"{thresh}日後CX件数"}
             diff_row = {"レコード所有企業": f"{thresh}日後CX差引件数"}
             cx_total = 0
-            diff_total = 0
             for m in MONTH_COLS:
                 cx_cnt = cx_stats[bucket][kind].get(m, {}).get(thresh, 0)
-                diff_cnt = grand[m] - cx_cnt
+                running[m] -= cx_cnt
                 cx_row[m] = cx_cnt
-                diff_row[m] = diff_cnt
+                diff_row[m] = running[m]
                 cx_total += cx_cnt
-                diff_total += diff_cnt
             cx_row["合計"] = cx_total
-            diff_row["合計"] = diff_total
+            diff_row["合計"] = sum(running[m] for m in MONTH_COLS)
             rows.append(cx_row)
             rows.append(diff_row)
 

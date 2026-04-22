@@ -1527,6 +1527,61 @@ def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:
     }
 
 
+def fetch_kari_keisan_gift_gai(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """
+    仮計算: 2026/1-4月エントリで、レコード所有企業(Field108__c)が
+    株式会社GIFT以外のソネット/NURO取次のエントリー件数を月別に集計。
+    """
+    from collections import defaultdict
+    from datetime import datetime
+
+    PERIOD_START = "2026-01-01"
+    PERIOD_END = "2026-05-01"  # exclusive
+
+    soql = (
+        "SELECT Field156__c, Field232__c "
+        "FROM Account "
+        f"WHERE Field156__c >= {PERIOD_START} "
+        f"AND Field156__c < {PERIOD_END} "
+        "AND Field108__c != '株式会社GIFT' "
+        "AND (Field232__c LIKE 'NURO光_%' OR Field232__c LIKE 'So-net光_%')"
+    )
+    try:
+        records = sf.query_all(soql)["records"]
+    except Exception as e:
+        return {"仮計算": pd.DataFrame({"エラー": [f"取得失敗: {e}"]})}
+
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: {"ソネット": 0, "NURO": 0})
+    for r in records:
+        entry_date_str = r.get("Field156__c")
+        if not entry_date_str:
+            continue
+        try:
+            d = datetime.strptime(entry_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+        month_key = f"{d.year}/{d.month:02d}エントリー"
+
+        shozai = r.get("Field232__c") or ""
+        if shozai.startswith("NURO光_"):
+            counts[month_key]["NURO"] += 1
+        elif shozai.startswith("So-net光_"):
+            counts[month_key]["ソネット"] += 1
+
+    rows = []
+    for month_key in sorted(counts.keys(), reverse=True):
+        s = counts[month_key]
+        rows.append({
+            "月": month_key,
+            "ソネット": s["ソネット"],
+            "NURO": s["NURO"],
+            "合計": s["ソネット"] + s["NURO"],
+        })
+    if not rows:
+        return {"仮計算": pd.DataFrame({"月": ["—"], "ソネット": [0], "NURO": [0], "合計": [0]})}
+    return {"仮計算": pd.DataFrame(rows)}
+
+
 def fetch_cx_age_area(
     sf: Salesforce,
     start_date: str | None = None,
@@ -2006,6 +2061,13 @@ METRICS: list[Metric] = [
         label="１週間後CXチェック",
         description="過去3ヶ月で1週間後FC完了→キャンセルになった案件一覧（活動完了日で絞り込み可）",
         fetch=fetch_1week_cx_check,
+        category="TOTAL",
+    ),
+    Metric(
+        key="kari_keisan_gift_gai",
+        label="仮計算",
+        description="2026/1-4月エントリ: レコード所有企業が株式会社GIFT以外のソネット/NURO取次件数を月別集計",
+        fetch=fetch_kari_keisan_gift_gai,
         category="TOTAL",
     ),
     Metric(

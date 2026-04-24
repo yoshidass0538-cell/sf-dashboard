@@ -2100,7 +2100,9 @@ if selected_key.startswith("talk_script_"):
                 f'font-weight:600;color:#1B5E20;">【{_sec_name}】</div>'
                 f'<div style="background:rgba(255,255,255,0.85);border-left:6px solid #2E8B57;'
                 f'border-radius:6px;padding:14px 20px;font-size:0.95rem;line-height:1.7;color:#1a1a1a;'
-                f'box-shadow:0 1px 4px rgba(0,0,0,0.06);white-space:pre-wrap;">{_safe}</div>',
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.06);white-space:pre-wrap;'
+                f"font-family:'Meiryo','メイリオ','Yu Gothic',sans-serif;font-weight:700;"
+                f'">{_safe}</div>',
                 unsafe_allow_html=True,
             )
             _rendered_any = True
@@ -2235,7 +2237,9 @@ if selected_key.startswith("talk_script_"):
         st.markdown(
             f'<div style="background:rgba(255,255,255,0.85);border-radius:6px;'
             f'padding:14px 20px;font-size:0.95rem;line-height:1.7;color:#1a1a1a;'
-            f'box-shadow:0 1px 4px rgba(0,0,0,0.06);">{_render_section_body(body)}</div>',
+            f'box-shadow:0 1px 4px rgba(0,0,0,0.06);'
+            f"font-family:'Meiryo','メイリオ','Yu Gothic',sans-serif;font-weight:700;"
+            f'">{_render_section_body(body)}</div>',
             unsafe_allow_html=True,
         )
 

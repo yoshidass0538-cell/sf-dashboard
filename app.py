@@ -2008,6 +2008,28 @@ if selected_key.startswith("talk_script_"):
         st.subheader(f"🎯 促進用トーク　|　{_sokushin_key}")
         st.caption(f"ダイコンステータス: **{_daikon_val}** → テンプレ: **{_sokushin_key}**")
 
+        # LINEテンプレ（折りたたみ）— 前確OKコメント全文の直下に配置
+        _line_map_sk = get_sokushin_line_templates(_sokushin_key)
+        _line_headers_sk = _get_sk_line_headers(_sokushin_key)
+        if any(_line_map_sk.values()) and _line_headers_sk:
+            with st.expander("💬 LINEテンプレ", expanded=False):
+                _line_tabs = st.tabs(_line_headers_sk)
+                for _tab, _lk in zip(_line_tabs, _line_headers_sk):
+                    with _tab:
+                        _body_line = _line_map_sk.get(_lk, "")
+                        if not _body_line:
+                            st.caption("（未入力）")
+                            continue
+                        _body_line = _apply_nanori_sk(_body_line, info)
+                        _body_line = _apply_replace_sk(_body_line)
+                        _safe_line = _html_sk.escape(_body_line).replace("\n", "<br>").replace(" ", "&nbsp;")
+                        st.markdown(
+                            f'<div style="background:#FFF8E1;border-left:4px solid #E65100;'
+                            f'border-radius:6px;padding:12px 18px;font-size:0.92rem;line-height:1.65;'
+                            f'color:#1a1a1a;white-space:pre-wrap;">{_safe_line}</div>',
+                            unsafe_allow_html=True,
+                        )
+
         _sections_sk = get_sokushin_sections(_sokushin_key)
         if not _sections_sk:
             st.info(f"「{_sokushin_key}」のセクションが未定義です。マスタ画面で構成を設定してください。")
@@ -2074,27 +2096,6 @@ if selected_key.startswith("talk_script_"):
                 "マスタ画面でセクション本文・表示条件を確認してください。"
             )
 
-        # LINEテンプレ（折りたたみ）
-        _line_map_sk = get_sokushin_line_templates(_sokushin_key)
-        _line_headers_sk = _get_sk_line_headers(_sokushin_key)
-        if any(_line_map_sk.values()) and _line_headers_sk:
-            with st.expander("💬 LINEテンプレ", expanded=False):
-                _line_tabs = st.tabs(_line_headers_sk)
-                for _tab, _lk in zip(_line_tabs, _line_headers_sk):
-                    with _tab:
-                        _body_line = _line_map_sk.get(_lk, "")
-                        if not _body_line:
-                            st.caption("（未入力）")
-                            continue
-                        _body_line = _apply_nanori_sk(_body_line, info)
-                        _body_line = _apply_replace_sk(_body_line)
-                        _safe_line = _html_sk.escape(_body_line).replace("\n", "<br>").replace(" ", "&nbsp;")
-                        st.markdown(
-                            f'<div style="background:#FFF8E1;border-left:4px solid #E65100;'
-                            f'border-radius:6px;padding:12px 18px;font-size:0.92rem;line-height:1.65;'
-                            f'color:#1a1a1a;white-space:pre-wrap;">{_safe_line}</div>',
-                            unsafe_allow_html=True,
-                        )
         st.stop()
 
     # --- LINEテンプレ（折りたたみ） ---

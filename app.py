@@ -1957,10 +1957,25 @@ if selected_key.startswith("talk_script_"):
                 ("おでん案内フラグ", "おでん案内フラグ"),
                 ("開通後ホーム電話案内", "開通後ホーム電話案内"),
             ]
+        # チェックボックス表示するboolean列
+        _checkbox_cols = {"おでん案内フラグ"}
+
+        def _render_supp_value(col: str) -> str:
+            if col in _checkbox_cols:
+                raw = info.get(col)
+                if isinstance(raw, bool):
+                    checked = raw
+                else:
+                    checked = str(raw).strip().lower() in ("true", "1", "yes")
+                mark = "☑" if checked else "☐"
+                color = "#2E8B57" if checked else "#888"
+                return f'<span style="font-size:1.15rem;color:{color};">{mark}</span>'
+            return _v(col)
+
         if _supplement_fields:
             _supp_rows = "".join(
                 f'<tr><td style="padding:4px 8px;width:32%;color:#666;">{lbl}</td>'
-                f'<td style="padding:4px 8px;font-weight:600;">{_v(col)}</td></tr>'
+                f'<td style="padding:4px 8px;font-weight:600;">{_render_supp_value(col)}</td></tr>'
                 for lbl, col in _supplement_fields
             )
             st.markdown(

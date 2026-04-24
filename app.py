@@ -1836,12 +1836,14 @@ if selected_key.startswith("talk_script_"):
         ]
         with st.expander("🔗 URLリンク", expanded=False):
             _items = "".join(
-                f'<li style="margin:6px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" '
-                f'style="color:#1976D2;font-weight:600;text-decoration:none;">{label}</a></li>'
+                f'<a href="{url}" target="_blank" rel="noopener noreferrer" '
+                f'style="display:inline-block;padding:8px 14px;background:#E3F2FD;'
+                f'border:1px solid #90CAF9;border-radius:6px;color:#1976D2;'
+                f'font-weight:600;text-decoration:none;font-size:0.95rem;">{label}</a>'
                 for label, url in _url_links
             )
             st.markdown(
-                f'<ul style="padding-left:20px;font-size:0.95rem;line-height:1.8;margin:4px 0;">{_items}</ul>',
+                f'<div style="display:flex;flex-wrap:wrap;gap:10px;margin:4px 0;">{_items}</div>',
                 unsafe_allow_html=True,
             )
 
@@ -2039,9 +2041,6 @@ if selected_key.startswith("talk_script_"):
             )
             st.stop()
 
-        st.subheader(f"🎯 促進用トーク　|　{_sokushin_key}")
-        st.caption(f"ダイコンステータス: **{_daikon_val}** → テンプレ: **{_sokushin_key}**")
-
         # LINEテンプレ（折りたたみ）— 前確OKコメント全文の直下に配置
         _line_map_sk = get_sokushin_line_templates(_sokushin_key)
         _line_headers_sk = _get_sk_line_headers(_sokushin_key)
@@ -2066,6 +2065,9 @@ if selected_key.startswith("talk_script_"):
 
         # URLリンク（折りたたみ）— LINEテンプレの下
         _render_url_links_expander()
+
+        st.subheader(f"🎯 促進用トーク　|　{_sokushin_key}")
+        st.caption(f"ダイコンステータス: **{_daikon_val}** → テンプレ: **{_sokushin_key}**")
 
         _sections_sk = get_sokushin_sections(_sokushin_key)
         if not _sections_sk:

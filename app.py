@@ -2888,7 +2888,7 @@ if selected_key == "day_calls":
 if selected_key == "shuchi":
     from datetime import date as _sh_date, datetime as _sh_datetime
     from shuchi_store import (
-        load_rows as _sh_load_rows,
+        load_rows_safe as _sh_load_rows,
         add_row as _sh_add_row,
         delete_row as _sh_delete_row,
         update_row as _sh_update_row,

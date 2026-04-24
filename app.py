@@ -1826,6 +1826,25 @@ if selected_key.startswith("talk_script_"):
         v = info.get(key, "")
         return str(v) if v not in (None, "") else "—"
 
+    def _render_url_links_expander() -> None:
+        """LINEテンプレの下に表示するURLリンク集（共通）。"""
+        _url_links = [
+            ("📄 PDF", "https://docs.google.com/spreadsheets/d/13vrMrnaJaIbnr2rP1lyVsNvms9_NbsIB4JB97LOCRzs/edit?gid=1416336661#gid=1416336661"),
+            ("📊 CXシート", "https://docs.google.com/spreadsheets/d/1sIc_FJ0mXwgbHNAyw9OOhjCLRDmZZi1c5rW_Oe89Gqg/edit?gid=1315622606#gid=1315622606"),
+            ("💰 料金表", "https://docs.google.com/spreadsheets/d/1WVKdr46AqugyYgLrqjhBCCorxP7vyw10UDgxN7x2f68/edit?gid=1718294555#gid=1718294555"),
+            ("🔧 工事加算額", "https://flets-w.com/price/addition/"),
+        ]
+        with st.expander("🔗 URLリンク", expanded=False):
+            _items = "".join(
+                f'<li style="margin:6px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" '
+                f'style="color:#1976D2;font-weight:600;text-decoration:none;">{label}</a></li>'
+                for label, url in _url_links
+            )
+            st.markdown(
+                f'<ul style="padding-left:20px;font-size:0.95rem;line-height:1.8;margin:4px 0;">{_items}</ul>',
+                unsafe_allow_html=True,
+            )
+
     shozai = _v("取次商材情報")
     kind = detect_kind(shozai)
     kind_label = "NURO光" if kind == "NURO" else "So-net光"
@@ -2045,6 +2064,9 @@ if selected_key.startswith("talk_script_"):
                             unsafe_allow_html=True,
                         )
 
+        # URLリンク（折りたたみ）— LINEテンプレの下
+        _render_url_links_expander()
+
         _sections_sk = get_sokushin_sections(_sokushin_key)
         if not _sections_sk:
             st.info(f"「{_sokushin_key}」のセクションが未定義です。マスタ画面で構成を設定してください。")
@@ -2143,6 +2165,9 @@ if selected_key.startswith("talk_script_"):
                         f'{safe}</div>',
                         unsafe_allow_html=True,
                     )
+
+    # URLリンク（折りたたみ）— LINEテンプレの下
+    _render_url_links_expander()
 
 
     # --- トークスクリプト本文（セクション別テンプレ + 動的処理） ---

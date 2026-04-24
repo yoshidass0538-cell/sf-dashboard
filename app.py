@@ -1827,13 +1827,24 @@ if selected_key.startswith("talk_script_"):
         return str(v) if v not in (None, "") else "—"
 
     def _render_url_links_expander() -> None:
-        """LINEテンプレの下に表示するURLリンク集（共通）。"""
+        """LINEテンプレの下に表示するURLリンク集（商材に応じて一部切替）。"""
         _url_links = [
             ("📄 PDF", "https://docs.google.com/spreadsheets/d/13vrMrnaJaIbnr2rP1lyVsNvms9_NbsIB4JB97LOCRzs/edit?gid=1416336661#gid=1416336661"),
             ("📊 CXシート", "https://docs.google.com/spreadsheets/d/1sIc_FJ0mXwgbHNAyw9OOhjCLRDmZZi1c5rW_Oe89Gqg/edit?gid=1315622606#gid=1315622606"),
             ("💰 料金表", "https://docs.google.com/spreadsheets/d/1WVKdr46AqugyYgLrqjhBCCorxP7vyw10UDgxN7x2f68/edit?gid=1718294555#gid=1718294555"),
             ("🔧 工事加算額", "https://flets-w.com/price/addition/"),
         ]
+        # 商材別リンク（kindは呼び出し時点で確定している前提）
+        if kind == "Sonet":
+            _url_links.append((
+                "⚡ ファストリンク",
+                "https://secap.so-net.ne.jp/fast-link/agts/AGTS0000.xhtml",
+            ))
+        elif kind == "NURO":
+            _url_links.append((
+                "🚶 WALK",
+                "https://nuro.jp/auth/cdcservlet?realm=/operator&goto=https://nuro.jp:443/authmanager/menuManage/?from=https%3A%2F%2Fnuro.jp%3A443%2Fauthmanager%2FmenuManage%2F%3Ffrom%3Dhttps%3A%2F%2Fnuro.jp%3A443%2Fauthmanager%2FmenuManage%2F&RequestID=100164973&MajorVersion=1&MinorVersion=0&ProviderID=http%3A%2F%2Fmv-agtrp01.mv.local%3A2080%2Famagent%3FRealm%3D%2Foperator&IssueInstant=2026-04-24T12%3A49%3A40Z",
+            ))
         with st.expander("🔗 URLリンク", expanded=False):
             _items = "".join(
                 f'<a href="{url}" target="_blank" rel="noopener noreferrer" '

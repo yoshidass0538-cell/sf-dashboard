@@ -1843,7 +1843,7 @@ if selected_key.startswith("talk_script_"):
         elif kind == "NURO":
             _url_links.append((
                 "🚶 WALK",
-                "https://nuro.jp/auth/cdcservlet?realm=/operator&goto=https://nuro.jp:443/authmanager/menuManage/?from=https%3A%2F%2Fnuro.jp%3A443%2Fauthmanager%2FmenuManage%2F%3Ffrom%3Dhttps%3A%2F%2Fnuro.jp%3A443%2Fauthmanager%2FmenuManage%2F&RequestID=100164973&MajorVersion=1&MinorVersion=0&ProviderID=http%3A%2F%2Fmv-agtrp01.mv.local%3A2080%2Famagent%3FRealm%3D%2Foperator&IssueInstant=2026-04-24T12%3A49%3A40Z",
+                "https://nuro.jp/authmanager/menuManage/",
             ))
         with st.expander("🔗 URLリンク", expanded=False):
             _items = "".join(

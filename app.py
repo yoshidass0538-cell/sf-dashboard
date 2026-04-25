@@ -2032,12 +2032,51 @@ if selected_key.startswith("talk_script_"):
                 return f'<span style="font-size:1.15rem;color:{color};">{mark}</span>'
             return _v(col)
 
+        # 利用回線別 事業変番号連絡先（既存回線の解約窓口）
+        _KAISEN_RENRAKUSAKI = {
+            "ソフトバンク光": ("0800-111-2009", "10:00〜19:00（※日曜・祝日・年末年始を除く）"),
+            "OCN光":          ("0120-506-506", "10:00〜19:00（※日曜・祝日・年末年始を除く）"),
+            "ニフティ光":      ("03-6625-3265", "10:00〜17:00"),
+            "BIGLOBE光":      ("0120-86-0962（固定電話のみ）／03-6385-0962（固定以外）", "9:00〜18:00（年中無休）"),
+            "T-COM光":        ("0120-805-633", "平日10:00〜20:00／土日祝10:00〜18:00"),
+            "楽天光":          ("0120-987-300", "9:00〜18:00"),
+            "ドコモ光":        ("ドコモの携帯電話から：151（無料）／一般電話などから：0120-800-000（通話料無料）", "9:00〜18:00"),
+        }
+
+        def _resolve_renrakusaki(raw: str) -> tuple[str, tuple[str, str]] | None:
+            r = (raw or "").strip()
+            if not r:
+                return None
+            # @nifty光 / nifty 等の表記揺れを正規化
+            if "nifty" in r.lower() or "ニフティ" in r:
+                key = "ニフティ光"
+            else:
+                key = r
+            v = _KAISEN_RENRAKUSAKI.get(key)
+            return (key, v) if v else None
+
         if _supplement_fields:
             _supp_rows = "".join(
                 f'<tr><td style="padding:4px 8px;width:32%;color:#666;">{lbl}</td>'
                 f'<td style="padding:4px 8px;font-weight:600;">{_render_supp_value(col)}</td></tr>'
                 for lbl, col in _supplement_fields
             )
+
+            _renrakusaki = _resolve_renrakusaki(info.get("利用回線") or "")
+            _renrakusaki_html = ""
+            if _renrakusaki:
+                _r_key, (_r_phone, _r_hours) = _renrakusaki
+                _renrakusaki_html = (
+                    f'<div style="margin-top:12px;padding:10px 14px;background:#FFF3E0;'
+                    f'border-left:4px solid #E67E22;border-radius:6px;">'
+                    f'<div style="font-weight:700;color:#D35400;font-size:0.95rem;margin-bottom:4px;">'
+                    f'📞 事業変番号連絡先（{_r_key}）</div>'
+                    f'<div style="font-size:0.9rem;color:#222;line-height:1.65;">'
+                    f'📱 電話番号：{_r_phone}<br>'
+                    f'🕐 受付時間：{_r_hours}'
+                    f'</div></div>'
+                )
+
             st.markdown(
                 f'<div style="background:rgba(255,255,255,0.85);border-left:6px solid #2E8B57;'
                 f'border-radius:8px;padding:14px 20px;margin:8px 0 16px 0;'
@@ -2045,7 +2084,9 @@ if selected_key.startswith("talk_script_"):
                 f'<div style="font-size:1.0rem;font-weight:700;color:#2E8B57;margin-bottom:6px;">'
                 f'🎯 促進用 補足情報（{_sokushin_key_for_card}）</div>'
                 f'<table style="width:100%;border-collapse:collapse;font-size:0.92rem;color:#222;">'
-                f'{_supp_rows}</table></div>',
+                f'{_supp_rows}</table>'
+                f'{_renrakusaki_html}'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 

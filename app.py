@@ -347,6 +347,15 @@ const colorMap = {
     '責任者用':  {bg: '#8B5CF6', hover: '#7C3AED'},
     'ツール':    {bg: '#D4850A', hover: '#B8730A'},
 };
+function applyCatStyle(btn, c, hovered) {
+    // ダークモードCSSの !important に勝つため setProperty(..., 'important') で上書き
+    btn.style.setProperty('background', hovered ? c.hover : c.bg, 'important');
+    btn.style.setProperty('color', '#fff', 'important');
+    btn.style.setProperty('font-weight', '700', 'important');
+    btn.style.setProperty('font-size', '1.05rem', 'important');
+    btn.style.setProperty('border', 'none', 'important');
+    btn.style.setProperty('border-radius', '8px', 'important');
+}
 function styleCatButtons() {
     const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
     if (!sidebar) return;
@@ -354,14 +363,21 @@ function styleCatButtons() {
     buttons.forEach(btn => {
         const text = btn.textContent.trim().replace(/^[▶▼]\\s*/, '');
         const c = colorMap[text];
-        if (c) {
-            btn.style.cssText = 'background:'+c.bg+' !important;color:#fff !important;font-weight:700 !important;font-size:1.05rem !important;border:none !important;border-radius:8px !important;';
-            btn.onmouseenter = () => btn.style.background = c.hover;
-            btn.onmouseleave = () => btn.style.background = c.bg;
-        }
+        if (!c) return;
+        applyCatStyle(btn, c, false);
+        if (btn.dataset.catColored === '1') return;  // ハンドラ重複付与を防止
+        btn.dataset.catColored = '1';
+        btn.addEventListener('mouseenter', () => applyCatStyle(btn, c, true));
+        btn.addEventListener('mouseleave', () => applyCatStyle(btn, c, false));
     });
 }
 styleCatButtons();
+// 描画直後の取り逃しに備え、最初の数秒間はポーリングでも適用
+let _styleTicks = 0;
+const _styleInterval = setInterval(() => {
+    styleCatButtons();
+    if (++_styleTicks > 30) clearInterval(_styleInterval);  // 約3秒
+}, 100);
 const obs = new MutationObserver(styleCatButtons);
 obs.observe(window.parent.document.body, {childList: true, subtree: true});
 

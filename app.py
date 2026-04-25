@@ -2130,9 +2130,16 @@ if selected_key.startswith("talk_script_"):
         _sokushin_key = select_sokushin_key(_daikon_val)
 
         if not _sokushin_key:
-            st.warning(
-                f"ダイコンステータス「{_daikon_val or '(空)'}」は促進用トークの対応外です。"
-                "対応値: 工事日調整希望 / API工事取得 / 番ポ不備 / 住所確認 / 現地調査必要 / 有派遣へ変更必要"
+            st.markdown(
+                f'<div style="background:#F5F5F5;border-left:6px solid #9E9E9E;'
+                f'border-radius:8px;padding:14px 20px;margin:8px 0 16px 0;'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
+                f'<div style="font-size:1.0rem;font-weight:700;color:#555;">'
+                f'📭 現在トークなし</div>'
+                f'<div style="font-size:0.88rem;color:#777;margin-top:4px;">'
+                f'ダイコンステータス「{_daikon_val or "(空)"}」は促進用トークの対応外です。'
+                f'</div></div>',
+                unsafe_allow_html=True,
             )
             st.stop()
 

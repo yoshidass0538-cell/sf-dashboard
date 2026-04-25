@@ -122,11 +122,11 @@ def _sf():
 
 
 # ボードを開くたびに毎回取得（キャッシュなし）
-_REALTIME_KEYS = {"day_calls", "today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift", "next_month_shift", "call_history"}
+_REALTIME_KEYS = {"today", "cs_shift", "list_volume", "shinsetsu_today", "shinsetsu_shift", "next_month_shift", "call_history"}
 # 5分キャッシュ
 _CACHE_5MIN_KEYS = {"1week_cx_check"}
 # 10分キャッシュ（10分自動更新するボード用）
-_CACHE_10MIN_KEYS = {"orikaeshi_kensu"}
+_CACHE_10MIN_KEYS = {"orikaeshi_kensu", "day_calls"}
 # 2時間キャッシュ
 _CACHE_2H_KEYS = {"total_calls", "fc_1week", "sokushin_monthly", "kari_keisan", "kari_keisan_gift_gai", "cx_age_area"}
 # 毎日11:00更新（日次キャッシュ）
@@ -2860,6 +2860,13 @@ if selected_key == "1week_cx_check":
 # DAYコール数: 帯グラフ表示
 if selected_key == "day_calls":
     import plotly.express as px
+
+    # 10分ごとに自動更新（キャッシュ更新ボタンを押さなくてもデータが新しくなる）
+    try:
+        from streamlit_autorefresh import st_autorefresh as _dc_autorefresh
+        _dc_autorefresh(interval=600000, key="day_calls_autorefresh")
+    except ImportError:
+        pass
 
     def _render_bar_chart(title: str, df_src):
         st.subheader(title)

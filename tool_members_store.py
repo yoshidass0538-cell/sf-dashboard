@@ -33,6 +33,17 @@ from talk_template_store import (
 WORKSHEET_NAME = "tool_members_data"
 CELL = "A1"
 
+# 全タブから常時除外する担当者（正規化名: 半角/全角空白除去）
+EXCLUDED_NAMES_NORM = {"高橋真友香", "大滝紀香"}
+
+
+def _norm(s: str) -> str:
+    return (s or "").replace(" ", "").replace("　", "")
+
+
+def is_excluded_member(name: str) -> bool:
+    return _norm(name) in EXCLUDED_NAMES_NORM
+
 # 初期トーク種類
 _DEFAULT_BOARDS = [
     {"suffix": "fc1week", "label": "1週間後FCトーク"},
@@ -136,8 +147,8 @@ def get_active_members() -> list[dict]:
 
 
 def get_member_names() -> list[str]:
-    """アクティブなメンバー名のリスト（サイドバー表示用）。"""
-    return [m["name"] for m in get_active_members()]
+    """アクティブなメンバー名のリスト（サイドバー表示用、除外名は省く）。"""
+    return [m["name"] for m in get_active_members() if not is_excluded_member(m["name"])]
 
 
 def get_all_member_names() -> list[str]:

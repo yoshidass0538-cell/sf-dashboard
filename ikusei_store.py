@@ -20,6 +20,13 @@ SCOPES = [
 DATA_CELL = "A1"
 SHEET_NAME = "ikusei_data"
 
+# 全タブから常時除外する担当者（正規化名: 半角/全角空白除去）
+EXCLUDED_NAMES_NORM = {"高橋真友香", "大滝紀香"}
+
+
+def _norm(s: str) -> str:
+    return (s or "").replace(" ", "").replace("　", "")
+
 
 @st.cache_resource
 def _get_gspread_client():
@@ -99,6 +106,11 @@ def _shared_store():
 def get_store() -> dict:
     """共有ストアを取得。"""
     return _shared_store()
+
+
+def is_excluded_member(name: str) -> bool:
+    """全タブから常時除外する担当者か判定。"""
+    return _norm(name) in EXCLUDED_NAMES_NORM
 
 
 import time

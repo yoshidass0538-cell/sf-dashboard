@@ -2281,7 +2281,7 @@ METRICS: list[Metric] = [
 
 
 # --- ツール: メンバー別トークスクリプト（動的管理） ---
-from tool_members_store import get_members, get_all_member_names, get_member_names, get_boards_as_tuples
+from tool_members_store import get_members, get_all_member_names, get_member_names, get_boards_as_tuples, is_excluded_member as _tool_excluded
 
 # 全メンバー名（非アクティブ含む、インデックス安定用）
 TALK_SCRIPT_MEMBERS_ALL: list[str] = get_all_member_names()
@@ -2299,6 +2299,8 @@ def _build_talk_script_metrics() -> list[Metric]:
     boards = get_boards_as_tuples()
     for _i, _m in enumerate(members):
         if not _m.get("active", True):
+            continue
+        if _tool_excluded(_m["name"]):
             continue
         for _suffix, _board_label in boards:
             if _suffix in _m.get("assignments", []):

@@ -247,10 +247,12 @@ for container in st.session_state["board_order"]:
             # ツールは「メンバー → ボード」の2階層ネスト描画
             # メンバー順は board_order の保存済みitemsを使用
             if cat == "ツール":
-                from tool_members_store import get_member_assignments, get_all_member_names
+                from tool_members_store import get_member_assignments, get_all_member_names, is_excluded_member as _tool_excluded
                 _all_names = get_all_member_names()
                 for _member_name in container["items"]:
                     if _member_name not in _all_names:
+                        continue
+                    if _tool_excluded(_member_name):
                         continue
                     _mem_idx = _all_names.index(_member_name)
                     _mem_assignments = get_member_assignments(_member_name)
@@ -2355,9 +2357,12 @@ if selected_key == "ikusei_kpi":
             else:
                 st.warning("同じ名前のカテゴリが既にあります")
 
+    from ikusei_store import is_excluded_member as _ikusei_excluded
+
     for cat_tab, group in zip(all_cat_tabs[:-1], groups):
         with cat_tab:
-            member_labels = group["items"] + ["+"] if group["items"] else ["+"]
+            visible_items = [m for m in group["items"] if not _ikusei_excluded(m)]
+            member_labels = visible_items + ["+"] if visible_items else ["+"]
             all_member_tabs = st.tabs(member_labels)
 
             with all_member_tabs[-1]:
@@ -2371,7 +2376,7 @@ if selected_key == "ikusei_kpi":
                     else:
                         st.warning("同じ名前の担当者が既にいます")
 
-            for m_tab, member in zip(all_member_tabs[:-1], group["items"]):
+            for m_tab, member in zip(all_member_tabs[:-1], visible_items):
                     with m_tab:
                         import numpy as np
                         from datetime import datetime, timezone, timedelta

@@ -1854,6 +1854,51 @@ if selected_key.startswith("talk_script_"):
         v = info.get(key, "")
         return str(v) if v not in (None, "") else "—"
 
+    # 利用回線別 事業変番号連絡先（既存回線の解約窓口）
+    _KAISEN_RENRAKUSAKI = {
+        "ソフトバンク光": ("0800-111-2009", "10:00〜19:00（※日曜・祝日・年末年始を除く）"),
+        "OCN光":          ("0120-506-506", "10:00〜19:00（※日曜・祝日・年末年始を除く）"),
+        "ニフティ光":      ("03-6625-3265", "10:00〜17:00"),
+        "BIGLOBE光":      ("0120-86-0962（固定電話のみ）／03-6385-0962（固定以外）", "9:00〜18:00（年中無休）"),
+        "T-COM光":        ("0120-805-633", "平日10:00〜20:00／土日祝10:00〜18:00"),
+        "楽天光":          ("0120-987-300", "9:00〜18:00"),
+        "ドコモ光":        ("ドコモの携帯電話から：151（無料）／一般電話などから：0120-800-000（通話料無料）", "9:00〜18:00"),
+    }
+
+    def _build_renrakusaki_html(riyou_kaisen: str, *, standalone: bool = False) -> str:
+        """利用回線に応じた事業変番号連絡先HTML。該当なしなら空文字列。
+        standalone=True で独立カードとして、False で他カード内に埋め込む装飾。
+        """
+        r = (riyou_kaisen or "").strip()
+        if not r:
+            return ""
+        if "nifty" in r.lower() or "ニフティ" in r:
+            key = "ニフティ光"
+        else:
+            key = r
+        v = _KAISEN_RENRAKUSAKI.get(key)
+        if not v:
+            return ""
+        phone, hours = v
+        inner = (
+            f'<div style="font-weight:700;color:#D35400;font-size:0.95rem;margin-bottom:4px;">'
+            f'📞 事業変番号連絡先（{key}）</div>'
+            f'<div style="font-size:0.9rem;color:#222;line-height:1.65;">'
+            f'📱 電話番号：{phone}<br>'
+            f'🕐 受付時間：{hours}'
+            f'</div>'
+        )
+        if standalone:
+            return (
+                f'<div style="background:#FFF3E0;border-left:6px solid #E67E22;'
+                f'border-radius:8px;padding:14px 20px;margin:8px 0 16px 0;'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.08);">{inner}</div>'
+            )
+        return (
+            f'<div style="margin-top:12px;padding:10px 14px;background:#FFF3E0;'
+            f'border-left:4px solid #E67E22;border-radius:6px;">{inner}</div>'
+        )
+
     def _render_url_links_expander() -> None:
         """LINEテンプレの下に表示するURLリンク集（商材に応じて一部切替）。"""
         _url_links = [
@@ -1994,6 +2039,12 @@ if selected_key.startswith("talk_script_"):
         unsafe_allow_html=True,
     )
 
+    # 1週間後FCトーク: 顧客カード直下に 事業変番号連絡先 を表示
+    if _board_suffix == "fc1week":
+        _renrakusaki_fc_html = _build_renrakusaki_html(info.get("利用回線") or "", standalone=True)
+        if _renrakusaki_fc_html:
+            st.markdown(_renrakusaki_fc_html, unsafe_allow_html=True)
+
     # 促進用トーク（代コン不備）：ダイコンステータス別の補足カードを表示
     if _board_suffix == "sokushin":
         from talk_template_store import select_sokushin_key as _select_sokushin_key_card
@@ -2032,29 +2083,6 @@ if selected_key.startswith("talk_script_"):
                 return f'<span style="font-size:1.15rem;color:{color};">{mark}</span>'
             return _v(col)
 
-        # 利用回線別 事業変番号連絡先（既存回線の解約窓口）
-        _KAISEN_RENRAKUSAKI = {
-            "ソフトバンク光": ("0800-111-2009", "10:00〜19:00（※日曜・祝日・年末年始を除く）"),
-            "OCN光":          ("0120-506-506", "10:00〜19:00（※日曜・祝日・年末年始を除く）"),
-            "ニフティ光":      ("03-6625-3265", "10:00〜17:00"),
-            "BIGLOBE光":      ("0120-86-0962（固定電話のみ）／03-6385-0962（固定以外）", "9:00〜18:00（年中無休）"),
-            "T-COM光":        ("0120-805-633", "平日10:00〜20:00／土日祝10:00〜18:00"),
-            "楽天光":          ("0120-987-300", "9:00〜18:00"),
-            "ドコモ光":        ("ドコモの携帯電話から：151（無料）／一般電話などから：0120-800-000（通話料無料）", "9:00〜18:00"),
-        }
-
-        def _resolve_renrakusaki(raw: str) -> tuple[str, tuple[str, str]] | None:
-            r = (raw or "").strip()
-            if not r:
-                return None
-            # @nifty光 / nifty 等の表記揺れを正規化
-            if "nifty" in r.lower() or "ニフティ" in r:
-                key = "ニフティ光"
-            else:
-                key = r
-            v = _KAISEN_RENRAKUSAKI.get(key)
-            return (key, v) if v else None
-
         if _supplement_fields:
             _supp_rows = "".join(
                 f'<tr><td style="padding:4px 8px;width:32%;color:#666;">{lbl}</td>'
@@ -2062,20 +2090,7 @@ if selected_key.startswith("talk_script_"):
                 for lbl, col in _supplement_fields
             )
 
-            _renrakusaki = _resolve_renrakusaki(info.get("利用回線") or "")
-            _renrakusaki_html = ""
-            if _renrakusaki:
-                _r_key, (_r_phone, _r_hours) = _renrakusaki
-                _renrakusaki_html = (
-                    f'<div style="margin-top:12px;padding:10px 14px;background:#FFF3E0;'
-                    f'border-left:4px solid #E67E22;border-radius:6px;">'
-                    f'<div style="font-weight:700;color:#D35400;font-size:0.95rem;margin-bottom:4px;">'
-                    f'📞 事業変番号連絡先（{_r_key}）</div>'
-                    f'<div style="font-size:0.9rem;color:#222;line-height:1.65;">'
-                    f'📱 電話番号：{_r_phone}<br>'
-                    f'🕐 受付時間：{_r_hours}'
-                    f'</div></div>'
-                )
+            _renrakusaki_html = _build_renrakusaki_html(info.get("利用回線") or "", standalone=False)
 
             st.markdown(
                 f'<div style="background:rgba(255,255,255,0.85);border-left:6px solid #2E8B57;'

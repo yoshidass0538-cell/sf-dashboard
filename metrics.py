@@ -55,6 +55,10 @@ METRIC_ORDER = [
 ]
 
 
+# シフト・集計タブから常に除外する担当者（正規化名: 半角/全角空白除去）
+EXCLUDED_OWNERS_NORM = {"高橋真友香", "大滝紀香"}
+
+
 def fetch_fc_1week(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return _build_fc_board(sf, "THIS_MONTH", board_label="1週間後FC",
         activities=("フォローコール（1週間後FC）", "フォローコール（その他）"))
@@ -67,7 +71,7 @@ def fetch_fc_1week_today(sf: Salesforce) -> dict[str, pd.DataFrame]:
 
 SHINSETSU_FC_NAMES = {
     n.replace(" ", "").replace("\u3000", "")
-    for n in ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香"]
+    for n in ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣"]
 }
 
 
@@ -100,7 +104,7 @@ def _build_fc_board(
         "AND Owner.UserRole.Name IN ('推進部','推進部AP') "
         "GROUP BY ActivityDate, OwnerId, Owner.Name, Field4_del__c"
     )
-    EXCLUDE_OWNERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
+    EXCLUDE_OWNERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"} | EXCLUDED_OWNERS_NORM
     res = sf.query(soql)
     rows = []
     for r in res["records"]:
@@ -594,6 +598,8 @@ def fetch_cs_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
         normalized = owner.replace(" ", "").replace("\u3000", "")
         if normalized not in active_names:
             continue
+        if normalized in EXCLUDED_OWNERS_NORM:
+            continue
         row = {"担当者": owner}
         for day, sf_, ef in visible_days:
             s = _fmt(r.get(sf_))
@@ -607,7 +613,7 @@ def fetch_cs_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
         rows.append(row)
     df = pd.DataFrame(rows)
     # 指定順で並び替え（該当しない人は末尾）
-    order = ["原田綾子", "室谷慧", "堀田輝斗", "大滝紀香", "角田心華", "金澤", "吉本"]
+    order = ["原田綾子", "室谷慧", "堀田輝斗", "角田心華", "金澤", "吉本"]
     def _rank(name: str) -> int:
         norm = (name or "").replace(" ", "").replace("\u3000", "")
         for i, key in enumerate(order):
@@ -621,10 +627,10 @@ def fetch_cs_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
 
 SHINSETSU_FC_OWNERS = {
     n.replace(" ", "").replace("\u3000", "")
-    for n in ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香"]
+    for n in ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣"]
 }
 
-SHINSETSU_FC_ORDER = ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香"]
+SHINSETSU_FC_ORDER = ["佐々木彩乃", "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣"]
 
 
 def fetch_shinsetsu_fc_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
@@ -688,16 +694,16 @@ def fetch_shinsetsu_fc_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
 # 促進全体メンバー（表示順）
 _NEXT_MONTH_ALL_ORDER = [
     "吉田颯", "室谷慧", "原田綾子", "金澤駿平", "吉本将吾",
-    "大滝紀香", "堀田輝斗", "角田心華", "佐々木彩乃", "葛西翼",
-    "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香", "勘七瞬",
+    "堀田輝斗", "角田心華", "佐々木彩乃", "葛西翼",
+    "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "勘七瞬",
 ]
 _NEXT_MONTH_ALL_SET = {n for n in _NEXT_MONTH_ALL_ORDER}
 
 # サブグループ（表示順）
-_NM_FC_ORDER = ["室谷慧", "原田綾子", "金澤駿平", "吉本将吾", "大滝紀香", "角田心華", "菊地隆真"]
+_NM_FC_ORDER = ["室谷慧", "原田綾子", "金澤駿平", "吉本将吾", "角田心華", "菊地隆真"]
 _NM_FC_SET = {n for n in _NM_FC_ORDER}
 
-_NM_SOKUSHIN_ORDER = ["葛西翼", "雨貝一生", "半田さくら", "栗田優衣", "高橋真友香", "勘七瞬"]
+_NM_SOKUSHIN_ORDER = ["葛西翼", "雨貝一生", "半田さくら", "栗田優衣", "勘七瞬"]
 _NM_SOKUSHIN_SET = {n for n in _NM_SOKUSHIN_ORDER}
 
 _NM_TIMEE_ORDER = ["佐々木彩乃", "堀田輝斗"]
@@ -811,7 +817,7 @@ def _shift_hours(start: str, end: str) -> float:
 
 CONSUME_OWNERS = {
     n.replace(" ", "").replace("\u3000", "")
-    for n in ["角田心華", "原田綾子", "室谷慧", "大滝紀香", "堀田輝斗"]
+    for n in ["角田心華", "原田綾子", "室谷慧", "堀田輝斗"]
 }
 
 
@@ -1119,8 +1125,8 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> dict[str, pd.DataFrame]:
 # トータルコール数集計
 # ======================================================================
 TOTAL_CALL_OWNERS = [
-    "室谷慧", "原田綾子", "金澤駿平", "吉本将吾", "大滝紀香", "堀田輝斗", "角田心華",
-    "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "高橋真友香", "佐々木彩乃",
+    "室谷慧", "原田綾子", "金澤駿平", "吉本将吾", "堀田輝斗", "角田心華",
+    "葛西翼", "雨貝一生", "半田さくら", "菊地隆真", "栗田優衣", "佐々木彩乃",
 ]
 TOTAL_CALL_OWNERS_SET = {n.replace(" ", "").replace("\u3000", "") for n in TOTAL_CALL_OWNERS}
 
@@ -1170,7 +1176,7 @@ def fetch_total_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
 # DAYコール数（本日・CS促進・対応ステータス別）
 # ======================================================================
 TIMEE_MEMBERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
-DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "対馬拓人", "早瀬太一"}
+DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "対馬拓人", "早瀬太一"} | EXCLUDED_OWNERS_NORM
 
 
 def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
@@ -1268,7 +1274,11 @@ def fetch_call_history(sf: Salesforce, start_date: str | None = None, end_date: 
     users_rs = sf.query_all(
         "SELECT Id, Name FROM User WHERE Department = 'CS促進' AND IsActive = true"
     )["records"]
-    cs_user_ids = {r["Id"] for r in users_rs}
+    cs_user_ids = {
+        r["Id"]
+        for r in users_rs
+        if (r.get("Name") or "").replace(" ", "").replace("　", "") not in EXCLUDED_OWNERS_NORM
+    }
     if not cs_user_ids:
         return pd.DataFrame(columns=[
             "対応日", "対応日時", "担当者", "電話番号", "対応区分", "対応ステータス",

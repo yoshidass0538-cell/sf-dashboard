@@ -2945,8 +2945,9 @@ if selected_key == "line_template":
           </div>
           <textarea id="lt_textarea" readonly
             style="width:100%;height:220px;padding:10px 12px;font-family:inherit;
-              font-size:0.95rem;line-height:1.55;border:1px solid #cfd6e0;
-              border-radius:6px;background:#FAFBFC;resize:vertical;box-sizing:border-box;"
+              font-size:0.95rem;line-height:1.55;border:1px solid rgba(49,51,63,0.2);
+              border-radius:8px;background:#F0F2F6;color:#262730;
+              resize:vertical;box-sizing:border-box;"
           >{_escaped}</textarea>
         </div>
         """,

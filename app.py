@@ -2863,38 +2863,29 @@ if selected_key == "line_template":
 
     info = None
     phone_clean = normalize_phone(phone_input)
-    _tried = []
     if phone_clean:
         # 1週間後FC・代コン不備・全量(プリティーダービー用) を順に検索
         for _sheet in (LOOKUP_SHEET, DAICON_LOOKUP_SHEET, "SO新設プリティーダービー用"):
             try:
                 _hit = lookup_customer(phone_clean, _sheet)
-                _tried.append((_sheet, "hit" if _hit is not None else "miss"))
-            except Exception as _e:
-                _tried.append((_sheet, f"error: {_e}"))
+            except Exception:
                 _hit = None
             if _hit is not None:
                 info = _hit
                 break
         if info is None:
-            st.warning(
-                f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。\n"
-                + "／".join([f"{s}={r}" for s, r in _tried])
-            )
+            st.warning(f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。")
 
+    # --- 顧客情報カード（商流／取次商材のみ） ---
     if info:
         _shoryu = (info.get("商流（引用）") or "").strip() or "—"
         _shozai = (info.get("取次商材情報") or "").strip() or "—"
-        st.markdown(
-            f'<div style="background:#F8F9FB;border-left:4px solid #4A6FA5;'
-            f'border-radius:6px;padding:10px 16px;margin:8px 0 14px 0;'
-            f'font-size:0.95rem;line-height:1.7;">'
-            f'<span style="color:#666;">商流：</span><b>{_shoryu}</b>'
-            f'<span style="margin:0 18px;color:#ccc;">|</span>'
-            f'<span style="color:#666;">取次商材：</span><b>{_shozai}</b>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            st.markdown(f"**商流**：{_shoryu}")
+        with cc2:
+            st.markdown(f"**取次商材**：{_shozai}")
+        st.divider()
 
     body_text = st.text_area(
         "本文（自由入力）",
@@ -2917,8 +2908,40 @@ if selected_key == "line_template":
 
     combined = (body_text or "") + ("\n\n" if body_text else "") + footer
 
-    st.markdown("**📋 整形済みテキスト（右上のアイコンでコピー）**")
-    st.code(combined, language=None)
+    # --- 整形済みテキスト＋独自コピーボタン ---
+    # st.code はStreamlitのキーボードショートカット (c=Clear caches) と干渉するため、
+    # 独自の textarea + clipboard.writeText に差し替える
+    import streamlit.components.v1 as _components
+    import html as _html
+    _escaped = _html.escape(combined)
+    _components.html(
+        f"""
+        <div style="font-family:'メイリオ',Meiryo,sans-serif;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-weight:700;font-size:0.95rem;">📋 整形済みテキスト</div>
+            <button id="lt_copy_btn" onclick="
+              const ta = document.getElementById('lt_textarea');
+              navigator.clipboard.writeText(ta.value).then(() => {{
+                const b = document.getElementById('lt_copy_btn');
+                const orig = b.innerText;
+                b.innerText = '✅ コピーしました';
+                b.style.background = '#27AE60';
+                setTimeout(() => {{ b.innerText = orig; b.style.background = '#4A6FA5'; }}, 1500);
+              }});
+            " style="background:#4A6FA5;color:#fff;border:none;border-radius:6px;
+              padding:6px 14px;font-weight:700;font-size:0.9rem;cursor:pointer;">
+              📋 コピー
+            </button>
+          </div>
+          <textarea id="lt_textarea" readonly
+            style="width:100%;height:220px;padding:10px 12px;font-family:inherit;
+              font-size:0.95rem;line-height:1.55;border:1px solid #cfd6e0;
+              border-radius:6px;background:#FAFBFC;resize:vertical;box-sizing:border-box;"
+          >{_escaped}</textarea>
+        </div>
+        """,
+        height=290,
+    )
 
     st.stop()
 

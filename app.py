@@ -2894,8 +2894,18 @@ if selected_key == "line_template":
         placeholder="ここにLINE本文を入力してください。",
     )
 
+    # 取次商材から代理店プレフィックスを判定
+    def _agency_prefix(shozai: str) -> str:
+        s = (shozai or "").upper()
+        if "NURO" in s:
+            return "NURO 代理店"
+        if "AU" in s:  # AU光_xxx 等
+            return "AU光 代理店"
+        return "So-net 代理店"
+
+    _prefix = _agency_prefix((info.get("取次商材情報") if info else "") or "")
     FOOTER_TEMPLATE = (
-        "So-net 代理店：{{名乗}}\n"
+        f"{_prefix}：{{{{名乗}}}}\n"
         "電話番号：{{発信番号}}\n"
         "営業時間：10:00～19:00　\n"
         "年末年始を除き年中無休"

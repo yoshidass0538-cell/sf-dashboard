@@ -2840,7 +2840,10 @@ if selected_key == "call_history":
 
 # １週間後CXチェック: 活動完了日プルダウンで絞り込み
 if selected_key == "line_template":
-    from talk_script_store import lookup_customer, normalize_phone, clear_caches
+    from talk_script_store import (
+        lookup_customer, normalize_phone, clear_caches,
+        LOOKUP_SHEET, DAICON_LOOKUP_SHEET,
+    )
     from nanori_master_store import apply_nanori_substitution
 
     st.caption("電話番号を入れて顧客の商流／取次商材を引き当て、本文を入力すると定型文末尾と合わせてコピーできるテンプレが生成されます。")
@@ -2861,7 +2864,12 @@ if selected_key == "line_template":
     info = None
     phone_clean = normalize_phone(phone_input)
     if phone_clean:
-        info = lookup_customer(phone_clean)
+        # 1週間後FC・代コン不備 両方のlookupシートを順に検索（先にヒットした方を採用）
+        for _sheet in (LOOKUP_SHEET, DAICON_LOOKUP_SHEET):
+            _hit = lookup_customer(phone_clean, _sheet)
+            if _hit is not None:
+                info = _hit
+                break
         if info is None:
             st.warning(f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。")
 

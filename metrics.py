@@ -2170,7 +2170,7 @@ METRICS: list[Metric] = [
     ),
     Metric(
         key="line_template",
-        label="LINEテンプレ",
+        label="Lステ整形",
         description="電話番号→顧客の商流／取次商材を引き当て、自由入力テキストに名乗り・発信番号を差し込んだ定型文を生成",
         fetch=lambda sf: pd.DataFrame(),
         category="TOTAL",

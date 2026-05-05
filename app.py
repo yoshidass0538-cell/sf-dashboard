@@ -2863,15 +2863,24 @@ if selected_key == "line_template":
 
     info = None
     phone_clean = normalize_phone(phone_input)
+    _tried = []
     if phone_clean:
-        # 1週間後FC・代コン不備 両方のlookupシートを順に検索（先にヒットした方を採用）
-        for _sheet in (LOOKUP_SHEET, DAICON_LOOKUP_SHEET):
-            _hit = lookup_customer(phone_clean, _sheet)
+        # 1週間後FC・代コン不備・全量(プリティーダービー用) を順に検索
+        for _sheet in (LOOKUP_SHEET, DAICON_LOOKUP_SHEET, "SO新設プリティーダービー用"):
+            try:
+                _hit = lookup_customer(phone_clean, _sheet)
+                _tried.append((_sheet, "hit" if _hit is not None else "miss"))
+            except Exception as _e:
+                _tried.append((_sheet, f"error: {_e}"))
+                _hit = None
             if _hit is not None:
                 info = _hit
                 break
         if info is None:
-            st.warning(f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。")
+            st.warning(
+                f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。\n"
+                + "／".join([f"{s}={r}" for s, r in _tried])
+            )
 
     if info:
         _shoryu = (info.get("商流（引用）") or "").strip() or "—"

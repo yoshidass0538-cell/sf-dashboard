@@ -2716,6 +2716,9 @@ elif selected_key == "1week_cx_check":
 elif selected_key == "shuchi":
     # 周知ボード（リアルタイム）— 後の専用ブロックで表示
     fetched = None
+elif selected_key == "line_template":
+    # LINEテンプレ — 後の専用ブロックで表示
+    fetched = None
 else:
     try:
         fetched = _load(selected_key)
@@ -2836,6 +2839,72 @@ if selected_key == "call_history":
     st.stop()
 
 # １週間後CXチェック: 活動完了日プルダウンで絞り込み
+if selected_key == "line_template":
+    from talk_script_store import lookup_customer, normalize_phone, clear_caches
+    from nanori_master_store import apply_nanori_substitution
+
+    st.caption("電話番号を入れて顧客の商流／取次商材を引き当て、本文を入力すると定型文末尾と合わせてコピーできるテンプレが生成されます。")
+
+    col_in, col_btn = st.columns([4, 1])
+    with col_in:
+        phone_input = st.text_input(
+            "電話番号",
+            placeholder="例: 080-4200-2238 / 08042002238",
+            key="line_template_phone",
+            label_visibility="collapsed",
+        )
+    with col_btn:
+        if st.button("🔄 データ更新", key="line_template_refresh", use_container_width=True):
+            clear_caches()
+            st.rerun()
+
+    info = None
+    phone_clean = normalize_phone(phone_input)
+    if phone_clean:
+        info = lookup_customer(phone_clean)
+        if info is None:
+            st.warning(f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。")
+
+    if info:
+        _shoryu = (info.get("商流（引用）") or "").strip() or "—"
+        _shozai = (info.get("取次商材情報") or "").strip() or "—"
+        st.markdown(
+            f'<div style="background:#F8F9FB;border-left:4px solid #4A6FA5;'
+            f'border-radius:6px;padding:10px 16px;margin:8px 0 14px 0;'
+            f'font-size:0.95rem;line-height:1.7;">'
+            f'<span style="color:#666;">商流：</span><b>{_shoryu}</b>'
+            f'<span style="margin:0 18px;color:#ccc;">|</span>'
+            f'<span style="color:#666;">取次商材：</span><b>{_shozai}</b>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    body_text = st.text_area(
+        "本文（自由入力）",
+        key="line_template_body",
+        height=200,
+        placeholder="ここにLINE本文を入力してください。",
+    )
+
+    FOOTER_TEMPLATE = (
+        "So-net 代理店：{{名乗}}\n"
+        "電話番号：{{発信番号}}\n"
+        "営業時間：10:00～19:00　\n"
+        "年末年始を除き年中無休"
+    )
+
+    if info:
+        footer = apply_nanori_substitution(FOOTER_TEMPLATE, info)
+    else:
+        footer = FOOTER_TEMPLATE  # 顧客未取得時は置換しない（プレースホルダーのまま）
+
+    combined = (body_text or "") + ("\n\n" if body_text else "") + footer
+
+    st.markdown("**📋 整形済みテキスト（右上のアイコンでコピー）**")
+    st.code(combined, language=None)
+
+    st.stop()
+
 if selected_key == "1week_cx_check":
     try:
         df_cx = _load_5min("1week_cx_check")

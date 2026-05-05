@@ -2169,6 +2169,13 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
+        key="line_template",
+        label="LINEテンプレ",
+        description="電話番号→顧客の商流／取次商材を引き当て、自由入力テキストに名乗り・発信番号を差し込んだ定型文を生成",
+        fetch=lambda sf: pd.DataFrame(),
+        category="TOTAL",
+    ),
+    Metric(
         key="kari_keisan_gift_gai",
         label="仮計算",
         description="2026/1-4月エントリ: レコード所有企業が株式会社GIFT以外のソネット/NURO取次件数を月別集計",

@@ -89,23 +89,41 @@ def build_initial_board_order(metrics_list) -> list:
         return order
 
     # 保存済み順をベースに、現在のMETRICSと整合を取る
+    # ※ ボードはユーザーが任意のカテゴリに移動できるため、m.category（デフォルト所属）に
+    #   縛らずグローバルなアイテムプールで判定する（旧実装は移動後リロードで元カテゴリに
+    #   戻ってしまうバグがあった）
+    all_items: set[str] = set()
+    for items in current_cats.values():
+        all_items.update(items)
+
     order = []
-    used_cats = set()
+    used_cats: set[str] = set()
+    placed_items: set[str] = set()
     for entry in saved:
         cat = entry.get("header")
         if cat is None or cat not in current_cats:
             continue
         saved_items = entry.get("items", []) or []
-        current_items = current_cats[cat]
-        # 既存順序を保ちつつ、新規アイテムは末尾に追加
-        merged = [i for i in saved_items if i in current_items]
-        merged += [i for i in current_items if i not in merged]
+        # 全カテゴリ集合に存在し、まだ他カテゴリで配置していないアイテムを採用
+        merged = [i for i in saved_items if i in all_items and i not in placed_items]
+        placed_items.update(merged)
         order.append({"header": cat, "items": merged})
         used_cats.add(cat)
-    # 保存されていない新カテゴリは末尾に追加
+
+    # まだ配置されていないアイテムをデフォルト所属カテゴリの末尾に補完
     for cat, items in current_cats.items():
-        if cat not in used_cats:
-            order.append({"header": cat, "items": items})
+        leftover = [i for i in items if i not in placed_items]
+        if not leftover:
+            continue
+        if cat in used_cats:
+            for entry in order:
+                if entry["header"] == cat:
+                    entry["items"].extend(leftover)
+                    break
+        else:
+            order.append({"header": cat, "items": leftover})
+            used_cats.add(cat)
+        placed_items.update(leftover)
 
     return order
 

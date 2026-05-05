@@ -209,14 +209,31 @@ categories.setdefault("ツール", [])  # 空でも存在を保証
 label_to_key = {m.label: m.key for m in METRICS}
 
 # セッションに並び順を保持（Google Sheetsから読み込み、無ければデフォルト）
-from ui_order_store import build_initial_board_order, save_order as _save_board_order
+from ui_order_store import build_initial_board_order, save_order as _save_board_order, clear_order_cache as _clear_order_cache
 if "board_order" not in st.session_state:
     st.session_state["board_order"] = build_initial_board_order(METRICS)
 else:
-    # 旧形式（ツールカテゴリが空 or 存在しない）を検出して再構築
+    # 再構築判定:
+    #  - ツールカテゴリが空 or 存在しない（旧形式）
+    #  - METRICS のラベルが追加 / 変更され、board_order に含まれていない
     _bo = st.session_state["board_order"]
     _tool_entry = next((c for c in _bo if c.get("header") == "ツール"), None)
-    if _tool_entry is None or not _tool_entry.get("items"):
+    _bo_labels = {label for entry in _bo for label in entry.get("items", [])}
+    _current_labels = {
+        m.label for m in METRICS
+        if not (m.category == "ツール" and m.key.startswith("talk_script_"))
+    }
+    _missing_labels = _current_labels - _bo_labels
+    if (
+        _tool_entry is None
+        or not _tool_entry.get("items")
+        or _missing_labels
+    ):
+        # Sheets側の保存値が古いケースに備え、共有キャッシュも一度クリア
+        try:
+            _clear_order_cache()
+        except Exception:
+            pass
         del st.session_state["board_order"]
         st.rerun()
 

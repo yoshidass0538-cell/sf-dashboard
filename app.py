@@ -2958,7 +2958,7 @@ if selected_key == "line_template":
         </style>
         <div class="lt-warn-banner">
             <span class="lt-warn-icon">⚠️</span>
-            ※必ず会社名と電話あっているか確認お願いします！
+            必ず会社名と電話番号あっているか確認お願いします！
             <span class="lt-warn-icon">⚠️</span>
         </div>
         """,

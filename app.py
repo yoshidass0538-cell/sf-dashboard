@@ -2921,6 +2921,18 @@ if selected_key == "line_template":
 
     combined = (body_text or "") + ("\n\n" if body_text else "") + footer
 
+    # --- 確認注意バナー ---
+    st.markdown(
+        '<div style="background:linear-gradient(90deg,#FF6B6B,#FF8E53);'
+        'color:#fff;padding:12px 18px;border-radius:10px;margin:8px 0 12px 0;'
+        'box-shadow:0 3px 10px rgba(255,107,107,0.4);font-weight:800;'
+        'font-size:1.05rem;text-align:center;letter-spacing:0.5px;'
+        'border:2px solid #fff;">'
+        '⚠ ※必ず会社名と電話あっているか確認お願いします！⚠'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
     # --- 整形済みテキスト＋独自コピーボタン ---
     # st.code はStreamlitのキーボードショートカット (c=Clear caches) と干渉するため、
     # 独自の textarea + clipboard.writeText に差し替える

@@ -2921,15 +2921,47 @@ if selected_key == "line_template":
 
     combined = (body_text or "") + ("\n\n" if body_text else "") + footer
 
-    # --- 確認注意バナー ---
+    # --- 確認注意バナー（高視認: 赤⇔黄パルス＋黒縁・拡大） ---
     st.markdown(
-        '<div style="background:linear-gradient(90deg,#FF6B6B,#FF8E53);'
-        'color:#fff;padding:12px 18px;border-radius:10px;margin:8px 0 12px 0;'
-        'box-shadow:0 3px 10px rgba(255,107,107,0.4);font-weight:800;'
-        'font-size:1.05rem;text-align:center;letter-spacing:0.5px;'
-        'border:2px solid #fff;">'
-        '⚠ ※必ず会社名と電話あっているか確認お願いします！⚠'
-        '</div>',
+        """
+        <style>
+        @keyframes lt_warn_pulse {
+            0%   { background:#FF1744; box-shadow:0 0 0 0 rgba(255,23,68,0.85), 0 4px 14px rgba(0,0,0,0.35); }
+            50%  { background:#FFD600; box-shadow:0 0 0 12px rgba(255,23,68,0.0), 0 4px 14px rgba(0,0,0,0.35); color:#B71C1C; }
+            100% { background:#FF1744; box-shadow:0 0 0 0 rgba(255,23,68,0.85), 0 4px 14px rgba(0,0,0,0.35); }
+        }
+        @keyframes lt_warn_shake {
+            0%,100% { transform: translateX(0); }
+            20% { transform: translateX(-2px); }
+            40% { transform: translateX(2px); }
+            60% { transform: translateX(-1px); }
+            80% { transform: translateX(1px); }
+        }
+        .lt-warn-banner {
+            color:#fff;
+            padding:18px 22px;
+            border-radius:12px;
+            margin:14px 0 16px 0;
+            font-weight:900;
+            font-size:1.35rem;
+            text-align:center;
+            letter-spacing:1px;
+            border:4px solid #000;
+            text-shadow:1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+            animation: lt_warn_pulse 1.2s ease-in-out infinite, lt_warn_shake 0.6s ease-in-out 3;
+        }
+        .lt-warn-icon {
+            font-size:1.6rem;
+            margin:0 6px;
+            vertical-align:middle;
+        }
+        </style>
+        <div class="lt-warn-banner">
+            <span class="lt-warn-icon">⚠️</span>
+            ※必ず会社名と電話あっているか確認お願いします！
+            <span class="lt-warn-icon">⚠️</span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 

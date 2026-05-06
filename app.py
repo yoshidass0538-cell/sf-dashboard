@@ -2925,6 +2925,7 @@ if selected_key == "line_template":
 
     _line1 = _first_line((info.get("取次商材情報") if info else "") or "")
     FOOTER_TEMPLATE = (
+        "ご質問ご不明点がございましたら下記連絡先、もしくはこちらのLINEにてご返信お願いいたします。\n"
         f"{_line1}\n"
         "電話番号：{{発信番号}}\n"
         "営業時間：10:00～19:00　\n"

@@ -3636,7 +3636,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             custom_css=custom_css,
             key=f"aggrid_{metric.key}_{key_suffix}",
         )
-        if metric.key == "next_month_shift":
+        if metric.key in ("next_month_shift", "cs_shift", "shinsetsu_shift"):
             grid_opts["domLayout"] = "autoHeight"
             gb.configure_grid_options(**grid_opts)
             AgGrid(df_ag, gridOptions=gb.build(), **ag_kwargs)

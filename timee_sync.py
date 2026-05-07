@@ -111,7 +111,7 @@ def run_sync() -> None:
     # 1. ダウンロード
     cur_path = f"./tmp/timee_{today.year}_{today.month:02d}.xlsx"
     download_month_excel(today.year, today.month, cur_path)
-    records = parse_excel_records(cur_path)
+    records = parse_excel_records(cur_path, default_year=today.year, default_month=today.month)
     print(f"[Timee Sync] current month records: {len(records)}")
 
     meta = store.load_meta()
@@ -120,7 +120,7 @@ def run_sync() -> None:
         next_path = f"./tmp/timee_{ny}_{nm:02d}.xlsx"
         try:
             download_month_excel(ny, nm, next_path)
-            next_records = parse_excel_records(next_path)
+            next_records = parse_excel_records(next_path, default_year=ny, default_month=nm)
             print(f"[Timee Sync] next month records: {len(next_records)}")
             records.extend(next_records)
             meta["last_next_month_fetch"] = today_iso

@@ -203,31 +203,55 @@ def download_month_excel(year: int, month: int, output_path: str,
 # ----------------------------------------------------------------------
 # Excelパース
 # ----------------------------------------------------------------------
-def parse_excel_records(path: str) -> list[dict]:
+def parse_excel_records(path: str, default_year: int | None = None,
+                        default_month: int | None = None) -> list[dict]:
     """
     Excelの「全ての雛形の予定表」シートからレコードを抽出。
     返り値はワーカー単位×就業日の辞書リスト。
+    default_year/month: ファイル名から年月が分かる場合に渡す。
+                       「就業日」が "05月08日" 形式かつ前回勤務日が空のワーカー(初稼働)
+                       でも正しく YYYY-MM-DD に正規化するために必須。
     """
     df = pd.read_excel(path, sheet_name="全ての雛形の予定表")
     # 先頭の空白列をdrop
     df = df.dropna(axis=1, how="all")
     df.columns = [str(c).strip() for c in df.columns]
 
-    # 就業日を YYYY-MM-DD に正規化（"05月01日" 形式 + 年情報をファイル名から取得しない場合は前回勤務日 or ファイル年から推測）
-    # シート内の「前回勤務日」が完全な日付なので、就業日と同月のはず → 就業日に「前回勤務日の年」を補う
+    # default_year未指定なら、シート内の前回勤務日のうち最頻の年から推測
+    fallback_year = default_year
+    if fallback_year is None:
+        years = []
+        for v in df.get("前回勤務日", []):
+            if isinstance(v, str):
+                m = re.match(r"(\d{4})", v)
+                if m:
+                    years.append(int(m.group(1)))
+            elif hasattr(v, "year"):
+                years.append(v.year)
+        if years:
+            from collections import Counter
+            fallback_year = Counter(years).most_common(1)[0][0]
+
     def _normalize_date(row) -> str:
         ts = row.get("就業日", "")
+        # datetime/pandas Timestamp はそのまま
+        if hasattr(ts, "strftime"):
+            return ts.strftime("%Y-%m-%d")
         if isinstance(ts, str):
             m = re.match(r"(\d{1,2})月(\d{1,2})日", ts)
             if m:
-                # 同行の「前回勤務日」から年を取得
+                mm, dd = int(m.group(1)), int(m.group(2))
+                # 1. 同行の「前回勤務日」から年を取得（最も信頼できる）
                 prev = row.get("前回勤務日", "")
-                if isinstance(prev, str) and len(prev) >= 4:
-                    yr_match = re.match(r"(\d{4})", prev)
-                    if yr_match:
-                        return f"{yr_match.group(1)}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
-        if hasattr(ts, "strftime"):
-            return ts.strftime("%Y-%m-%d")
+                if isinstance(prev, str):
+                    yr = re.match(r"(\d{4})", prev)
+                    if yr:
+                        return f"{yr.group(1)}-{mm:02d}-{dd:02d}"
+                elif hasattr(prev, "year"):
+                    return f"{prev.year}-{mm:02d}-{dd:02d}"
+                # 2. 引数の default_year を使う（新規ワーカーは前回勤務日が空）
+                if fallback_year is not None:
+                    return f"{fallback_year}-{mm:02d}-{dd:02d}"
         return str(ts)
 
     records = []

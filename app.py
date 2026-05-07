@@ -377,6 +377,7 @@ const colorMap = {
     '促進':      {bg: '#2E8B57', hover: '#257A4A'},
     '責任者用':  {bg: '#8B5CF6', hover: '#7C3AED'},
     'ツール':    {bg: '#D4850A', hover: '#B8730A'},
+    'タイミー':  {bg: '#E91E63', hover: '#C2185B'},
 };
 function applyCatStyle(btn, c, hovered) {
     // ダークモードCSSの !important に勝つため setProperty(..., 'important') で上書き
@@ -3803,7 +3804,6 @@ if selected_key == "timee_management":
                         "時間": f"{_r.get('開始時間','')}-{_r.get('終了時間','')}",
                         "出勤回数": _r.get("出勤回数", 0),
                         "グループ": _r.get("グループ", ""),
-                        "バッジ": _r.get("バッジ", ""),
                         "キャンセル数": len(_w.get("キャンセル履歴", [])),
                     })
                 _ddf = pd.DataFrame(_df_rows)

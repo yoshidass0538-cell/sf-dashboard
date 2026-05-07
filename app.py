@@ -3631,6 +3631,8 @@ if selected_key == "timee_management":
 
     # スナップショットから「ワーカー別の業務(グループ)集合」を構築
     _worker_groups: dict[str, set[str]] = {}
+    # 「ワーカー別の最古就業日」を全レコードから計算（初回ワーカー判定に使用）
+    _worker_first_date: dict[str, str] = {}
     for _r in _snapshot:
         _wid = _r.get("id")
         if not _wid:
@@ -3639,6 +3641,11 @@ if selected_key == "timee_management":
             _g = _g.strip()
             if _g:
                 _worker_groups.setdefault(_wid, set()).add(_g)
+        _ds = _r.get("就業日", "")
+        if _ds:
+            cur = _worker_first_date.get(_wid)
+            if cur is None or _ds < cur:
+                _worker_first_date[_wid] = _ds
     _all_group_tags = sorted({g for s in _worker_groups.values() for g in s})
 
     # ----- ワーカー一覧（編集可） -----
@@ -3811,7 +3818,7 @@ if selected_key == "timee_management":
                         continue
                     _by_day_cnt[_dnum] = _by_day_cnt.get(_dnum, 0) + 1
                     _w = _workers.get(_r["id"], {})
-                    _is_first = (_w.get("初回登録日", "") == _ds)
+                    _is_first = (_worker_first_date.get(_r["id"], "") == _ds)
                     _is_promoted = bool(_w.get("直雇勧誘済", False))
                     _by_day_kana.setdefault(_dnum, []).append(
                         (_w.get("カナ", ""), _is_first, _is_promoted)
@@ -3949,8 +3956,8 @@ if selected_key == "timee_management":
                     _groups_html = "<br>".join(
                         _tm_html.escape(g) for g in sorted(_row_groups(_r))
                     ) or "—"
-                    # 印（赤=直雇用勧誘済 / 青=その日が初回登録日と一致）
-                    _is_first = _w.get("初回登録日", "") == _r.get("就業日", "")
+                    # 印（赤=直雇用勧誘済 / 青=その日が最古就業日と一致 = 初稼働日）
+                    _is_first = _worker_first_date.get(_r["id"], "") == _r.get("就業日", "")
                     _is_promoted = bool(_w.get("直雇勧誘済", False))
                     _mark_html = ""
                     if _is_promoted:

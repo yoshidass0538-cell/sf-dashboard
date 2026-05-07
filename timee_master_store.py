@@ -174,10 +174,13 @@ def build_key_to_id(workers: dict[str, dict]) -> dict[str, str]:
 def upsert_worker(workers: dict[str, dict], record: dict, today_iso: str) -> tuple[str, bool]:
     """
     Excel 1行(record)からワーカーを upsert。返り値: (id, is_new)。
-    既存ワーカーは年齢・性別を最新で上書き（誕生日跨ぎ等で変わる場合を吸収）。
+    既存ワーカーは年齢・性別を最新で上書き＋初回登録日を最古日に更新。
+    新規ワーカーは初回登録日 = recordの就業日（同期実行日ではなく実際の初稼働日）。
     """
     key = make_worker_key(record.get("氏名", ""), record.get("カナ", ""))
     key_to_id = build_key_to_id(workers)
+    rec_date = record.get("就業日") or today_iso
+
     if key in key_to_id:
         wid = key_to_id[key]
         w = workers[wid]
@@ -186,6 +189,10 @@ def upsert_worker(workers: dict[str, dict], record: dict, today_iso: str) -> tup
             w["性別"] = record["性別"]
         if record.get("年齢") is not None:
             w["年齢"] = record["年齢"]
+        # 初回登録日は「より古い就業日を見つけたら遡る」
+        cur = w.get("初回登録日", "")
+        if rec_date and (not cur or rec_date < cur):
+            w["初回登録日"] = rec_date
         return wid, False
 
     wid = generate_new_id(workers)
@@ -194,7 +201,7 @@ def upsert_worker(workers: dict[str, dict], record: dict, today_iso: str) -> tup
         "カナ": record.get("カナ", ""),
         "性別": record.get("性別", ""),
         "年齢": record.get("年齢"),
-        "初回登録日": today_iso,
+        "初回登録日": rec_date,
         "メモ": "",
         "タグ": [],
         "直雇勧誘済": False,

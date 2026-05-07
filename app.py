@@ -3609,14 +3609,18 @@ if selected_key == "timee_management":
     # サマリー
     _today = _tm_date.today()
     _today_iso = _today.isoformat()
-    _this_month_prefix = _today.strftime("%Y-%m")
     _new_today = sum(1 for w in _workers.values() if w.get("初回登録日") == _today_iso)
-    _new_this_month = sum(1 for w in _workers.values() if str(w.get("初回登録日", "")).startswith(_this_month_prefix))
+    # 現在マッチング中の新規ワーカー = snapshot内で「グループ空欄(初回)」かつ「就業日が今日以降」のユニークID数
+    _matching_new_ids = {
+        r["id"] for r in _snapshot
+        if not str(r.get("グループ", "")).strip()
+        and str(r.get("就業日", "")) >= _today_iso
+    }
     _cancel_total = sum(len(w.get("キャンセル履歴", [])) for w in _workers.values())
 
     _c1, _c2, _c3, _c4, _c5 = st.columns([2, 2, 2, 2, 1])
     _c1.metric("登録ワーカー総数", f"{len(_workers):,}")
-    _c2.metric("当月新規ワーカー", f"{_new_this_month:,}")
+    _c2.metric("現在マッチング中の新規ワーカー", f"{len(_matching_new_ids):,}")
     _c3.metric("本日新規ワーカー", f"{_new_today:,}")
     _c4.metric("キャンセル累計", f"{_cancel_total:,}")
     if _c5.button("🔄 更新", key="tm_reload", use_container_width=True):

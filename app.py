@@ -3689,61 +3689,119 @@ if selected_key == "timee_management":
         if _wdf.empty:
             st.info("該当ワーカーはありません。")
         else:
-            _edited = st.data_editor(
+            st.caption("👆 行をクリックすると下に編集フォームが開きます。メモは Enter で改行できます。")
+
+            # AgGrid: 行autoHeight + 行選択
+            _gb = GridOptionsBuilder.from_dataframe(_wdf)
+            _gb.configure_default_column(
+                resizable=True, sortable=True, filter=True,
+                wrapText=True, autoHeight=True,
+                cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
+                           "display": "flex", "alignItems": "center"},
+            )
+            _gb.configure_selection(selection_mode="single", use_checkbox=False)
+            _gb.configure_column("印", pinned="left", width=60)
+            _gb.configure_column("ID", width=90)
+            _gb.configure_column("氏名", width=130)
+            _gb.configure_column("カナ", width=140)
+            _gb.configure_column("性別", width=60)
+            _gb.configure_column("年齢", width=70, type=["numericColumn"])
+            _gb.configure_column("業務", width=240,
+                cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
+                           "fontSize": "12px", "display": "flex", "alignItems": "center"})
+            _gb.configure_column("初回登録日", width=110)
+            _gb.configure_column("メモ", width=260,
+                cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.5",
+                           "background": "#fff8e1", "display": "flex", "alignItems": "center"})
+            _gb.configure_column("タグ", width=180)
+            _gb.configure_column("直雇勧誘済", width=110)
+            _gb.configure_column("チェック日", width=120)
+            _gb.configure_column("キャンセル数", width=100, type=["numericColumn"])
+
+            _ag_css_w = {
+                ".ag-header-cell": {"background-color": "#E91E63", "color": "#fff",
+                                    "font-weight": "bold", "text-align": "center"},
+                ".ag-header-cell-label": {"justify-content": "center"},
+                ".ag-row-odd": {"background-color": "#ffffff"},
+                ".ag-row-even": {"background-color": "#fef0f4"},
+                ".ag-row-selected": {"background-color": "#fce4ec !important"},
+            }
+
+            _grid = AgGrid(
                 _wdf,
-                key="tm_worker_editor",
-                hide_index=True,
-                use_container_width=True,
-                disabled=["印", "ID", "氏名", "カナ", "性別", "年齢", "業務", "初回登録日", "キャンセル数"],
-                column_config={
-                    "印": st.column_config.TextColumn("印", width="small", help="🔴 = 直雇用勧誘済"),
-                    "業務": st.column_config.TextColumn("業務 (改行区切り)", width="medium"),
-                    "メモ": st.column_config.TextColumn("メモ", width="medium"),
-                    "タグ": st.column_config.TextColumn("タグ (カンマ区切り)", width="medium"),
-                    "直雇勧誘済": st.column_config.CheckboxColumn("直雇勧誘済"),
-                    "チェック日": st.column_config.TextColumn("チェック日 (YYYY-MM-DD)"),
-                    "キャンセル数": st.column_config.NumberColumn("キャンセル数", format="%d"),
-                },
+                gridOptions=_gb.build(),
+                theme="balham",
+                custom_css=_ag_css_w,
+                fit_columns_on_grid_load=False,
+                update_mode="SELECTION_CHANGED",
+                allow_unsafe_jscode=True,
+                height=600,
+                key="tm_worker_grid",
             )
 
-            if st.button("💾 編集内容を保存", key="tm_save", type="primary"):
-                # 最新のマスタを取り直し（他ユーザーの編集と衝突しないため）
-                try:
-                    _latest = _tms.load_workers()
-                except Exception as _e:
-                    st.error(f"再読込に失敗: {_e}")
-                    st.stop()
-                _changed = 0
-                _orig = {r["ID"]: r for r in _rows}
-                for _, row in _edited.iterrows():
-                    wid = row["ID"]
-                    o = _orig.get(wid)
-                    if o is None or wid not in _latest:
-                        continue
-                    new_memo = str(row.get("メモ", "")) or ""
-                    new_tags = [t.strip() for t in str(row.get("タグ", "")).split(",") if t.strip()]
-                    new_promoted = bool(row.get("直雇勧誘済", False))
-                    new_check = (str(row.get("チェック日") or "").strip() or None)
-                    o_tags = [t.strip() for t in str(o.get("タグ", "")).split(",") if t.strip()]
-                    if new_memo != o.get("メモ", ""):
-                        _latest[wid]["メモ"] = new_memo; _changed += 1
-                    if new_tags != o_tags:
-                        _latest[wid]["タグ"] = new_tags; _changed += 1
-                    if new_promoted != bool(o.get("直雇勧誘済", False)):
-                        _latest[wid]["直雇勧誘済"] = new_promoted; _changed += 1
-                    if new_check != (o.get("チェック日") or None):
-                        _latest[wid]["チェック日"] = new_check; _changed += 1
-                if _changed:
+            # 選択行を取得
+            _sel = _grid.get("selected_rows")
+            try:
+                _has_sel = (_sel is not None) and (len(_sel) > 0)
+            except Exception:
+                _has_sel = False
+            if _has_sel:
+                _sel_row = _sel.iloc[0] if hasattr(_sel, "iloc") else _sel[0]
+                _sel_wid = str(_sel_row.get("ID") if hasattr(_sel_row, "get") else _sel_row["ID"])
+                _sel_w = _workers.get(_sel_wid, {})
+
+                st.divider()
+                st.subheader(f"📝 編集中: {_sel_w.get('氏名','')}（{_sel_w.get('カナ','')}）　ID:{_sel_wid}")
+
+                _ec1, _ec2 = st.columns([3, 2])
+                with _ec1:
+                    _new_memo = st.text_area(
+                        "メモ（Enterで改行）",
+                        value=_sel_w.get("メモ", ""),
+                        height=200,
+                        key=f"tm_memo_{_sel_wid}",
+                    )
+                with _ec2:
+                    _new_tags = st.text_input(
+                        "タグ（カンマ区切り）",
+                        value=", ".join(_sel_w.get("タグ", []) or []),
+                        key=f"tm_tags_{_sel_wid}",
+                    )
+                    _new_promoted = st.checkbox(
+                        "直雇用勧誘済",
+                        value=bool(_sel_w.get("直雇勧誘済", False)),
+                        key=f"tm_promo_{_sel_wid}",
+                    )
+                    _new_check = st.text_input(
+                        "チェック日 (YYYY-MM-DD)",
+                        value=str(_sel_w.get("チェック日") or ""),
+                        key=f"tm_chk_{_sel_wid}",
+                    )
+
+                _bs, _bc = st.columns([1, 1])
+                if _bs.button("💾 保存", key=f"tm_save_{_sel_wid}", type="primary", use_container_width=True):
                     try:
-                        _tms.save_workers(_latest)
+                        _latest = _tms.load_workers()
                     except Exception as _e:
-                        st.error(f"保存に失敗: {_e}")
+                        st.error(f"再読込に失敗: {_e}")
                         st.stop()
-                    _tm_reload()
-                    st.success(f"{_changed}件 保存しました")
+                    if _sel_wid not in _latest:
+                        st.error("対象ワーカーがマスタにいません。")
+                    else:
+                        _latest[_sel_wid]["メモ"] = _new_memo
+                        _latest[_sel_wid]["タグ"] = [t.strip() for t in _new_tags.split(",") if t.strip()]
+                        _latest[_sel_wid]["直雇勧誘済"] = bool(_new_promoted)
+                        _latest[_sel_wid]["チェック日"] = _new_check.strip() or None
+                        try:
+                            _tms.save_workers(_latest)
+                        except Exception as _e:
+                            st.error(f"保存に失敗: {_e}")
+                            st.stop()
+                        _tm_reload()
+                        st.success("保存しました")
+                        st.rerun()
+                if _bc.button("選択解除", key=f"tm_clear_{_sel_wid}", use_container_width=True):
                     st.rerun()
-                else:
-                    st.info("変更はありませんでした。")
 
         # キャンセル履歴展開
         with st.expander("📉 キャンセル履歴を確認"):

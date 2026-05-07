@@ -3615,7 +3615,9 @@ if selected_key == "timee_management":
 
     st.divider()
 
-    _tab_workers, _tab_schedule = st.tabs(["👥 ワーカー一覧（編集可）", "📅 当月予定一覧"])
+    _tab_workers, _tab_calendar, _tab_schedule = st.tabs(
+        ["👥 ワーカー一覧（編集可）", "📆 カレンダー", "📅 当月予定一覧"]
+    )
 
     # スナップショットから「ワーカー別の業務(グループ)集合」を構築
     _worker_groups: dict[str, set[str]] = {}
@@ -3747,6 +3749,129 @@ if selected_key == "timee_management":
                 st.dataframe(_hdf, hide_index=True, use_container_width=True)
             else:
                 st.info("まだキャンセルは記録されていません。")
+
+    # ----- カレンダー（月間グリッド: 日別人数表示） -----
+    with _tab_calendar:
+        if not _snapshot:
+            st.info("予定データがまだ取り込まれていません。")
+        else:
+            import calendar as _tm_cal
+            import html as _tm_html
+            from datetime import date as _tm_d2
+
+            _avail_months = sorted({r["就業日"][:7] for r in _snapshot
+                                    if isinstance(r.get("就業日"), str) and len(r["就業日"]) >= 7})
+            if not _avail_months:
+                st.info("就業日データが正しく取り込まれていません。")
+            else:
+                _default_m = _today.strftime("%Y-%m")
+                if _default_m not in _avail_months:
+                    _default_m = _avail_months[0]
+                _sel_m = st.selectbox("月を選択", _avail_months,
+                                      index=_avail_months.index(_default_m),
+                                      key="tm_cal_month")
+                _y, _m = map(int, _sel_m.split("-"))
+
+                # 業務(グループ)で絞り込み（任意）
+                _cal_groups = st.multiselect(
+                    "業務（グループ）で絞り込み（複数選択可・OR）",
+                    _all_group_tags,
+                    key="tm_cal_groups",
+                )
+                _cal_sel_set = set(_cal_groups)
+
+                # 日別人数を集計（業務フィルタ反映）
+                _by_day_cnt: dict[int, int] = {}
+                _by_day_workers: dict[int, list[str]] = {}
+                for _r in _snapshot:
+                    _ds = _r.get("就業日", "")
+                    if not _ds.startswith(_sel_m):
+                        continue
+                    if _cal_sel_set:
+                        _gset = {g.strip() for g in str(_r.get("グループ", "")).split(",") if g.strip()}
+                        if not _gset.intersection(_cal_sel_set):
+                            continue
+                    try:
+                        _dnum = int(_ds[8:10])
+                    except ValueError:
+                        continue
+                    _by_day_cnt[_dnum] = _by_day_cnt.get(_dnum, 0) + 1
+                    _w = _workers.get(_r["id"], {})
+                    _by_day_workers.setdefault(_dnum, []).append(_w.get("氏名", ""))
+
+                # 曜日ヘッダー（月始まり: 月火水木金土日）
+                _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]
+                _hcols = st.columns(7)
+                for _i, _wd in enumerate(_wd_labels):
+                    _wd_color = "#4a90e2" if _i == 5 else ("#e74c3c" if _i == 6 else "#444")
+                    _hcols[_i].markdown(
+                        f"<div style='text-align:center;font-weight:700;color:{_wd_color};"
+                        f"padding:6px 0;border-bottom:2px solid #ddd;'>{_wd}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                # monthcalendar は月始まり (firstweekday=0=月曜)
+                _tm_cal.setfirstweekday(_tm_cal.MONDAY)
+                _weeks = _tm_cal.monthcalendar(_y, _m)
+
+                for _week in _weeks:
+                    _cols = st.columns(7)
+                    for _i, _day in enumerate(_week):
+                        with _cols[_i]:
+                            if _day == 0:
+                                st.markdown("<div style='min-height:90px;'></div>", unsafe_allow_html=True)
+                                continue
+                            _d_obj = _tm_d2(_y, _m, _day)
+                            _is_past = _d_obj < _today
+                            _is_today = (_d_obj == _today)
+                            _is_sat = _i == 5
+                            _is_sun = _i == 6
+                            _cnt = _by_day_cnt.get(_day, 0)
+
+                            if _is_today:
+                                _bg, _fg, _bd = "#fff3cd", "#664d03", "2px solid #f0c000"
+                            elif _is_past:
+                                _bg, _fg, _bd = "#f5f5f5", "#aaa", "1px solid #e0e0e0"
+                            elif _is_sat:
+                                _bg, _fg, _bd = "#e7f0fb", "#2c5fa0", "1px solid #c5d8ee"
+                            elif _is_sun:
+                                _bg, _fg, _bd = "#fde8ec", "#a5364c", "1px solid #f0c5cf"
+                            else:
+                                _bg, _fg, _bd = "#ffffff", "#222", "1px solid #d8dee5"
+
+                            if _cnt > 0:
+                                _cnt_html = (
+                                    f"<div style='font-size:18px;font-weight:800;margin-top:6px;"
+                                    f"color:{'#888' if _is_past else '#1565c0'};'>{_cnt}<span style='font-size:11px;'>名</span></div>"
+                                )
+                                # 上位3名を小さく表示
+                                _names = _by_day_workers.get(_day, [])[:3]
+                                _names_html = "<br>".join(
+                                    f"<span style='font-size:10px;color:{'#bbb' if _is_past else '#666'};'>{_tm_html.escape(n)}</span>"
+                                    for n in _names
+                                )
+                                if len(_by_day_workers.get(_day, [])) > 3:
+                                    _names_html += f"<br><span style='font-size:10px;color:#999;'>…他{_cnt-3}名</span>"
+                            else:
+                                _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:8px;'>—</div>"
+                                _names_html = ""
+
+                            st.markdown(
+                                f"<div style='background:{_bg};color:{_fg};border:{_bd};"
+                                f"border-radius:8px;padding:6px 8px;min-height:90px;text-align:center;"
+                                f"margin-bottom:4px;'>"
+                                f"<div style='font-size:14px;font-weight:700;'>{_day}</div>"
+                                f"{_cnt_html}"
+                                f"<div style='margin-top:4px;line-height:1.3;'>{_names_html}</div>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+
+                # 凡例
+                st.caption(
+                    f"📆 {_y}年{_m}月　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜　"
+                    f"|　業務フィルタ: {len(_cal_sel_set)}件選択中"
+                )
 
     # ----- 就業日カレンダー（日別セクション・過去日は折りたたみ収納） -----
     with _tab_schedule:

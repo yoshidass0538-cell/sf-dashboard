@@ -48,6 +48,11 @@ WORKERS_CELL = "A1"
 SNAPSHOT_CELL = "A2"
 META_CELL = "A3"
 
+# 過去アーカイブ（同期では触らない・容量制限を避けるため別ワークシート＋行ベース保存）
+ARCHIVE_WORKSHEET = "timee_archive"
+ARCHIVE_HEADERS = ["id", "就業日", "出勤回数", "開始時間", "終了時間",
+                   "求人タイトル", "グループ", "バッジ"]
+
 GS_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -228,6 +233,86 @@ def load_meta() -> dict:
 
 def save_meta(meta: dict) -> None:
     _save_cell(META_CELL, meta)
+
+
+# ----------------------------------------------------------------------
+# アーカイブ（過去月データ・行ベース・容量制限なし）
+# ----------------------------------------------------------------------
+def _get_archive_ws():
+    client = _get_client()
+    sh = client.open_by_key(_get_sheet_id())
+    try:
+        ws = sh.worksheet(ARCHIVE_WORKSHEET)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=ARCHIVE_WORKSHEET,
+                              rows=2, cols=len(ARCHIVE_HEADERS))
+        ws.update(values=[ARCHIVE_HEADERS], range_name="A1")
+        return ws
+    # 既存だがヘッダー欠損なら設定
+    try:
+        first = ws.row_values(1)
+        if first[: len(ARCHIVE_HEADERS)] != ARCHIVE_HEADERS:
+            ws.update(values=[ARCHIVE_HEADERS], range_name="A1")
+    except Exception:
+        pass
+    return ws
+
+
+def load_archive() -> list[dict]:
+    """過去アーカイブを全件返す（id 6桁文字列に正規化）。"""
+    ws = _get_archive_ws()
+    try:
+        records = ws.get_all_records()
+    except Exception:
+        return []
+    out = []
+    for r in records:
+        wid = r.get("id")
+        if wid in (None, ""):
+            continue
+        try:
+            wid = f"{int(wid):06d}"
+        except (TypeError, ValueError):
+            wid = str(wid)
+        out.append({
+            "id": wid,
+            "就業日": str(r.get("就業日", "")).strip(),
+            "出勤回数": int(r["出勤回数"]) if str(r.get("出勤回数", "")).strip() not in ("",) else 0,
+            "開始時間": str(r.get("開始時間", "")).strip(),
+            "終了時間": str(r.get("終了時間", "")).strip(),
+            "求人タイトル": str(r.get("求人タイトル", "")).strip(),
+            "グループ": str(r.get("グループ", "")).strip(),
+            "バッジ": str(r.get("バッジ", "")).strip(),
+        })
+    return out
+
+
+def append_archive(entries: list[dict]) -> int:
+    """新エントリをアーカイブに追記（既存(id, 就業日)ペアは無視）。返り値=追記件数。"""
+    if not entries:
+        return 0
+    existing_keys = {(e["id"], e["就業日"]) for e in load_archive()}
+    rows = []
+    for e in entries:
+        key = (e.get("id"), e.get("就業日"))
+        if key in existing_keys:
+            continue
+        existing_keys.add(key)
+        rows.append([
+            e.get("id", ""),
+            e.get("就業日", ""),
+            e.get("出勤回数", 0),
+            e.get("開始時間", ""),
+            e.get("終了時間", ""),
+            e.get("求人タイトル", ""),
+            e.get("グループ", ""),
+            e.get("バッジ", ""),
+        ])
+    if not rows:
+        return 0
+    ws = _get_archive_ws()
+    ws.append_rows(rows, value_input_option="USER_ENTERED")
+    return len(rows)
 
 
 # ----------------------------------------------------------------------

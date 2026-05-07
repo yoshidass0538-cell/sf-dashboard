@@ -1,0 +1,62 @@
+name: Timee Backfill (one-shot historical import)
+
+# 過去分の就業予定表を一括取込する手動実行ワークフロー
+# GitHub の Actions タブから「Run workflow」で起動
+on:
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "取込対象月（カンマ区切り、新→古の順を推奨）例: 2026-04,2026-03,2026-02,2026-01"
+        required: true
+        default: "2026-04,2026-03,2026-02,2026-01"
+
+concurrency:
+  group: timee-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: timee-pip-${{ hashFiles('**/timee_backfill.py') }}
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install playwright pandas openpyxl gspread google-auth requests
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-v1
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run backfill
+        env:
+          TIMEE_EMAIL: ${{ secrets.TIMEE_EMAIL }}
+          TIMEE_PASSWORD: ${{ secrets.TIMEE_PASSWORD }}
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: python timee_backfill.py --months "${{ inputs.months }}"
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timee-backfill-failure-dump
+          path: tmp/
+          if-no-files-found: ignore
+          retention-days: 7

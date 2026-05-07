@@ -3585,7 +3585,17 @@ if selected_key == "timee_management":
 
     @st.cache_data(ttl=300)
     def _tm_load():
-        return _tms.load_workers(), _tms.load_snapshot()
+        workers = _tms.load_workers()
+        snapshot = _tms.load_snapshot()
+        try:
+            archive = _tms.load_archive()
+        except Exception:
+            archive = []
+        # snapshot側を優先（同じ(id,就業日)が両方にあればsnapshot採用）
+        seen = {(r.get("id"), r.get("就業日")) for r in snapshot}
+        merged = list(snapshot) + [r for r in archive
+                                   if (r.get("id"), r.get("就業日")) not in seen]
+        return workers, merged
 
     def _tm_reload():
         _tm_load.clear()
@@ -3780,9 +3790,9 @@ if selected_key == "timee_management":
                 )
                 _cal_sel_set = set(_cal_groups)
 
-                # 日別人数を集計（業務フィルタ反映）
+                # 日別人数を集計（業務フィルタ反映、カナ氏名）
                 _by_day_cnt: dict[int, int] = {}
-                _by_day_workers: dict[int, list[str]] = {}
+                _by_day_kana: dict[int, list[str]] = {}
                 for _r in _snapshot:
                     _ds = _r.get("就業日", "")
                     if not _ds.startswith(_sel_m):
@@ -3797,7 +3807,7 @@ if selected_key == "timee_management":
                         continue
                     _by_day_cnt[_dnum] = _by_day_cnt.get(_dnum, 0) + 1
                     _w = _workers.get(_r["id"], {})
-                    _by_day_workers.setdefault(_dnum, []).append(_w.get("氏名", ""))
+                    _by_day_kana.setdefault(_dnum, []).append(_w.get("カナ", ""))
 
                 # 曜日ヘッダー（月始まり: 月火水木金土日）
                 _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]
@@ -3841,28 +3851,26 @@ if selected_key == "timee_management":
 
                             if _cnt > 0:
                                 _cnt_html = (
-                                    f"<div style='font-size:18px;font-weight:800;margin-top:6px;"
-                                    f"color:{'#888' if _is_past else '#1565c0'};'>{_cnt}<span style='font-size:11px;'>名</span></div>"
+                                    f"<div style='font-size:16px;font-weight:800;margin-top:4px;"
+                                    f"color:{'#888' if _is_past else '#1565c0'};'>{_cnt}<span style='font-size:10px;'>名</span></div>"
                                 )
-                                # 上位3名を小さく表示
-                                _names = _by_day_workers.get(_day, [])[:3]
+                                # 全員のカナ氏名を表示
+                                _kana_list = sorted(_by_day_kana.get(_day, []))
                                 _names_html = "<br>".join(
-                                    f"<span style='font-size:10px;color:{'#bbb' if _is_past else '#666'};'>{_tm_html.escape(n)}</span>"
-                                    for n in _names
+                                    f"<span style='font-size:10px;color:{'#bbb' if _is_past else '#444'};'>{_tm_html.escape(n)}</span>"
+                                    for n in _kana_list
                                 )
-                                if len(_by_day_workers.get(_day, [])) > 3:
-                                    _names_html += f"<br><span style='font-size:10px;color:#999;'>…他{_cnt-3}名</span>"
                             else:
-                                _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:8px;'>—</div>"
+                                _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:6px;'>—</div>"
                                 _names_html = ""
 
                             st.markdown(
                                 f"<div style='background:{_bg};color:{_fg};border:{_bd};"
-                                f"border-radius:8px;padding:6px 8px;min-height:90px;text-align:center;"
-                                f"margin-bottom:4px;'>"
+                                f"border-radius:8px;padding:6px 6px;min-height:100px;text-align:center;"
+                                f"margin-bottom:4px;overflow-wrap:break-word;'>"
                                 f"<div style='font-size:14px;font-weight:700;'>{_day}</div>"
                                 f"{_cnt_html}"
-                                f"<div style='margin-top:4px;line-height:1.3;'>{_names_html}</div>"
+                                f"<div style='margin-top:4px;line-height:1.35;'>{_names_html}</div>"
                                 f"</div>",
                                 unsafe_allow_html=True,
                             )

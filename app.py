@@ -3794,8 +3794,9 @@ if selected_key == "timee_management":
 
                 # 日別人数を集計（業務フィルタ反映、カナ氏名）
                 # 初回ワーカー = 「初回登録日 == その就業日」のワーカー
+                # 直雇 = 直雇用勧誘済=Trueのワーカー
                 _by_day_cnt: dict[int, int] = {}
-                _by_day_kana: dict[int, list[tuple[str, bool]]] = {}  # [(カナ, is_first)]
+                _by_day_kana: dict[int, list[tuple[str, bool, bool]]] = {}  # [(カナ, is_first, is_promoted)]
                 for _r in _snapshot:
                     _ds = _r.get("就業日", "")
                     if not _ds.startswith(_sel_m):
@@ -3811,7 +3812,10 @@ if selected_key == "timee_management":
                     _by_day_cnt[_dnum] = _by_day_cnt.get(_dnum, 0) + 1
                     _w = _workers.get(_r["id"], {})
                     _is_first = (_w.get("初回登録日", "") == _ds)
-                    _by_day_kana.setdefault(_dnum, []).append((_w.get("カナ", ""), _is_first))
+                    _is_promoted = bool(_w.get("直雇勧誘済", False))
+                    _by_day_kana.setdefault(_dnum, []).append(
+                        (_w.get("カナ", ""), _is_first, _is_promoted)
+                    )
 
                 # 曜日ヘッダー（月始まり: 月火水木金土日）
                 _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]
@@ -3858,19 +3862,23 @@ if selected_key == "timee_management":
                                     f"<div style='font-size:16px;font-weight:800;margin-top:4px;"
                                     f"color:{'#888' if _is_past else '#1565c0'};'>{_cnt}<span style='font-size:10px;'>名</span></div>"
                                 )
-                                # 全員のカナ氏名を表示（初回ワーカーは青●を前置）
+                                # 全員のカナ氏名を表示（初回=青●、直雇用勧誘済=赤●、両方=赤+青）
                                 _name_list = sorted(_by_day_kana.get(_day, []), key=lambda t: t[0])
                                 _txt_color = "#bbb" if _is_past else "#444"
-                                _dot_color = "#aaa" if _is_past else "#1976d2"
+                                _blue = "#aaa" if _is_past else "#1976d2"
+                                _red = "#aaa" if _is_past else "#e53935"
                                 _name_lines = []
-                                for _kana, _is_first in _name_list:
-                                    _dot = (
-                                        f"<span style='color:{_dot_color};font-weight:700;'>● </span>"
-                                        if _is_first else ""
-                                    )
+                                for _kana, _is_first, _is_promoted in _name_list:
+                                    _dots = ""
+                                    if _is_promoted:
+                                        _dots += f"<span style='color:{_red};font-weight:700;'>●</span>"
+                                    if _is_first:
+                                        _dots += f"<span style='color:{_blue};font-weight:700;'>●</span>"
+                                    if _dots:
+                                        _dots += " "
                                     _name_lines.append(
                                         f"<span style='font-size:10px;color:{_txt_color};'>"
-                                        f"{_dot}{_tm_html.escape(_kana)}</span>"
+                                        f"{_dots}{_tm_html.escape(_kana)}</span>"
                                     )
                                 _names_html = "<br>".join(_name_lines)
                             else:
@@ -3891,7 +3899,8 @@ if selected_key == "timee_management":
                 # 凡例
                 st.caption(
                     f"📆 {_y}年{_m}月　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜　"
-                    f"|　🔵 初回ワーカー　|　業務フィルタ: {len(_cal_sel_set)}件選択中"
+                    f"|　🔴 直雇用勧誘済　🔵 初回ワーカー　"
+                    f"|　業務フィルタ: {len(_cal_sel_set)}件選択中"
                 )
 
     # ----- 就業日カレンダー（日別セクション・過去日は折りたたみ収納） -----
@@ -3923,10 +3932,12 @@ if selected_key == "timee_management":
                 return {g.strip() for g in str(r.get("グループ", "")).split(",") if g.strip()}
 
             def _render_day_table_html(day_rows, is_past=False):
-                _hcells = ["ID", "氏名", "カナ", "性別", "年齢", "時間", "出勤回数", "業務", "キャンセル数"]
+                _hcells = ["印", "ID", "氏名", "カナ", "性別", "年齢", "時間", "出勤回数", "業務", "キャンセル数"]
                 _txt_color = "#888" if is_past else "#222"
                 _row_bg = "#fafafa" if is_past else "#ffffff"
                 _alt_bg = "#f5f5f5" if is_past else "#f8fafd"
+                _blue = "#aaa" if is_past else "#1976d2"
+                _red = "#aaa" if is_past else "#e53935"
                 _head = "".join(
                     f"<th style='background:#eef2f7;color:#333;text-align:left;"
                     f"padding:8px 10px;border-bottom:2px solid #c5cdd6;font-size:13px;'>{h}</th>"
@@ -3938,8 +3949,17 @@ if selected_key == "timee_management":
                     _groups_html = "<br>".join(
                         _tm_html.escape(g) for g in sorted(_row_groups(_r))
                     ) or "—"
+                    # 印（赤=直雇用勧誘済 / 青=その日が初回登録日と一致）
+                    _is_first = _w.get("初回登録日", "") == _r.get("就業日", "")
+                    _is_promoted = bool(_w.get("直雇勧誘済", False))
+                    _mark_html = ""
+                    if _is_promoted:
+                        _mark_html += f"<span style='color:{_red};font-size:16px;'>●</span>"
+                    if _is_first:
+                        _mark_html += f"<span style='color:{_blue};font-size:16px;'>●</span>"
                     _bg = _alt_bg if _i % 2 else _row_bg
                     _cells = [
+                        _mark_html or "",
                         _tm_html.escape(str(_r["id"])),
                         _tm_html.escape(_w.get("氏名", "")),
                         _tm_html.escape(_w.get("カナ", "")),

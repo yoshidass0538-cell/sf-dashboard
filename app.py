@@ -3617,10 +3617,29 @@ if selected_key == "timee_management":
 
     _tab_workers, _tab_schedule = st.tabs(["👥 ワーカー一覧（編集可）", "📅 当月予定一覧"])
 
+    # スナップショットから「ワーカー別の業務(グループ)集合」を構築
+    _worker_groups: dict[str, set[str]] = {}
+    for _r in _snapshot:
+        _wid = _r.get("id")
+        if not _wid:
+            continue
+        for _g in str(_r.get("グループ", "")).split(","):
+            _g = _g.strip()
+            if _g:
+                _worker_groups.setdefault(_wid, set()).add(_g)
+    _all_group_tags = sorted({g for s in _worker_groups.values() for g in s})
+
     # ----- ワーカー一覧（編集可） -----
     with _tab_workers:
         st.caption("メモ・タグ・直雇勧誘済・チェック日 を編集して保存してください。タグはカンマ区切り。")
-        _q = st.text_input("検索（氏名/カナ/ID）", key="tm_worker_search").strip()
+
+        _c_search, _c_groups = st.columns([2, 3])
+        _q = _c_search.text_input("検索（氏名/カナ/ID）", key="tm_worker_search").strip()
+        _sel_groups = _c_groups.multiselect(
+            "業務（グループ）で絞り込み（複数選択可・OR）",
+            _all_group_tags,
+            key="tm_worker_groups",
+        )
 
         # フィルタ
         _filtered = []
@@ -3628,6 +3647,9 @@ if selected_key == "timee_management":
             if _q:
                 hay = f"{wid} {w.get('氏名','')} {w.get('カナ','')}"
                 if _q not in hay:
+                    continue
+            if _sel_groups:
+                if not _worker_groups.get(wid, set()).intersection(_sel_groups):
                     continue
             _filtered.append((wid, w))
         _filtered.sort(key=lambda kv: kv[1].get("初回登録日", ""), reverse=True)
@@ -3641,6 +3663,7 @@ if selected_key == "timee_management":
                 "カナ": w.get("カナ", ""),
                 "性別": w.get("性別", ""),
                 "年齢": w.get("年齢"),
+                "業務": "\n".join(sorted(_worker_groups.get(wid, set()))),
                 "初回登録日": w.get("初回登録日", ""),
                 "メモ": w.get("メモ", ""),
                 "タグ": ", ".join(w.get("タグ", []) or []),
@@ -3657,8 +3680,9 @@ if selected_key == "timee_management":
                 key="tm_worker_editor",
                 hide_index=True,
                 use_container_width=True,
-                disabled=["ID", "氏名", "カナ", "性別", "年齢", "初回登録日", "キャンセル数"],
+                disabled=["ID", "氏名", "カナ", "性別", "年齢", "業務", "初回登録日", "キャンセル数"],
                 column_config={
+                    "業務": st.column_config.TextColumn("業務 (改行区切り)", width="medium"),
                     "メモ": st.column_config.TextColumn("メモ", width="medium"),
                     "タグ": st.column_config.TextColumn("タグ (カンマ区切り)", width="medium"),
                     "直雇勧誘済": st.column_config.CheckboxColumn("直雇勧誘済"),
@@ -3724,18 +3748,22 @@ if selected_key == "timee_management":
             else:
                 st.info("まだキャンセルは記録されていません。")
 
-    # ----- 就業日カレンダー（日別セクション・過去日グレーアウト） -----
+    # ----- 就業日カレンダー（日別セクション・過去日は折りたたみ収納） -----
     with _tab_schedule:
         if not _snapshot:
             st.info("予定データがまだ取り込まれていません。")
         else:
             from datetime import datetime as _tm_dt
+            import html as _tm_html
 
             # フィルタUI
-            _all_groups = sorted({r.get("グループ", "") for r in _snapshot if r.get("グループ")})
-            _gsel = st.selectbox("グループで絞り込み", ["（全て）"] + _all_groups, key="tm_grp")
-            _qs = st.text_input("検索（ID/氏名/カナ）", key="tm_sch_search").strip()
-            _hide_past = st.checkbox("過去日を非表示", value=False, key="tm_hide_past")
+            _c_grp, _c_q = st.columns([3, 2])
+            _sel_sch_groups = _c_grp.multiselect(
+                "業務（グループ）で絞り込み（複数選択可・OR）",
+                _all_group_tags,
+                key="tm_sch_groups",
+            )
+            _qs = _c_q.text_input("検索（ID/氏名/カナ）", key="tm_sch_search").strip()
 
             # 日別グループ化
             _by_date: dict[str, list[dict]] = {}
@@ -3745,19 +3773,65 @@ if selected_key == "timee_management":
             _WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
             _total_shown = 0
 
+            def _row_groups(r) -> set[str]:
+                return {g.strip() for g in str(r.get("グループ", "")).split(",") if g.strip()}
+
+            def _render_day_table_html(day_rows, is_past=False):
+                _hcells = ["ID", "氏名", "カナ", "性別", "年齢", "時間", "出勤回数", "業務", "キャンセル数"]
+                _txt_color = "#888" if is_past else "#222"
+                _row_bg = "#fafafa" if is_past else "#ffffff"
+                _alt_bg = "#f5f5f5" if is_past else "#f8fafd"
+                _head = "".join(
+                    f"<th style='background:#eef2f7;color:#333;text-align:left;"
+                    f"padding:8px 10px;border-bottom:2px solid #c5cdd6;font-size:13px;'>{h}</th>"
+                    for h in _hcells
+                )
+                _body_rows = []
+                for _i, _r in enumerate(day_rows):
+                    _w = _workers.get(_r["id"], {})
+                    _groups_html = "<br>".join(
+                        _tm_html.escape(g) for g in sorted(_row_groups(_r))
+                    ) or "—"
+                    _bg = _alt_bg if _i % 2 else _row_bg
+                    _cells = [
+                        _tm_html.escape(str(_r["id"])),
+                        _tm_html.escape(_w.get("氏名", "")),
+                        _tm_html.escape(_w.get("カナ", "")),
+                        _tm_html.escape(_w.get("性別", "")),
+                        str(_w.get("年齢", "") if _w.get("年齢") is not None else ""),
+                        _tm_html.escape(f"{_r.get('開始時間','')}-{_r.get('終了時間','')}"),
+                        str(_r.get("出勤回数", 0)),
+                        _groups_html,
+                        str(len(_w.get("キャンセル履歴", []))),
+                    ]
+                    _body_rows.append(
+                        f"<tr style='background:{_bg};'>" +
+                        "".join(
+                            f"<td style='color:{_txt_color};vertical-align:top;"
+                            f"padding:8px 10px;border-bottom:1px solid #e6eaef;font-size:13px;'>{c}</td>"
+                            for c in _cells
+                        ) +
+                        "</tr>"
+                    )
+                return (
+                    "<table style='width:100%;border-collapse:collapse;"
+                    "border:1px solid #d8dee5;border-radius:6px;overflow:hidden;margin:4px 0 12px 0;'>"
+                    f"<thead><tr>{_head}</tr></thead>"
+                    f"<tbody>{''.join(_body_rows)}</tbody></table>"
+                )
+
             for _date_str in sorted(_by_date.keys()):
                 try:
                     _d_obj = _tm_dt.strptime(_date_str, "%Y-%m-%d").date()
                 except ValueError:
                     continue
                 _is_past = _d_obj < _today
-                if _is_past and _hide_past:
-                    continue
 
                 # フィルタ適用
                 _day_rows = _by_date[_date_str]
-                if _gsel != "（全て）":
-                    _day_rows = [r for r in _day_rows if r.get("グループ") == _gsel]
+                if _sel_sch_groups:
+                    _sel_set = set(_sel_sch_groups)
+                    _day_rows = [r for r in _day_rows if _row_groups(r) & _sel_set]
                 if _qs:
                     def _match(r, q=_qs):
                         w = _workers.get(r["id"], {})
@@ -3771,51 +3845,31 @@ if selected_key == "timee_management":
                 _is_weekend = _d_obj.weekday() >= 5
 
                 if _is_past:
-                    _bg, _fg = "#eeeeee", "#999999"
-                    _label_prefix = "（経過済）"
-                elif _is_today:
-                    _bg, _fg = "#fff3cd", "#664d03"
-                    _label_prefix = "🔵 本日 "
-                elif _is_weekend:
-                    _bg, _fg = "#fde8ec", "#a5364c"
-                    _label_prefix = ""
+                    # 過去日: 折りたたみで収納（日付ラベルだけ表示、クリックで展開）
+                    _label = f"📅 {_date_str} ({_wd}) — {len(_day_rows)}名 ／ 経過済"
+                    with st.expander(_label, expanded=False):
+                        st.markdown(_render_day_table_html(_day_rows, is_past=True),
+                                    unsafe_allow_html=True)
                 else:
-                    _bg, _fg = "#e6f3ff", "#0a3a6e"
-                    _label_prefix = ""
+                    if _is_today:
+                        _bg, _fg = "#fff3cd", "#664d03"
+                        _label_prefix = "🔵 本日 "
+                    elif _is_weekend:
+                        _bg, _fg = "#fde8ec", "#a5364c"
+                        _label_prefix = ""
+                    else:
+                        _bg, _fg = "#e6f3ff", "#0a3a6e"
+                        _label_prefix = ""
 
-                _label = f"{_label_prefix}📅 {_date_str} ({_wd}) — {len(_day_rows)}名"
-                st.markdown(
-                    f"<div style='background:{_bg}; color:{_fg}; padding:8px 14px; "
-                    f"border-radius:8px; margin:14px 0 6px 0; font-weight:700; font-size:15px;'>"
-                    f"{_label}</div>",
-                    unsafe_allow_html=True,
-                )
-
-                # 当日のテーブル
-                _df_rows = []
-                for _r in _day_rows:
-                    _w = _workers.get(_r["id"], {})
-                    _df_rows.append({
-                        "ID": _r["id"],
-                        "氏名": _w.get("氏名", ""),
-                        "カナ": _w.get("カナ", ""),
-                        "性別": _w.get("性別", ""),
-                        "年齢": _w.get("年齢"),
-                        "時間": f"{_r.get('開始時間','')}-{_r.get('終了時間','')}",
-                        "出勤回数": _r.get("出勤回数", 0),
-                        "グループ": _r.get("グループ", ""),
-                        "キャンセル数": len(_w.get("キャンセル履歴", [])),
-                    })
-                _ddf = pd.DataFrame(_df_rows)
-
-                if _is_past:
-                    # 過去日: 文字色を薄く
-                    _styled = _ddf.style.set_properties(**{
-                        "color": "#888", "background-color": "#fafafa",
-                    })
-                    st.dataframe(_styled, hide_index=True, use_container_width=True)
-                else:
-                    st.dataframe(_ddf, hide_index=True, use_container_width=True)
+                    _label = f"{_label_prefix}📅 {_date_str} ({_wd}) — {len(_day_rows)}名"
+                    st.markdown(
+                        f"<div style='background:{_bg}; color:{_fg}; padding:8px 14px; "
+                        f"border-radius:8px; margin:14px 0 6px 0; font-weight:700; font-size:15px;'>"
+                        f"{_label}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(_render_day_table_html(_day_rows, is_past=False),
+                                unsafe_allow_html=True)
 
                 _total_shown += len(_day_rows)
 

@@ -2736,6 +2736,9 @@ elif selected_key == "shuchi":
 elif selected_key == "line_template":
     # LINEテンプレ — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "timee_management":
+    # タイミー管理 — 後の専用ブロックで表示
+    fetched = None
 else:
     try:
         fetched = _load(selected_key)
@@ -3554,6 +3557,182 @@ if selected_key == "orikaeshi_kensu":
         ok, msg = save_checks(checks)
         if not ok:
             st.error(f"⚠️ チェック状態の保存に失敗しました: {msg}")
+
+    st.stop()
+
+# タイミー管理ボード
+if selected_key == "timee_management":
+    import timee_master_store as _tms
+    from datetime import date as _tm_date
+
+    @st.cache_data(ttl=300)
+    def _tm_load():
+        return _tms.load_workers(), _tms.load_snapshot()
+
+    def _tm_reload():
+        _tm_load.clear()
+
+    try:
+        _workers, _snapshot = _tm_load()
+    except Exception as _e:
+        st.error(f"タイミーデータの読み込みに失敗しました: {_e}")
+        st.stop()
+
+    # サマリー
+    _today = _tm_date.today()
+    _today_iso = _today.isoformat()
+    _this_month_prefix = _today.strftime("%Y-%m")
+    _new_today = sum(1 for w in _workers.values() if w.get("初回登録日") == _today_iso)
+    _new_this_month = sum(1 for w in _workers.values() if str(w.get("初回登録日", "")).startswith(_this_month_prefix))
+    _cancel_total = sum(len(w.get("キャンセル履歴", [])) for w in _workers.values())
+
+    _c1, _c2, _c3, _c4, _c5 = st.columns([2, 2, 2, 2, 1])
+    _c1.metric("登録ワーカー総数", f"{len(_workers):,}")
+    _c2.metric("当月新規ワーカー", f"{_new_this_month:,}")
+    _c3.metric("本日新規ワーカー", f"{_new_today:,}")
+    _c4.metric("キャンセル累計", f"{_cancel_total:,}")
+    if _c5.button("🔄 更新", key="tm_reload", use_container_width=True):
+        _tm_reload()
+        st.rerun()
+
+    st.divider()
+
+    _tab_workers, _tab_schedule = st.tabs(["👥 ワーカー一覧（編集可）", "📅 当月予定一覧"])
+
+    # ----- ワーカー一覧（編集可） -----
+    with _tab_workers:
+        st.caption("メモ・タグ・直雇勧誘済・チェック日 を編集して保存してください。タグはカンマ区切り。")
+        _q = st.text_input("検索（氏名/カナ/ID）", key="tm_worker_search").strip()
+
+        # フィルタ
+        _filtered = []
+        for wid, w in _workers.items():
+            if _q:
+                hay = f"{wid} {w.get('氏名','')} {w.get('カナ','')}"
+                if _q not in hay:
+                    continue
+            _filtered.append((wid, w))
+        _filtered.sort(key=lambda kv: kv[1].get("初回登録日", ""), reverse=True)
+
+        # data_editor 用 DataFrame
+        _rows = []
+        for wid, w in _filtered:
+            _rows.append({
+                "ID": wid,
+                "氏名": w.get("氏名", ""),
+                "カナ": w.get("カナ", ""),
+                "性別": w.get("性別", ""),
+                "年齢": w.get("年齢"),
+                "初回登録日": w.get("初回登録日", ""),
+                "メモ": w.get("メモ", ""),
+                "タグ": ", ".join(w.get("タグ", []) or []),
+                "直雇勧誘済": bool(w.get("直雇勧誘済", False)),
+                "チェック日": w.get("チェック日"),
+                "キャンセル数": len(w.get("キャンセル履歴", [])),
+            })
+        _wdf = pd.DataFrame(_rows)
+        if _wdf.empty:
+            st.info("該当ワーカーはありません。")
+        else:
+            _edited = st.data_editor(
+                _wdf,
+                key="tm_worker_editor",
+                hide_index=True,
+                use_container_width=True,
+                disabled=["ID", "氏名", "カナ", "性別", "年齢", "初回登録日", "キャンセル数"],
+                column_config={
+                    "メモ": st.column_config.TextColumn("メモ", width="medium"),
+                    "タグ": st.column_config.TextColumn("タグ (カンマ区切り)", width="medium"),
+                    "直雇勧誘済": st.column_config.CheckboxColumn("直雇勧誘済"),
+                    "チェック日": st.column_config.TextColumn("チェック日 (YYYY-MM-DD)"),
+                    "キャンセル数": st.column_config.NumberColumn("キャンセル数", format="%d"),
+                },
+            )
+
+            if st.button("💾 編集内容を保存", key="tm_save", type="primary"):
+                # 最新のマスタを取り直し（他ユーザーの編集と衝突しないため）
+                try:
+                    _latest = _tms.load_workers()
+                except Exception as _e:
+                    st.error(f"再読込に失敗: {_e}")
+                    st.stop()
+                _changed = 0
+                _orig = {r["ID"]: r for r in _rows}
+                for _, row in _edited.iterrows():
+                    wid = row["ID"]
+                    o = _orig.get(wid)
+                    if o is None or wid not in _latest:
+                        continue
+                    new_memo = str(row.get("メモ", "")) or ""
+                    new_tags = [t.strip() for t in str(row.get("タグ", "")).split(",") if t.strip()]
+                    new_promoted = bool(row.get("直雇勧誘済", False))
+                    new_check = (str(row.get("チェック日") or "").strip() or None)
+                    o_tags = [t.strip() for t in str(o.get("タグ", "")).split(",") if t.strip()]
+                    if new_memo != o.get("メモ", ""):
+                        _latest[wid]["メモ"] = new_memo; _changed += 1
+                    if new_tags != o_tags:
+                        _latest[wid]["タグ"] = new_tags; _changed += 1
+                    if new_promoted != bool(o.get("直雇勧誘済", False)):
+                        _latest[wid]["直雇勧誘済"] = new_promoted; _changed += 1
+                    if new_check != (o.get("チェック日") or None):
+                        _latest[wid]["チェック日"] = new_check; _changed += 1
+                if _changed:
+                    try:
+                        _tms.save_workers(_latest)
+                    except Exception as _e:
+                        st.error(f"保存に失敗: {_e}")
+                        st.stop()
+                    _tm_reload()
+                    st.success(f"{_changed}件 保存しました")
+                    st.rerun()
+                else:
+                    st.info("変更はありませんでした。")
+
+        # キャンセル履歴展開
+        with st.expander("📉 キャンセル履歴を確認"):
+            _hist_rows = []
+            for wid, w in _workers.items():
+                for h in (w.get("キャンセル履歴") or []):
+                    _hist_rows.append({
+                        "ID": wid,
+                        "氏名": w.get("氏名", ""),
+                        "カナ": w.get("カナ", ""),
+                        "検知日": h.get("検知日", ""),
+                        "元就業日": h.get("元就業日", ""),
+                    })
+            if _hist_rows:
+                _hdf = pd.DataFrame(_hist_rows).sort_values("検知日", ascending=False)
+                st.dataframe(_hdf, hide_index=True, use_container_width=True)
+            else:
+                st.info("まだキャンセルは記録されていません。")
+
+    # ----- 当月予定一覧 -----
+    with _tab_schedule:
+        if not _snapshot:
+            st.info("予定データがまだ取り込まれていません。")
+        else:
+            _sdf = pd.DataFrame(_snapshot)
+            _sdf["氏名"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("氏名", ""))
+            _sdf["カナ"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("カナ", ""))
+            _sdf["性別"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("性別", ""))
+            _sdf["年齢"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("年齢"))
+            _sdf["キャンセル数"] = _sdf["id"].map(lambda i: len(_workers.get(i, {}).get("キャンセル履歴", [])))
+
+            _groups = ["（全て）"] + sorted(_sdf["グループ"].dropna().unique().tolist())
+            _gsel = st.selectbox("グループで絞り込み", _groups, key="tm_grp")
+            _qs = st.text_input("検索（ID/氏名/カナ）", key="tm_sch_search").strip()
+
+            _view = _sdf.copy()
+            if _gsel != "（全て）":
+                _view = _view[_view["グループ"] == _gsel]
+            if _qs:
+                _view = _view[_view.apply(lambda r: _qs in f"{r['id']} {r['氏名']} {r['カナ']}", axis=1)]
+
+            _view = _view[["id", "就業日", "氏名", "カナ", "性別", "年齢",
+                           "開始時間", "終了時間", "出勤回数", "グループ", "バッジ", "キャンセル数"]]
+            _view = _view.rename(columns={"id": "ID"}).sort_values(["就業日", "氏名"])
+            st.dataframe(_view, hide_index=True, use_container_width=True)
+            st.caption(f"全 {len(_view):,} 件")
 
     st.stop()
 

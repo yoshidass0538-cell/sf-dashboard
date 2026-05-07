@@ -2,6 +2,7 @@ simple-salesforce
 python-dotenv
 streamlit
 pandas
+openpyxl
 streamlit-aggrid
 streamlit-sortables
 streamlit-autorefresh

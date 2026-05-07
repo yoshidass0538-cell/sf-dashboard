@@ -2183,6 +2183,13 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
+        key="timee_management",
+        label="タイミー管理",
+        description="タイミー就業予定表を5分ごとに自動同期。ワーカーごと固有6桁ID/メモ/タグ/直雇勧誘済/キャンセル数を管理",
+        fetch=lambda sf: pd.DataFrame(),
+        category="TOTAL",
+    ),
+    Metric(
         key="kari_keisan",
         label="FC完了CX率",
         description="2025/12以降の月別 1週間後FC完了 vs 留守(完了フラグなし) の開通率・CX率比較",

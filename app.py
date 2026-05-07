@@ -242,6 +242,7 @@ _CAT_COLORS = {
     "1週間後FC": {"bg": "#4A6FA5", "fg": "#ffffff"},
     "促進":      {"bg": "#2E8B57", "fg": "#ffffff"},
     "ツール":    {"bg": "#D4850A", "fg": "#ffffff"},
+    "タイミー":  {"bg": "#FFC107", "fg": "#222222"},
 }
 
 # サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
@@ -265,6 +266,9 @@ for container in st.session_state["board_order"]:
             if st.button(f"{arrow}  {cat}", key=f"toggle_{cat}", use_container_width=True):
                 if cat == "責任者用" and not st.session_state.get("responsible_auth"):
                     st.session_state["selected"] = "_responsible_auth"
+                    st.rerun()
+                elif cat == "タイミー" and not st.session_state.get("timee_auth"):
+                    st.session_state["selected"] = "_timee_auth"
                     st.rerun()
                 else:
                     st.session_state[toggle_key] = not is_open
@@ -313,7 +317,7 @@ for container in st.session_state["board_order"]:
                     mkey = label_to_key.get(label)
                     if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                         st.session_state["selected"] = mkey
-valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth"}
+valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth", "_timee_auth"}
 _sel = st.session_state.get("selected")
 # talk_script_* は動的生成のため、キャッシュ未更新でも有効とみなす
 if _sel not in valid_keys and not (_sel and _sel.startswith("talk_script_")):
@@ -447,6 +451,19 @@ if selected_key == "_responsible_auth":
             st.session_state["responsible_auth"] = True
             st.session_state["cat_open_責任者用"] = True
             st.session_state["selected"] = METRICS[0].key
+            st.rerun()
+        else:
+            st.error("パスワードが違います")
+    st.stop()
+
+if selected_key == "_timee_auth":
+    st.title("🔒 タイミー")
+    pw = st.text_input("パスワードを入力してください", type="password", key="timee_pw")
+    if pw:
+        if pw == "gift":
+            st.session_state["timee_auth"] = True
+            st.session_state["cat_open_タイミー"] = True
+            st.session_state["selected"] = "timee_management"
             st.rerun()
         else:
             st.error("パスワードが違います")
@@ -3706,33 +3723,103 @@ if selected_key == "timee_management":
             else:
                 st.info("まだキャンセルは記録されていません。")
 
-    # ----- 当月予定一覧 -----
+    # ----- 就業日カレンダー（日別セクション・過去日グレーアウト） -----
     with _tab_schedule:
         if not _snapshot:
             st.info("予定データがまだ取り込まれていません。")
         else:
-            _sdf = pd.DataFrame(_snapshot)
-            _sdf["氏名"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("氏名", ""))
-            _sdf["カナ"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("カナ", ""))
-            _sdf["性別"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("性別", ""))
-            _sdf["年齢"] = _sdf["id"].map(lambda i: _workers.get(i, {}).get("年齢"))
-            _sdf["キャンセル数"] = _sdf["id"].map(lambda i: len(_workers.get(i, {}).get("キャンセル履歴", [])))
+            from datetime import datetime as _tm_dt
 
-            _groups = ["（全て）"] + sorted(_sdf["グループ"].dropna().unique().tolist())
-            _gsel = st.selectbox("グループで絞り込み", _groups, key="tm_grp")
+            # フィルタUI
+            _all_groups = sorted({r.get("グループ", "") for r in _snapshot if r.get("グループ")})
+            _gsel = st.selectbox("グループで絞り込み", ["（全て）"] + _all_groups, key="tm_grp")
             _qs = st.text_input("検索（ID/氏名/カナ）", key="tm_sch_search").strip()
+            _hide_past = st.checkbox("過去日を非表示", value=False, key="tm_hide_past")
 
-            _view = _sdf.copy()
-            if _gsel != "（全て）":
-                _view = _view[_view["グループ"] == _gsel]
-            if _qs:
-                _view = _view[_view.apply(lambda r: _qs in f"{r['id']} {r['氏名']} {r['カナ']}", axis=1)]
+            # 日別グループ化
+            _by_date: dict[str, list[dict]] = {}
+            for _r in _snapshot:
+                _by_date.setdefault(_r.get("就業日", ""), []).append(_r)
 
-            _view = _view[["id", "就業日", "氏名", "カナ", "性別", "年齢",
-                           "開始時間", "終了時間", "出勤回数", "グループ", "バッジ", "キャンセル数"]]
-            _view = _view.rename(columns={"id": "ID"}).sort_values(["就業日", "氏名"])
-            st.dataframe(_view, hide_index=True, use_container_width=True)
-            st.caption(f"全 {len(_view):,} 件")
+            _WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
+            _total_shown = 0
+
+            for _date_str in sorted(_by_date.keys()):
+                try:
+                    _d_obj = _tm_dt.strptime(_date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                _is_past = _d_obj < _today
+                if _is_past and _hide_past:
+                    continue
+
+                # フィルタ適用
+                _day_rows = _by_date[_date_str]
+                if _gsel != "（全て）":
+                    _day_rows = [r for r in _day_rows if r.get("グループ") == _gsel]
+                if _qs:
+                    def _match(r, q=_qs):
+                        w = _workers.get(r["id"], {})
+                        return q in f"{r['id']} {w.get('氏名','')} {w.get('カナ','')}"
+                    _day_rows = [r for r in _day_rows if _match(r)]
+                if not _day_rows:
+                    continue
+
+                _wd = _WEEKDAYS[_d_obj.weekday()]
+                _is_today = (_d_obj == _today)
+                _is_weekend = _d_obj.weekday() >= 5
+
+                if _is_past:
+                    _bg, _fg = "#eeeeee", "#999999"
+                    _label_prefix = "（経過済）"
+                elif _is_today:
+                    _bg, _fg = "#fff3cd", "#664d03"
+                    _label_prefix = "🔵 本日 "
+                elif _is_weekend:
+                    _bg, _fg = "#fde8ec", "#a5364c"
+                    _label_prefix = ""
+                else:
+                    _bg, _fg = "#e6f3ff", "#0a3a6e"
+                    _label_prefix = ""
+
+                _label = f"{_label_prefix}📅 {_date_str} ({_wd}) — {len(_day_rows)}名"
+                st.markdown(
+                    f"<div style='background:{_bg}; color:{_fg}; padding:8px 14px; "
+                    f"border-radius:8px; margin:14px 0 6px 0; font-weight:700; font-size:15px;'>"
+                    f"{_label}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # 当日のテーブル
+                _df_rows = []
+                for _r in _day_rows:
+                    _w = _workers.get(_r["id"], {})
+                    _df_rows.append({
+                        "ID": _r["id"],
+                        "氏名": _w.get("氏名", ""),
+                        "カナ": _w.get("カナ", ""),
+                        "性別": _w.get("性別", ""),
+                        "年齢": _w.get("年齢"),
+                        "時間": f"{_r.get('開始時間','')}-{_r.get('終了時間','')}",
+                        "出勤回数": _r.get("出勤回数", 0),
+                        "グループ": _r.get("グループ", ""),
+                        "バッジ": _r.get("バッジ", ""),
+                        "キャンセル数": len(_w.get("キャンセル履歴", [])),
+                    })
+                _ddf = pd.DataFrame(_df_rows)
+
+                if _is_past:
+                    # 過去日: 文字色を薄く
+                    _styled = _ddf.style.set_properties(**{
+                        "color": "#888", "background-color": "#fafafa",
+                    })
+                    st.dataframe(_styled, hide_index=True, use_container_width=True)
+                else:
+                    st.dataframe(_ddf, hide_index=True, use_container_width=True)
+
+                _total_shown += len(_day_rows)
+
+            st.caption(f"表示中 {_total_shown:,} 件 / 全 {len(_snapshot):,} 件")
 
     st.stop()
 

@@ -2187,7 +2187,7 @@ METRICS: list[Metric] = [
         label="タイミー管理",
         description="タイミー就業予定表を5分ごとに自動同期。ワーカーごと固有6桁ID/メモ/タグ/直雇勧誘済/キャンセル数を管理",
         fetch=lambda sf: pd.DataFrame(),
-        category="TOTAL",
+        category="タイミー",
     ),
     Metric(
         key="kari_keisan",

@@ -3670,6 +3670,7 @@ if selected_key == "timee_management":
         _rows = []
         for wid, w in _filtered:
             _rows.append({
+                "印": "🔴" if w.get("直雇勧誘済") else "",
                 "ID": wid,
                 "氏名": w.get("氏名", ""),
                 "カナ": w.get("カナ", ""),
@@ -3692,8 +3693,9 @@ if selected_key == "timee_management":
                 key="tm_worker_editor",
                 hide_index=True,
                 use_container_width=True,
-                disabled=["ID", "氏名", "カナ", "性別", "年齢", "業務", "初回登録日", "キャンセル数"],
+                disabled=["印", "ID", "氏名", "カナ", "性別", "年齢", "業務", "初回登録日", "キャンセル数"],
                 column_config={
+                    "印": st.column_config.TextColumn("印", width="small", help="🔴 = 直雇用勧誘済"),
                     "業務": st.column_config.TextColumn("業務 (改行区切り)", width="medium"),
                     "メモ": st.column_config.TextColumn("メモ", width="medium"),
                     "タグ": st.column_config.TextColumn("タグ (カンマ区切り)", width="medium"),
@@ -3791,8 +3793,9 @@ if selected_key == "timee_management":
                 _cal_sel_set = set(_cal_groups)
 
                 # 日別人数を集計（業務フィルタ反映、カナ氏名）
+                # 初回ワーカー = 「初回登録日 == その就業日」のワーカー
                 _by_day_cnt: dict[int, int] = {}
-                _by_day_kana: dict[int, list[str]] = {}
+                _by_day_kana: dict[int, list[tuple[str, bool]]] = {}  # [(カナ, is_first)]
                 for _r in _snapshot:
                     _ds = _r.get("就業日", "")
                     if not _ds.startswith(_sel_m):
@@ -3807,7 +3810,8 @@ if selected_key == "timee_management":
                         continue
                     _by_day_cnt[_dnum] = _by_day_cnt.get(_dnum, 0) + 1
                     _w = _workers.get(_r["id"], {})
-                    _by_day_kana.setdefault(_dnum, []).append(_w.get("カナ", ""))
+                    _is_first = (_w.get("初回登録日", "") == _ds)
+                    _by_day_kana.setdefault(_dnum, []).append((_w.get("カナ", ""), _is_first))
 
                 # 曜日ヘッダー（月始まり: 月火水木金土日）
                 _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]
@@ -3854,12 +3858,21 @@ if selected_key == "timee_management":
                                     f"<div style='font-size:16px;font-weight:800;margin-top:4px;"
                                     f"color:{'#888' if _is_past else '#1565c0'};'>{_cnt}<span style='font-size:10px;'>名</span></div>"
                                 )
-                                # 全員のカナ氏名を表示
-                                _kana_list = sorted(_by_day_kana.get(_day, []))
-                                _names_html = "<br>".join(
-                                    f"<span style='font-size:10px;color:{'#bbb' if _is_past else '#444'};'>{_tm_html.escape(n)}</span>"
-                                    for n in _kana_list
-                                )
+                                # 全員のカナ氏名を表示（初回ワーカーは青●を前置）
+                                _name_list = sorted(_by_day_kana.get(_day, []), key=lambda t: t[0])
+                                _txt_color = "#bbb" if _is_past else "#444"
+                                _dot_color = "#aaa" if _is_past else "#1976d2"
+                                _name_lines = []
+                                for _kana, _is_first in _name_list:
+                                    _dot = (
+                                        f"<span style='color:{_dot_color};font-weight:700;'>● </span>"
+                                        if _is_first else ""
+                                    )
+                                    _name_lines.append(
+                                        f"<span style='font-size:10px;color:{_txt_color};'>"
+                                        f"{_dot}{_tm_html.escape(_kana)}</span>"
+                                    )
+                                _names_html = "<br>".join(_name_lines)
                             else:
                                 _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:6px;'>—</div>"
                                 _names_html = ""
@@ -3878,7 +3891,7 @@ if selected_key == "timee_management":
                 # 凡例
                 st.caption(
                     f"📆 {_y}年{_m}月　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜　"
-                    f"|　業務フィルタ: {len(_cal_sel_set)}件選択中"
+                    f"|　🔵 初回ワーカー　|　業務フィルタ: {len(_cal_sel_set)}件選択中"
                 )
 
     # ----- 就業日カレンダー（日別セクション・過去日は折りたたみ収納） -----

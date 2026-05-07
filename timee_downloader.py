@@ -83,79 +83,65 @@ def _open_period_modal(page) -> None:
 
 
 def _select_period(page, year: int, month: int) -> None:
-    """カレンダーで開始日(1日)と終了日(末日)を選択する。"""
+    """react-datepicker で開始日(1日)と終了日(末日)を選択する。
+
+    タイミーの期間指定モーダルは react-datepicker を使用。
+    年/月は <select> ドロップダウン、日付は .react-datepicker__day--NNN クラス。
+    開始/終了の切り替えは input[placeholder=...] のクリックでフォーカス。
+    """
     last_day = _last_day(year, month)
+    modal = page.locator('div[role="dialog"]').last
 
-    # モーダル領域を絞り込み
-    modal = page.locator('div[role="dialog"], [class*="modal" i]').last
+    start_input = modal.locator('input[placeholder="開始日"]').first
+    end_input = modal.locator('input[placeholder="終了日"]').first
+    year_select = modal.locator('select.react-datepicker__year-select').first
+    month_select = modal.locator('select.react-datepicker__month-select').first
 
-    # --- 開始日 ---
-    # 開始日入力を開く（既存値がある可能性あり）
-    start_btn = modal.locator(
-        f'button:has-text("{year}年{month}月1日"), button:has-text("開始日"), '
-        'input[placeholder*="開始"]'
-    ).first
+    def _set_year_month(y: int, m: int):
+        # month select の value は 0-indexed
+        year_select.wait_for(state="visible", timeout=10000)
+        year_select.select_option(value=str(y))
+        month_select.select_option(value=str(m - 1))
+
+    def _click_day(day: int):
+        cls = f"react-datepicker__day--{day:03d}"
+        cell = modal.locator(
+            f'.{cls}:not(.react-datepicker__day--outside-month)'
+        ).first
+        cell.wait_for(state="visible", timeout=10000)
+        cell.click()
+
+    # --- 開始日: input をクリックしてフォーカス → 年月セット → 1日クリック ---
+    start_input.click()
+    _set_year_month(year, month)
+    _click_day(1)
+
+    # 開始日が反映されるまで短く待つ
+    expected_prefix = f"{year}年{month}月1日"
     try:
-        start_btn.click(timeout=5000)
+        page.wait_for_function(
+            "([sel, exp]) => { const e=document.querySelector(sel); return e && e.value.startsWith(exp); }",
+            arg=['input[placeholder="開始日"]', expected_prefix],
+            timeout=5000,
+        )
     except Exception:
-        # 既に開いている可能性あり
-        pass
-    _navigate_calendar_to(modal, year, month)
-    _click_calendar_day(modal, 1)
+        pass  # 続行して終了日設定を試みる
 
-    # --- 終了日 ---
-    end_btn = modal.locator(
-        'button:has-text("終了日"), input[placeholder*="終了"]'
-    ).first
+    # --- 終了日: input をクリックしてフォーカス → 年月セット → 末日クリック ---
+    end_input.click()
+    _set_year_month(year, month)
+    _click_day(last_day)
+
+    # 終了日反映待ち
+    expected_end = f"{year}年{month}月{last_day}日"
     try:
-        end_btn.click(timeout=5000)
+        page.wait_for_function(
+            "([sel, exp]) => { const e=document.querySelector(sel); return e && e.value.startsWith(exp); }",
+            arg=['input[placeholder="終了日"]', expected_end],
+            timeout=5000,
+        )
     except Exception:
         pass
-    _navigate_calendar_to(modal, year, month)
-    _click_calendar_day(modal, last_day)
-
-
-def _navigate_calendar_to(modal, year: int, month: int) -> None:
-    """カレンダーが目的の年月を表示するように < > ナビ。最大24回まで。"""
-    target = f"{year}年{month}月"
-    for _ in range(24):
-        # カレンダーヘッダ（"2026年 5月" の表示）に近いテキスト
-        header = modal.locator('text=/\\d{4}\\s*年\\s*\\d{1,2}\\s*月/').first
-        try:
-            header_text = header.inner_text(timeout=2000)
-        except Exception:
-            return  # ヘッダなし→操作スキップ
-        # 半角化
-        normalized = header_text.replace(" ", "").replace("　", "")
-        if f"{year}年{month}月" in normalized:
-            return
-        # 目的が現在より過去 → ←、未来 → →
-        m = re.search(r"(\d{4})年\s*(\d{1,2})月", header_text)
-        if not m:
-            return
-        cur_y, cur_m = int(m.group(1)), int(m.group(2))
-        if (year, month) < (cur_y, cur_m):
-            modal.locator('button[aria-label*="prev" i], button[aria-label*="前" i]').first.click()
-        else:
-            modal.locator('button[aria-label*="next" i], button[aria-label*="次" i]').first.click()
-        time.sleep(0.2)
-
-
-def _click_calendar_day(modal, day: int) -> None:
-    """カレンダー内の日付セルをクリック。前月/翌月の同番号を避けるため厳格マッチ。"""
-    # 数字だけの role=gridcell / button をクリック
-    cells = modal.locator(f'button:text-is("{day}"), [role="gridcell"]:text-is("{day}")')
-    count = cells.count()
-    if count == 0:
-        raise RuntimeError(f"カレンダー日付セル {day} が見つかりません")
-    # 当月セルは「現在月のセル」のみclickableなはず。複数ヒットなら最初を試行
-    for i in range(count):
-        try:
-            cells.nth(i).click(timeout=2000)
-            return
-        except Exception:
-            continue
-    raise RuntimeError(f"カレンダー日付セル {day} がクリックできません")
 
 
 def _trigger_download(page, output_path: str) -> str:

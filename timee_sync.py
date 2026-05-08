@@ -247,19 +247,28 @@ def run_sync() -> None:
             detail_map = fetch_worker_details(targets)
             now_iso = now_jst.isoformat(timespec="seconds")
             updated = 0
+            no_match = 0
             key_to_wid = store.build_key_to_id(workers)
             for k, fields in detail_map.items():
                 wid = key_to_wid.get(k)
                 if not wid:
                     continue
                 w = workers[wid]
+                if fields.get("_status") == "no_match":
+                    # Timeeのワーカー管理に出てこない(=未稼働)。fetched_atだけ更新して
+                    # 再試行スパムを止める。値は空のまま
+                    w["timee_detail_fetched_at"] = now_iso
+                    w["timee_not_in_list"] = True
+                    no_match += 1
+                    continue
                 w["good_rate"] = fields.get("good_rate", "")
                 w["cancel_rate"] = fields.get("cancel_rate", "")
                 w["timee_memo"] = fields.get("timee_memo", "")
                 w["timee_detail_fetched_at"] = now_iso
+                w["timee_not_in_list"] = False
                 updated += 1
-            print(f"[Timee Sync] worker_detail updated {updated}名")
-            if updated:
+            print(f"[Timee Sync] worker_detail updated {updated}名 / no_match {no_match}名")
+            if updated or no_match:
                 store.save_workers(workers)
     except Exception as e:
         print(f"[WARN] ワーカー詳細取得に失敗: {e}")

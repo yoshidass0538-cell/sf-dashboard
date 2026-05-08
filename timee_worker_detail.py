@@ -371,10 +371,13 @@ def _extract_detail_fields(page) -> Dict[str, str]:
 
 
 # ---------------------------------------------------------------- メインAPI
-def _search_and_open_worker(page, name: str, kana: str) -> bool:
+def _search_and_open_worker(page, name: str, kana: str):
     """ワーカー管理トップで kana 検索→結果から該当ワーカーをクリックして詳細ページへ。
 
-    成功時 True、見つからない/失敗で False。
+    返り値:
+      - True       : 詳細ページに到達
+      - "no_match" : 検索したが「該当するワーカーがいません」(=未稼働ワーカー)
+      - False      : その他の失敗 (検索失敗 / 結果クリック失敗 / 詳細未読込)
     """
     target_key = _key(name, kana)
     kana_q = (kana or "").replace(" ", "").replace("　", "")
@@ -429,6 +432,17 @@ def _search_and_open_worker(page, name: str, kana: str) -> bool:
     except Exception:
         pass
     page.wait_for_timeout(700)
+
+    # 「該当するワーカーがいません」検知 → no_match を返して呼び出し側で処理
+    try:
+        no_match_present = page.evaluate(
+            r"""() => /該当するワーカーがいません/.test(document.body.innerText || '')"""
+        )
+    except Exception:
+        no_match_present = False
+    if no_match_present:
+        print(f"[stage] no match in worker list for {target_key}", flush=True)
+        return "no_match"
 
     # 該当ワーカーをクリック
     # 実DOM: 検索結果は <div data-testid="user-list-item"> 等で描画。
@@ -548,8 +562,18 @@ def fetch_worker_details(
             _login(page, email, password)
             for name, kana in targets:
                 target_key = _key(name, kana)
-                ok = _search_and_open_worker(page, name, kana)
-                if not ok:
+                ret = _search_and_open_worker(page, name, kana)
+                if ret == "no_match":
+                    # 未稼働ワーカーは Timee のワーカー管理に出ない。
+                    # 空フィールドで保存して再試行スパムを防ぐ
+                    out[target_key] = {
+                        "good_rate": "",
+                        "cancel_rate": "",
+                        "timee_memo": "",
+                        "_status": "no_match",
+                    }
+                    continue
+                if not ret:
                     continue
                 fields = _extract_detail_fields(page)
                 print(f"[stage] {target_key}: {fields}", flush=True)

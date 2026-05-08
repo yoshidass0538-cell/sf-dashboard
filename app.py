@@ -3650,13 +3650,42 @@ if selected_key == "timee_management":
     with _tab_workers:
         st.caption("メモ・タグ・直雇勧誘済・チェック日 を編集して保存してください。タグはカンマ区切り。")
 
-        _c_search, _c_groups = st.columns([2, 3])
-        _q = _c_search.text_input("検索（氏名/カナ/ID）", key="tm_worker_search").strip()
-        _sel_groups = _c_groups.multiselect(
-            "業務（グループ）で絞り込み（複数選択可・OR）",
-            _all_group_tags,
-            key="tm_worker_groups",
-        )
+        # ---- 列の値から選ぶシンプルフィルタ ----
+        # 各列の実在値を収集（空欄は「(空欄)」として選択肢化）
+        _EMPTY = "(空欄)"
+        _vals_gender: set[str] = set()
+        _vals_promoted: set[str] = set()
+        _vals_tags: set[str] = set()
+        for wid, w in _workers.items():
+            _vals_gender.add(str(w.get("性別") or "").strip() or _EMPTY)
+            _vals_promoted.add("済" if w.get("直雇勧誘済") else "未")
+            _tlist = w.get("タグ", []) or []
+            if not _tlist:
+                _vals_tags.add(_EMPTY)
+            else:
+                for _t in _tlist:
+                    _t = str(_t).strip()
+                    _vals_tags.add(_t if _t else _EMPTY)
+
+        _opts_gender = sorted(_vals_gender)
+        _opts_promoted = ["未", "済"]
+        _opts_tags = sorted(_vals_tags)
+
+        # 1段目: 自由検索
+        _q = st.text_input("検索（氏名 / カナ / ID 部分一致）", key="tm_worker_search").strip()
+
+        # 2段目: 列値フィルタ（空＝全件）
+        _f1, _f2, _f3, _f4 = st.columns(4)
+        _sel_groups = _f1.multiselect("業務", _all_group_tags, key="tm_worker_groups")
+        _sel_gender = _f2.multiselect("性別", _opts_gender, key="tm_worker_gender")
+        _sel_promo = _f3.multiselect("直雇勧誘", _opts_promoted, key="tm_worker_promo")
+        _sel_tags = _f4.multiselect("タグ", _opts_tags, key="tm_worker_tags")
+
+        def _row_tag_set(_w) -> set[str]:
+            _ts = _w.get("タグ", []) or []
+            if not _ts:
+                return {_EMPTY}
+            return {(str(t).strip() or _EMPTY) for t in _ts}
 
         # フィルタ
         _filtered = []
@@ -3667,6 +3696,17 @@ if selected_key == "timee_management":
                     continue
             if _sel_groups:
                 if not _worker_groups.get(wid, set()).intersection(_sel_groups):
+                    continue
+            if _sel_gender:
+                _g = str(w.get("性別") or "").strip() or _EMPTY
+                if _g not in _sel_gender:
+                    continue
+            if _sel_promo:
+                _p = "済" if w.get("直雇勧誘済") else "未"
+                if _p not in _sel_promo:
+                    continue
+            if _sel_tags:
+                if not _row_tag_set(w).intersection(_sel_tags):
                     continue
             _filtered.append((wid, w))
         _filtered.sort(key=lambda kv: kv[1].get("初回登録日", ""), reverse=True)
@@ -3698,7 +3738,7 @@ if selected_key == "timee_management":
             # AgGrid: 行autoHeight + 行選択
             _gb = GridOptionsBuilder.from_dataframe(_wdf)
             _gb.configure_default_column(
-                resizable=True, sortable=True, filter=True,
+                resizable=True, sortable=True, filter=False,
                 wrapText=True, autoHeight=True,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
                            "display": "flex", "alignItems": "center"},

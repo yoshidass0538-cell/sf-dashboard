@@ -76,48 +76,57 @@ def _login(page, email: str, password: str) -> None:
 # ---------------------------------------------------------------- ワーカー一覧→URL収集
 _LIST_EXTRACTOR_JS = r"""
 () => {
-  // ワーカー一覧テーブルから (氏名, カナ, 詳細URL) を収集
+  // ワーカー一覧から (詳細URL, 行テキスト) を収集。
+  // URL 形式は事前に分からないので、'/clients/' を含むページ内 <a> のうち、
+  // クライアントIDで始まるパスを優先的に拾う。
   const rows = [];
-  // a[href*="/workers/"] は詳細リンク想定
-  const links = Array.from(document.querySelectorAll('a[href*="/workers/"]'));
-  links.forEach(a => {
+  const links = Array.from(document.querySelectorAll('a[href]'));
+  for (const a of links) {
     const href = a.getAttribute('href') || '';
-    if (!/\/workers\/[^/?#]+/.test(href)) return;
-    // a の周辺(同行)から氏名・カナを抽出
-    const row = a.closest('tr, [role="row"], li, [class*="row"]') || a.parentElement;
-    let text = (row && row.textContent || '').replace(/\s+/g, ' ').trim();
-    // a の中だけでもよければそれを使う
-    if (!text) text = (a.textContent || '').trim();
-    rows.push({ href: href, text: text.slice(0, 200) });
-  });
+    // 自身のリンクや空、外部、JS は除外
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) continue;
+    // /clients/{id}/ 配下のリンクのみ（自分が今いる画面と関連したもの）
+    if (!/\/clients\/\d+\//.test(href)) continue;
+    // 末尾に何かIDっぽいものがあるリンクのみ（一覧/カレンダーへの戻りリンクは除外）
+    if (!/\/[^/?#]+$/.test(href.split('?')[0])) continue;
+    // 行テキストを取得（カナ/氏名特定用）
+    const row = a.closest('tr, [role="row"], li, [class*="row"], [class*="Row"]') || a.parentElement;
+    const text = (row && row.textContent || a.textContent || '').replace(/\s+/g, ' ').trim();
+    rows.push({ href: href, text: text.slice(0, 300) });
+  }
   return rows;
 }
 """
 
 
 def _collect_worker_urls(page) -> List[Dict]:
-    """ワーカー管理画面（一覧）から (氏名+カナ → 詳細URL) を収集。
+    """ワーカー管理画面（一覧）から (行テキスト → 詳細URL) を収集。
 
-    ページネーションを順に辿る。
+    タイミーのURL構造が事前に分からないため、ナビリンク「ワーカー管理」を
+    クリックしてから、画面内の /clients/{id}/... へのリンクを全部拾う。
     """
-    page.goto(
-        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/users/workers",
-        wait_until="domcontentloaded",
-    )
-    # 別URLパターンが必要な場合に備えてフォールバック: 左ナビ「ワーカー管理」
+    # ナビ「ワーカー管理」をクリック
     try:
-        page.wait_for_selector('a[href*="/workers/"]', timeout=10000)
+        page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/", wait_until="domcontentloaded")
+        page.get_by_role("link", name=re.compile(r"^ワーカー管理$|ワーカー管理")).first.click(timeout=5000)
+        page.wait_for_load_state("domcontentloaded")
+        print(f"[stage] _collect_worker_urls navigated to: {page.url}", flush=True)
+    except Exception as e:
+        print(f"[stage] _collect_worker_urls nav failed: {e}", flush=True)
+        _dump(page, "list_nav_fail")
+
+    # 一覧描画待ち（カナ表記またはテーブル行を期待）
+    try:
+        page.wait_for_function(
+            r"() => /[゠-ヿ]{3,}/.test(document.body.innerText)",
+            timeout=10000,
+        )
     except Exception:
-        try:
-            page.get_by_role("link", name=re.compile(r"^ワーカー管理$|ワーカー管理")).first.click()
-            page.wait_for_load_state("domcontentloaded")
-            page.wait_for_selector('a[href*="/workers/"]', timeout=15000)
-        except Exception:
-            pass
+        pass
 
     out: List[Dict] = []
     seen = set()
-    for _page_idx in range(50):  # 最大50ページ
+    for _page_idx in range(50):
         rows = page.evaluate(_LIST_EXTRACTOR_JS) or []
         added = 0
         for r in rows:
@@ -127,7 +136,10 @@ def _collect_worker_urls(page) -> List[Dict]:
             seen.add(href)
             out.append(r)
             added += 1
-        print(f"[stage] _collect_worker_urls page {_page_idx+1}: +{added} (total {len(out)})", flush=True)
+        print(f"[stage] _collect_worker_urls page {_page_idx+1}: +{added} (total {len(out)}) url={page.url}", flush=True)
+        if added == 0 and _page_idx == 0:
+            # 初回0件: ダンプして調査用に残す
+            _dump(page, f"list_empty_page{_page_idx+1}")
 
         # 「次へ」ボタンを探してクリック
         clicked = False

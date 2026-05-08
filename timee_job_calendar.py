@@ -65,37 +65,95 @@ def _login(page, email: str, password: str) -> None:
 # ---------------------------------------------------------------- ナビゲーション
 def _navigate_to_jobs_calendar(page) -> None:
     """左ナビ「求人一覧」をクリックして求人カレンダー画面へ。"""
-    page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/", wait_until="domcontentloaded")
-    nav = page.get_by_role("link", name=re.compile(r"^求人一覧$|求人一覧"))
-    if nav.count():
-        nav.first.click()
-    else:
-        # フォールバック: 「求人」を含むリンク
-        page.get_by_role("link", name=re.compile(r"求人")).first.click(timeout=5000)
-    page.wait_for_load_state("domcontentloaded")
-    # カレンダー描画待ち（年月ヘッダ or "+" の出現を待つ）
+    # 候補URLを順に試す
+    candidate_urls = [
+        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/offers/calendar",
+        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/offers",
+        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/jobs/calendar",
+        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/jobs",
+    ]
+    for url in candidate_urls:
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            print(f"[stage] _navigate_to_jobs_calendar tried url={url} -> current={page.url}", flush=True)
+            # 求人カレンダーの特徴: 「ひな形から求人を作成」 ボタン or 月ヘッダ
+            if page.locator('xpath=//*[contains(., "ひな形から求人を作成")]').count():
+                print(f"[stage] _navigate_to_jobs_calendar reached calendar via {url}", flush=True)
+                break
+        except Exception as e:
+            print(f"[stage] _navigate_to_jobs_calendar {url} failed: {e}", flush=True)
+
+    # それでも到達できない場合はナビリンク経由
+    if not page.locator('xpath=//*[contains(., "ひな形から求人を作成")]').count():
+        try:
+            page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/", wait_until="domcontentloaded")
+            nav = page.get_by_role("link", name=re.compile(r"^求人一覧$|求人一覧"))
+            if nav.count():
+                nav.first.click()
+                page.wait_for_load_state("domcontentloaded")
+                print(f"[stage] _navigate_to_jobs_calendar via nav -> {page.url}", flush=True)
+        except Exception as e:
+            print(f"[stage] _navigate_to_jobs_calendar nav fallback failed: {e}", flush=True)
+
+    # カレンダー領域が描画されるまで少し待つ（"YYYY年M月" 単独表示を期待）
     try:
-        page.wait_for_selector(
-            'xpath=//*[contains(text(), "年") and contains(text(), "月")]',
-            timeout=DEFAULT_TIMEOUT_MS,
+        page.wait_for_function(
+            r"() => /\d{4}\s*年\s*\d{1,2}\s*月(?!\d)/.test(document.body.innerText)",
+            timeout=10000,
         )
     except Exception:
         pass
 
 
 def _navigate_to_month(page, year: int, month: int) -> None:
-    """カレンダーの表示月を target に合わせる（◀ ▶ ボタンで移動）。"""
+    """カレンダーの表示月を target に合わせる（◀ ▶ ボタンで移動）。
+
+    年月ヘッダは "YYYY年M月" 単独表記を厳密マッチ
+    （"YYYY年M月D日" や "最終更新日時:..." を誤検知しないように）
+    """
     target_text = f"{year}年{month}月"
-    print(f"[stage] _navigate_to_month target={target_text}", flush=True)
-    for _step in range(24):
+    print(f"[stage] _navigate_to_month target={target_text} url={page.url}", flush=True)
+
+    def _read_heading() -> str:
+        """JSで body 内テキストから 'YYYY年M月' のみを抽出（日が後続しない）"""
         try:
-            heading = page.locator(
-                'xpath=//*[contains(text(), "年") and contains(text(), "月")][1]'
-            ).first.inner_text(timeout=3000).strip()
+            res = page.evaluate(
+                r"""
+                () => {
+                  const re = /(\d{4})\s*年\s*(\d{1,2})\s*月(?!\s*\d)/;
+                  // h1〜h4, [class*="heading"], [class*="title"] を優先
+                  const cands = Array.from(document.querySelectorAll(
+                    'h1, h2, h3, h4, [class*="heading"], [class*="Heading"], [class*="title"], [class*="Title"]'
+                  ));
+                  for (const el of cands) {
+                    const t = (el.textContent || '').trim();
+                    const m = t.match(re);
+                    if (m && t.length < 40) return m[0];
+                  }
+                  // 全要素から見つける（最短のもの）
+                  const all = Array.from(document.querySelectorAll('*'));
+                  let best = '';
+                  for (const el of all) {
+                    if (el.children.length > 0) continue;
+                    const t = (el.textContent || '').trim();
+                    if (t.length > 30) continue;
+                    const m = t.match(re);
+                    if (m) {
+                      if (!best || t.length < best.length) best = m[0];
+                    }
+                  }
+                  return best;
+                }
+                """
+            )
+            return (res or "").strip()
         except Exception:
-            heading = ""
+            return ""
+
+    for _step in range(24):
+        heading = _read_heading()
         print(f"[stage] _navigate_to_month current heading='{heading}'", flush=True)
-        if target_text in heading:
+        if target_text == heading or (heading and target_text in heading):
             return
         # 進む方向判定
         m = re.search(r"(\d{4})\s*年\s*(\d{1,2})\s*月", heading)
@@ -107,11 +165,13 @@ def _navigate_to_month(page, year: int, month: int) -> None:
         # 矢印ボタン候補（aria-label / テキスト各種）
         arrow_locators = (
             [
-                'xpath=//button[@aria-label="次の月" or contains(@aria-label, "次") or contains(., "›") or contains(., "▶") or contains(., ">")]',
+                'xpath=//button[@aria-label="次の月" or contains(@aria-label, "次")]',
+                'xpath=//button[contains(., "›") or contains(., "▶") or contains(., "»")]',
             ]
             if forward
             else [
-                'xpath=//button[@aria-label="前の月" or contains(@aria-label, "前") or contains(., "‹") or contains(., "◀") or contains(., "<")]',
+                'xpath=//button[@aria-label="前の月" or contains(@aria-label, "前")]',
+                'xpath=//button[contains(., "‹") or contains(., "◀") or contains(., "«")]',
             ]
         )
         clicked = False
@@ -125,7 +185,7 @@ def _navigate_to_month(page, year: int, month: int) -> None:
             except Exception:
                 continue
         if not clicked:
-            print(f"[stage] _navigate_to_month: arrow not found", flush=True)
+            print(f"[stage] _navigate_to_month: arrow not found (forward={forward})", flush=True)
             return
 
 

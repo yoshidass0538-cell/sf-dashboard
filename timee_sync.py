@@ -287,12 +287,18 @@ def run_sync() -> None:
     store.save_meta(meta)
 
     # 4.4. ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の継続ローテ更新
-    # 初回マッチ(出勤回数=0)の新規ワーカーは最優先で取得 (アラート判定用)
+    # 現在マッチング中で 出勤回数=0 (未稼働) のワーカーは最優先で取得。
+    # search→no_matchになるはずなので posting_path が走り、検証&アラート判定が可能になる。
+    current_first_match_wids = {
+        r["id"] for r in snapshot_curr
+        if int(r.get("出勤回数", 0) or 0) == 0 and r.get("id") in workers
+    }
     new_first_match_wids = {
         r["id"] for r in new_matches
         if int(r.get("出勤回数", 0) or 0) == 0 and r.get("id") in workers
     }
-    print(f"[Timee Sync] new first-match wids: {len(new_first_match_wids)}")
+    print(f"[Timee Sync] first-match wids current={len(current_first_match_wids)} "
+          f"new={len(new_first_match_wids)}")
     try:
         # 候補: ワーカーマスタ全員 (過去ワーカー含む)。non_disclosed は再試行不要なので除外。
         # TTL での skip は廃止し、常に「最古に取得した順」に MAX_PER_RUN 名を処理。
@@ -304,9 +310,13 @@ def run_sync() -> None:
         ]
         # 古いものから優先（None=未取得→最古扱い）
         candidates.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
-        # 初回マッチ未取得ワーカーは最優先で先頭に持ってくる(アラート判定のため)
-        priority = [wid for wid in new_first_match_wids
+        # 未稼働ワーカー(現在マッチング中・出勤回数=0)は最優先で先頭に持ってくる。
+        # 新規マッチ ⊂ 現マッチ なので current_first_match_wids にまとめる。
+        priority_set = (current_first_match_wids | new_first_match_wids)
+        priority = [wid for wid in priority_set
                     if wid in workers and not workers[wid].get("timee_non_disclosed", False)]
+        # 優先内も古いもの順にソート(同一バッチで全員捌けない場合の公平性確保)
+        priority.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
         rest = [wid for wid in candidates if wid not in set(priority)]
         targets_wids = (priority + rest)[:WORKER_DETAIL_MAX_PER_RUN]
         # 各wid の今日以降最古の 就業日 を求める(求人パス用)

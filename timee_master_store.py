@@ -60,6 +60,10 @@ WORKER_MEMO_WORKSHEET = "timee_worker_memos"
 WORKER_MEMO_HEADERS = ["id", "memo"]
 WORKER_MEMO_MAX_CHARS = 8000  # 1メモあたりの保存上限(セル50K対策)
 
+# user メモ + キャンセル履歴 (可変長フィールド) も A1 から外して別シート化
+WORKER_TEXT_WORKSHEET = "timee_worker_texts"
+WORKER_TEXT_HEADERS = ["id", "メモ", "キャンセル履歴_json"]
+
 GS_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -198,12 +202,79 @@ def save_worker_memos(memos: dict[str, str]) -> None:
 
 
 # ----------------------------------------------------------------------
+# ワーカーuser メモ + キャンセル履歴 (行ベース別ワークシート保存)
+# ----------------------------------------------------------------------
+def _get_worker_text_ws():
+    client = _get_client()
+    sh = client.open_by_key(_get_sheet_id())
+    try:
+        ws = sh.worksheet(WORKER_TEXT_WORKSHEET)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=WORKER_TEXT_WORKSHEET,
+                              rows=2, cols=len(WORKER_TEXT_HEADERS))
+        ws.update(values=[WORKER_TEXT_HEADERS], range_name="A1")
+        return ws
+    try:
+        first = ws.row_values(1)
+        if first[: len(WORKER_TEXT_HEADERS)] != WORKER_TEXT_HEADERS:
+            ws.update(values=[WORKER_TEXT_HEADERS], range_name="A1")
+    except Exception:
+        pass
+    return ws
+
+
+def load_worker_texts() -> dict[str, dict]:
+    """{wid: {"メモ": str, "キャンセル履歴": list[dict]}} を返す。"""
+    try:
+        ws = _get_worker_text_ws()
+        records = ws.get_all_records()
+    except Exception:
+        return {}
+    out = {}
+    for r in records:
+        wid = r.get("id")
+        if wid in (None, ""):
+            continue
+        try:
+            wid = f"{int(wid):06d}"
+        except (TypeError, ValueError):
+            wid = str(wid)
+        memo = str(r.get("メモ", "") or "")
+        ch_json = r.get("キャンセル履歴_json", "") or ""
+        try:
+            ch = json.loads(ch_json) if ch_json else []
+        except Exception:
+            ch = []
+        out[wid] = {"メモ": memo, "キャンセル履歴": ch}
+    return out
+
+
+def save_worker_texts(texts: dict[str, dict]) -> None:
+    """{wid: {"メモ", "キャンセル履歴"}} を全置換保存。空エントリは保存しない。"""
+    rows = [WORKER_TEXT_HEADERS]
+    for wid, t in texts.items():
+        memo = str(t.get("メモ", "") or "")
+        ch = t.get("キャンセル履歴") or []
+        # 全部空なら保存しない
+        if not memo and not ch:
+            continue
+        ch_json = json.dumps(ch, ensure_ascii=False) if ch else ""
+        rows.append([str(wid), memo[:8000], ch_json[:40000]])
+    ws = _get_worker_text_ws()
+    ws.clear()
+    ws.update(values=rows, range_name="A1", value_input_option="USER_ENTERED")
+
+
+# ----------------------------------------------------------------------
 # ワーカーマスタ
 # ----------------------------------------------------------------------
 def load_workers() -> dict[str, dict]:
     """ワーカーマスタを読み込み。失敗時は例外を伝播（空dictで上書き事故を防ぐ）。
 
-    A1 の workers 本体に加え、別ワークシートの timee_memo をマージして返す。
+    A1 の workers 本体に加え、別ワークシートの
+    - timee_memo (Timee側ミラー)
+    - メモ / キャンセル履歴 (可変長フィールド)
+    をマージして返す。
     """
     workers = _load_cell(WORKERS_CELL, {})
     try:
@@ -213,27 +284,49 @@ def load_workers() -> dict[str, dict]:
                 workers[wid]["timee_memo"] = memo
     except Exception as e:
         print(f"[WARN] load_worker_memos failed: {e}")
+    try:
+        texts = load_worker_texts()
+        for wid, t in texts.items():
+            if wid in workers:
+                workers[wid]["メモ"] = t.get("メモ", "")
+                workers[wid]["キャンセル履歴"] = t.get("キャンセル履歴", [])
+    except Exception as e:
+        print(f"[WARN] load_worker_texts failed: {e}")
     return workers
 
 
 def save_workers(workers: dict[str, dict]) -> None:
-    """A1 には timee_memo を含まない workers を保存し、timee_memo は別ワークシートへ。
+    """A1セル50K文字制限を回避するため、可変長フィールドを別ワークシートに分離保存。
 
-    A1 セル50K文字制限を回避するため、長文になりがちな timee_memo を分離。
+    分離対象:
+      - timee_memo → timee_worker_memos
+      - メモ + キャンセル履歴 → timee_worker_texts
+    A1 には残りの軽量フィールドのみ。
     """
     memos: dict[str, str] = {}
+    texts: dict[str, dict] = {}
     cleaned: dict[str, dict] = {}
     for wid, w in workers.items():
         w_copy = dict(w)
+        # timee_memo 抽出
         memo = w_copy.pop("timee_memo", "") or ""
         if memo:
             memos[wid] = memo
+        # メモ + キャンセル履歴 抽出
+        user_memo = w_copy.pop("メモ", "") or ""
+        cancel_history = w_copy.pop("キャンセル履歴", []) or []
+        if user_memo or cancel_history:
+            texts[wid] = {"メモ": user_memo, "キャンセル履歴": cancel_history}
         cleaned[wid] = w_copy
     _save_cell(WORKERS_CELL, cleaned)
     try:
         save_worker_memos(memos)
     except Exception as e:
         print(f"[WARN] save_worker_memos failed: {e}")
+    try:
+        save_worker_texts(texts)
+    except Exception as e:
+        print(f"[WARN] save_worker_texts failed: {e}")
 
 
 def generate_new_id(existing: dict[str, dict]) -> str:

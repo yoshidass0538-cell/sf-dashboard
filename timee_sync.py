@@ -59,30 +59,84 @@ def _chatwork_send(body: str) -> None:
     print(f"[Chatwork] status={resp.status_code} body={resp.text[:200]}")
 
 
-def _build_match_block(rec: dict, worker: dict) -> str:
-    """1件分のマッチング情報ブロック。"""
+def _format_shift(rec: dict) -> str:
+    """就業日を「5/8 10:00～19:00」形式に整形。"""
+    ds = rec.get("就業日", "")
+    try:
+        d = datetime.strptime(ds, "%Y-%m-%d").date()
+        date_str = f"{d.month}/{d.day}"
+    except Exception:
+        date_str = ds
+    start = rec.get("開始時間", "")
+    end = rec.get("終了時間", "")
+    return f"{date_str} {start}～{end}"
+
+
+def _build_match_block(records: list[dict], worker: dict) -> str:
+    """同一ワーカーの複数レコードを1ブロックにまとめる。
+
+    出力例:
+        【リピーターマッチング】
+        ID: 441603
+        竹邉 雅美（タケベ マサミ）女51歳
+        就業日:
+        5/19 10:00～19:00
+        5/21 10:00～19:00
+        5/25 10:00～19:00
+        リピート回数: 6回
+        S工事取得経験者
+        手かかからない人
+        ...
+        キャンセル履歴: 0回
+    """
+    rec0 = records[0]
     cancel_count = len(worker.get("キャンセル履歴", []))
-    title = "【リピーターマッチング】" if rec.get("出勤回数", 0) >= 1 else "【新規マッチング】"
+    is_repeater = rec0.get("出勤回数", 0) >= 1
+    title = "【リピーターマッチング】" if is_repeater else "【新規マッチング】"
+
     lines = [
         title,
-        f"ID: {rec['id']}",
+        f"ID: {rec0['id']}",
         f"{worker.get('氏名', '')}（{worker.get('カナ', '')}）{worker.get('性別', '')}{worker.get('年齢', '')}歳",
-        f"就業日: {rec.get('就業日', '')}  {rec.get('開始時間', '')}-{rec.get('終了時間', '')}",
-        f"出勤回数: {rec.get('出勤回数', 0)}回　{rec.get('グループ', '')}",
-        f"キャンセル履歴: {cancel_count}回",
     ]
+
+    # 就業日（1件なら横並び、2件以上ならラベルだけにして次行から並べる）
+    sorted_recs = sorted(records, key=lambda r: r.get("就業日", ""))
+    if len(sorted_recs) == 1:
+        lines.append(f"就業日: {_format_shift(sorted_recs[0])}")
+    else:
+        lines.append("就業日:")
+        for r in sorted_recs:
+            lines.append(_format_shift(r))
+
+    # 回数+グループ（グループは1行ずつ改行）
+    count_label = "リピート回数" if is_repeater else "出勤回数"
+    lines.append(f"{count_label}: {rec0.get('出勤回数', 0)}回")
+    groups_str = rec0.get("グループ", "")
+    for g in (g.strip() for g in groups_str.split(",")):
+        if g:
+            lines.append(g)
+
+    lines.append(f"キャンセル履歴: {cancel_count}回")
     return "\n".join(lines)
 
 
 def _send_match_notifications(new_matches: list[dict], workers: dict) -> None:
     if not new_matches:
         return
+    # 同一IDをまとめる
+    by_id: dict[str, list[dict]] = {}
+    for rec in new_matches:
+        by_id.setdefault(rec["id"], []).append(rec)
+    # 並び順: 新規(出勤回数=0)を先 → リピーター。同区分内はIDで安定ソート
+    sorted_groups = sorted(
+        by_id.items(),
+        key=lambda kv: (1 if kv[1][0].get("出勤回数", 0) >= 1 else 0, kv[0]),
+    )
     blocks = []
-    # 出勤回数=0(新規) を先に並べる → リピーター
-    sorted_matches = sorted(new_matches, key=lambda r: (r.get("出勤回数", 0), r.get("就業日", "")))
-    for rec in sorted_matches:
-        worker = workers.get(rec["id"], {})
-        blocks.append(_build_match_block(rec, worker))
+    for wid, recs in sorted_groups:
+        worker = workers.get(wid, {})
+        blocks.append(_build_match_block(recs, worker))
     body = "[info][title]タイミーマッチング検知[/title]" + "\n\n".join(blocks) + "[/info]"
     _chatwork_send(body)
 

@@ -236,6 +236,12 @@ def run_sync() -> None:
                     stale = last_dt < cutoff
                 except Exception:
                     stale = True
+            # 取得済みだが good_rate が空 かつ no_match でない場合は
+            # 抽出失敗とみなして TTL 内でも即時再試行
+            if not stale:
+                not_in_list = bool(w.get("timee_not_in_list", False))
+                if not w.get("good_rate") and not not_in_list:
+                    stale = True
             if stale:
                 candidates.append(wid)
         # 古いものから優先（None=未取得→最古扱い）

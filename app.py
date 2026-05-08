@@ -3820,6 +3820,29 @@ if selected_key == "timee_management":
             _filtered.append((wid, w))
         _filtered.sort(key=lambda kv: kv[1].get("初回登録日", ""), reverse=True)
 
+        # ワーカーごとの「次回出勤日」(今日以降の最古就業日) を集計
+        _next_shift: dict[str, str] = {}
+        for _r in _snapshot:
+            _wid = _r.get("id")
+            if not _wid:
+                continue
+            _ds = str(_r.get("就業日") or "")
+            if _ds < _today_iso:
+                continue
+            _cur = _next_shift.get(_wid)
+            if _cur is None or _ds < _cur:
+                _next_shift[_wid] = _ds
+
+        def _format_next_shift(wid: str) -> str:
+            ds = _next_shift.get(wid)
+            if not ds:
+                return "未定"
+            try:
+                d = _tm_date.fromisoformat(ds)
+                return f"{d.month}/{d.day}"
+            except Exception:
+                return ds
+
         # data_editor 用 DataFrame
         _rows = []
         for wid, w in _filtered:
@@ -3830,6 +3853,7 @@ if selected_key == "timee_management":
                 "カナ": w.get("カナ", ""),
                 "性別": w.get("性別", ""),
                 "年齢": w.get("年齢"),
+                "次回出勤日": _format_next_shift(wid),
                 "業務": "\n".join(sorted(_worker_groups.get(wid, set()))),
                 "初回登録日": w.get("初回登録日", ""),
                 "Good率": str(w.get("good_rate") or ""),
@@ -3873,6 +3897,7 @@ if selected_key == "timee_management":
             _gb.configure_column("カナ", width=140)
             _gb.configure_column("性別", width=60)
             _gb.configure_column("年齢", width=70, type=["numericColumn"])
+            _gb.configure_column("次回出勤日", width=100)
             _gb.configure_column("業務", width=240,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
                            "fontSize": "12px", "display": "flex", "alignItems": "center"})

@@ -76,23 +76,51 @@ def _login(page, email: str, password: str) -> None:
 # ---------------------------------------------------------------- ワーカー一覧→URL収集
 _LIST_EXTRACTOR_JS = r"""
 () => {
-  // ワーカー一覧から (詳細URL, 行テキスト) を収集。
-  // URL 形式は事前に分からないので、'/clients/' を含むページ内 <a> のうち、
-  // クライアントIDで始まるパスを優先的に拾う。
+  // ワーカー一覧の行を収集。
+  // ナビバーのリンクを除外するため、サイドバー(<nav>, [data-testid="sidebar"])配下は無視。
   const rows = [];
+  // 除外領域
+  const sidebar = document.querySelector('[data-testid="sidebar"], nav');
+  function isInSidebar(el) {
+    return sidebar && sidebar.contains(el);
+  }
+
+  // パターン1: <a href> でクライアント配下のIDっぽいリンク（サイドバー外）
   const links = Array.from(document.querySelectorAll('a[href]'));
   for (const a of links) {
+    if (isInSidebar(a)) continue;
     const href = a.getAttribute('href') || '';
-    // 自身のリンクや空、外部、JS は除外
     if (!href || href.startsWith('#') || href.startsWith('javascript:')) continue;
-    // /clients/{id}/ 配下のリンクのみ（自分が今いる画面と関連したもの）
     if (!/\/clients\/\d+\//.test(href)) continue;
-    // 末尾に何かIDっぽいものがあるリンクのみ（一覧/カレンダーへの戻りリンクは除外）
-    if (!/\/[^/?#]+$/.test(href.split('?')[0])) continue;
-    // 行テキストを取得（カナ/氏名特定用）
+    // /clients/{cid}/users (一覧URL自身) は除外。/users/{id} のようにIDっぽいパスを採用
+    const path = href.split('?')[0].split('#')[0];
+    const seg = path.split('/').filter(s => s.length > 0);
+    // 最低 4 セグメント (clients, {cid}, {section}, {id}) 以上
+    if (seg.length < 4) continue;
     const row = a.closest('tr, [role="row"], li, [class*="row"], [class*="Row"]') || a.parentElement;
     const text = (row && row.textContent || a.textContent || '').replace(/\s+/g, ' ').trim();
     rows.push({ href: href, text: text.slice(0, 300) });
+  }
+
+  // パターン2: <tr> や [role=row] 等で onClick 動作の行（hrefなし）→ 行テキストだけ収集
+  if (rows.length === 0) {
+    const trs = Array.from(document.querySelectorAll('tbody tr, [role="row"]'));
+    for (const tr of trs) {
+      if (isInSidebar(tr)) continue;
+      const text = (tr.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      // data-* 属性に ID が入っている可能性
+      let dataId = '';
+      const attrs = tr.attributes;
+      for (let i = 0; i < attrs.length; i++) {
+        const an = attrs[i].name;
+        if (an.startsWith('data-') && /id|user|worker/i.test(an)) {
+          dataId = attrs[i].value;
+          break;
+        }
+      }
+      rows.push({ href: dataId ? '#data:' + dataId : '#row', text: text.slice(0, 300) });
+    }
   }
   return rows;
 }
@@ -115,14 +143,21 @@ def _collect_worker_urls(page) -> List[Dict]:
         print(f"[stage] _collect_worker_urls nav failed: {e}", flush=True)
         _dump(page, "list_nav_fail")
 
-    # 一覧描画待ち（カナ表記またはテーブル行を期待）
+    # 一覧描画待ち（行データのレンダリングを待つ）
     try:
         page.wait_for_function(
-            r"() => /[゠-ヿ]{3,}/.test(document.body.innerText)",
-            timeout=10000,
+            r"""() => {
+                // メインコンテンツ領域に <tr> や [role=row] が複数あればOK
+                const rows = document.querySelectorAll('tbody tr, [role="row"]');
+                return rows.length >= 3;
+            }""",
+            timeout=12000,
         )
     except Exception:
         pass
+    page.wait_for_timeout(800)
+    # 構造調査用に常にダンプ（成功時も）
+    _dump(page, "list_inspect")
 
     out: List[Dict] = []
     seen = set()

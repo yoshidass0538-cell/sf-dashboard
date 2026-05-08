@@ -97,62 +97,43 @@ def _navigate_to_jobs_calendar(page) -> None:
     # Reactレンダリング・カレンダー描画待ち
     page.wait_for_timeout(1500)
     print(f"[stage] _navigate_to_jobs_calendar landed url={page.url}", flush=True)
-    # カレンダー領域が描画されるまで待つ
+    # カレンダー領域が描画されるまで待つ: <time datetime="YYYY-MM-DD"> が現れたらOK
     try:
-        page.wait_for_function(
-            r"""() => {
-                // 月ヘッダ "YYYY年M月" 単独表記 + ひな形作成ボタンの両方が見つかれば描画完了とみなす
-                const hasHeader = !!Array.from(document.querySelectorAll('h1, h2, h3, h4, [class*="heading"], [class*="title"]'))
-                  .find(el => /\d{4}\s*年\s*\d{1,2}\s*月(?!\s*\d)/.test((el.textContent || '').trim()) && (el.textContent || '').trim().length < 40);
-                const hasButton = /ひな形から求人を作成/.test(document.body.innerText);
-                return hasHeader && hasButton;
-            }""",
-            timeout=15000,
-        )
-        print("[stage] _navigate_to_jobs_calendar: calendar markers detected", flush=True)
+        page.wait_for_selector('time[datetime]', timeout=15000, state="attached")
+        print("[stage] _navigate_to_jobs_calendar: calendar rendered (time[datetime] found)", flush=True)
     except Exception:
-        print("[stage] _navigate_to_jobs_calendar: calendar markers NOT detected within 15s, dumping", flush=True)
-        _dump(page, "no_calendar_markers")
+        print("[stage] _navigate_to_jobs_calendar: time[datetime] NOT detected within 15s, dumping", flush=True)
+        _dump(page, "no_time_elem")
 
 
 def _navigate_to_month(page, year: int, month: int) -> None:
-    """カレンダーの表示月を target に合わせる（◀ ▶ ボタンで移動）。
+    """カレンダーの表示月を target に合わせる。
 
-    年月ヘッダは "YYYY年M月" 単独表記を厳密マッチ
-    （"YYYY年M月D日" や "最終更新日時:..." を誤検知しないように）
+    実DOM:
+      - 月ヘッダ: <div class="css-..."> 「2026年5月」</div>
+      - 矢印: <button><span aria-label="前の月">arrow_back_ios</span></button>
+              <button><span aria-label="次の月">arrow_forward_ios</span></button>
     """
     target_text = f"{year}年{month}月"
     print(f"[stage] _navigate_to_month target={target_text} url={page.url}", flush=True)
 
     def _read_heading() -> str:
-        """JSで body 内テキストから 'YYYY年M月' のみを抽出（日が後続しない）"""
+        """body内テキストから 'YYYY年M月' (日が後続しない) を抽出"""
         try:
             res = page.evaluate(
                 r"""
                 () => {
-                  const re = /(\d{4})\s*年\s*(\d{1,2})\s*月(?!\s*\d)/;
-                  // h1〜h4, [class*="heading"], [class*="title"] を優先
-                  const cands = Array.from(document.querySelectorAll(
-                    'h1, h2, h3, h4, [class*="heading"], [class*="Heading"], [class*="title"], [class*="Title"]'
-                  ));
-                  for (const el of cands) {
-                    const t = (el.textContent || '').trim();
-                    const m = t.match(re);
-                    if (m && t.length < 40) return m[0];
-                  }
-                  // 全要素から見つける（最短のもの）
-                  const all = Array.from(document.querySelectorAll('*'));
-                  let best = '';
+                  // 候補: 子供のいない要素 or テキスト自体が短い要素
+                  const re = /^(\d{4})\s*年\s*(\d{1,2})\s*月\s*$/;
+                  const all = Array.from(document.querySelectorAll('div, span, h1, h2, h3, h4, p'));
                   for (const el of all) {
-                    if (el.children.length > 0) continue;
                     const t = (el.textContent || '').trim();
-                    if (t.length > 30) continue;
-                    const m = t.match(re);
-                    if (m) {
-                      if (!best || t.length < best.length) best = m[0];
-                    }
+                    if (t.length > 12) continue;
+                    if (re.test(t)) return t;
                   }
-                  return best;
+                  // 緩く: 含まれていれば
+                  const m = (document.body.innerText || '').match(/(\d{4})\s*年\s*(\d{1,2})\s*月(?!\s*\d)/);
+                  return m ? m[0] : '';
                 }
                 """
             )
@@ -163,7 +144,7 @@ def _navigate_to_month(page, year: int, month: int) -> None:
     for _step in range(24):
         heading = _read_heading()
         print(f"[stage] _navigate_to_month current heading='{heading}'", flush=True)
-        if target_text == heading or (heading and target_text in heading):
+        if target_text == heading.strip() or (heading and target_text == heading.replace(" ", "")):
             return
         # 進む方向判定
         m = re.search(r"(\d{4})\s*年\s*(\d{1,2})\s*月", heading)
@@ -172,18 +153,19 @@ def _navigate_to_month(page, year: int, month: int) -> None:
             cy, cm = int(m.group(1)), int(m.group(2))
             forward = (cy, cm) < (year, month)
 
-        # 矢印ボタン候補（aria-label / テキスト各種）
-        arrow_locators = (
-            [
-                'xpath=//button[@aria-label="次の月" or contains(@aria-label, "次")]',
-                'xpath=//button[contains(., "›") or contains(., "▶") or contains(., "»")]',
+        # 実DOM: <button><span aria-label="次の月">...</span></button>
+        if forward:
+            arrow_locators = [
+                'xpath=//button[.//*[@aria-label="次の月"]]',
+                'xpath=//button[.//*[contains(@aria-label, "次")]]',
+                'xpath=//*[@aria-label="次の月"]/ancestor-or-self::button[1]',
             ]
-            if forward
-            else [
-                'xpath=//button[@aria-label="前の月" or contains(@aria-label, "前")]',
-                'xpath=//button[contains(., "‹") or contains(., "◀") or contains(., "«")]',
+        else:
+            arrow_locators = [
+                'xpath=//button[.//*[@aria-label="前の月"]]',
+                'xpath=//button[.//*[contains(@aria-label, "前")]]',
+                'xpath=//*[@aria-label="前の月"]/ancestor-or-self::button[1]',
             ]
-        )
         clicked = False
         for loc in arrow_locators:
             try:
@@ -202,64 +184,57 @@ def _navigate_to_month(page, year: int, month: int) -> None:
 # ---------------------------------------------------------------- 抽出
 _EXTRACTOR_JS = r"""
 () => {
+  // タイミー求人カレンダーの実DOM:
+  //   <td>
+  //     <time datetime="2026-05-08" aria-label="5/8">8</time>
+  //     <ul>
+  //       <li>
+  //         <span><span>10:00~</span><span>19:00</span></span>
+  //         <span><img alt="状態:稼働終了" />3/3</span>
+  //       </li>
+  //       ...
+  //     </ul>
+  //   </td>
   const out = [];
-  const slotRe = /(\d{1,2}:\d{2})\s*[～~\-]\s*(\d{1,2}:\d{2}).*?(\d+)\s*\/\s*(\d+)/s;
+  const times = document.querySelectorAll('time[datetime]');
+  times.forEach(t => {
+    const dateAttr = t.getAttribute('datetime') || '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateAttr)) return;
 
-  // 候補: 日付セル単位で走査。
-  // タイミーの calendar セルは role="gridcell" を持つことが多いが念のため複数候補。
-  let cells = document.querySelectorAll('[role="gridcell"]');
-  if (!cells.length) cells = document.querySelectorAll('[data-date]');
-  if (!cells.length) cells = document.querySelectorAll('[class*="day"][class*="cell"], [class*="DayCell"], [class*="CalendarCell"]');
-
-  cells.forEach(cell => {
-    // 日付
-    let dateAttr = cell.getAttribute('data-date') || cell.getAttribute('aria-label') || '';
-    // セル内の日付数字（先頭の <time> or 数字テキスト）を取得
-    let dayNum = null;
-    const timeEl = cell.querySelector('time[datetime]');
-    if (timeEl) {
-      const dt = timeEl.getAttribute('datetime');
-      if (dt) dateAttr = dt;
-      const t = timeEl.textContent && timeEl.textContent.match(/\d+/);
-      if (t) dayNum = parseInt(t[0], 10);
+    // 日付セルコンテナ: 親<td>を探し、なければ <ul> を内包する祖先を辿る
+    let cell = t.closest('td');
+    if (!cell) {
+      let node = t.parentElement;
+      while (node && !node.querySelector('ul')) node = node.parentElement;
+      cell = node;
     }
-    if (!dayNum) {
-      const m0 = cell.textContent.match(/^\s*(\d{1,2})/);
-      if (m0) dayNum = parseInt(m0[1], 10);
-    }
+    if (!cell) return;
 
-    // 求人ブロックを抽出: テキストに "HH:MM～HH:MM N/M" を含む子要素
-    const slotEls = Array.from(cell.querySelectorAll('*')).filter(el => {
-      if (!el.children || el.children.length > 12) return false;
-      const t = el.textContent || '';
-      return slotRe.test(t);
-    });
-    // 子孫を含むと重複するので「自身でも親でも親が同じパターンを持つ」要素を除く
-    const leafs = slotEls.filter(el => {
-      return !slotEls.some(other => other !== el && el.contains(other));
-    });
-    leafs.forEach(el => {
-      const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-      const m = t.match(slotRe);
-      if (!m) return;
-      const status =
-        /確定/.test(t) ? 'confirmed'
-        : /末|不足/.test(t) ? 'shortage'
-        : /求人中/.test(t) ? 'recruiting'
-        : 'unknown';
+    const items = cell.querySelectorAll('li');
+    items.forEach(li => {
+      const text = (li.textContent || '').replace(/\s+/g, '').trim();
+      const tm = text.match(/(\d{1,2}:\d{2})[～~\-](\d{1,2}:\d{2})/);
+      const nm = text.match(/(\d+)\/(\d+)/);
+      if (!tm || !nm) return;
+      const img = li.querySelector('img[alt]');
+      const statusAlt = img ? (img.getAttribute('alt') || '') : '';
+      // 状態を分類
+      let status = 'unknown';
+      if (/確定|稼働終了/.test(statusAlt)) status = 'confirmed';
+      else if (/求人中/.test(statusAlt)) status = 'recruiting';
+      else if (/不足|末/.test(statusAlt)) status = 'shortage';
       out.push({
         date_attr: dateAttr,
-        day: dayNum,
-        start: m[1],
-        end: m[2],
-        matched: parseInt(m[3], 10),
-        required: parseInt(m[4], 10),
+        start: tm[1],
+        end: tm[2],
+        matched: parseInt(nm[1], 10),
+        required: parseInt(nm[2], 10),
         status: status,
-        text: t.slice(0, 200),
+        status_alt: statusAlt,
+        text: text.slice(0, 120),
       });
     });
   });
-
   return out;
 }
 """
@@ -270,21 +245,15 @@ def _extract_postings(page, year: int, month: int) -> List[Dict]:
     rows = page.evaluate(_EXTRACTOR_JS) or []
     print(f"[stage] _extract_postings raw rows={len(rows)}", flush=True)
 
+    target_prefix = f"{year:04d}-{month:02d}"
     out: List[Dict] = []
     for r in rows:
-        day = r.get("day")
-        if not day:
-            # date_attr が "YYYY-MM-DD" 形式なら拾う
-            date_attr = r.get("date_attr") or ""
-            mm = re.search(r"(\d{4})-(\d{2})-(\d{2})", date_attr)
-            if mm:
-                date_str = f"{int(mm.group(1)):04d}-{int(mm.group(2)):02d}-{int(mm.group(3)):02d}"
-            else:
-                continue
-        else:
-            date_str = f"{year:04d}-{month:02d}-{int(day):02d}"
+        date_attr = r.get("date_attr", "")
+        # ターゲット月のレコードに絞る（前後月の余白セルを除外）
+        if not date_attr.startswith(target_prefix):
+            continue
         out.append({
-            "日付": date_str,
+            "日付": date_attr,
             "開始時間": r.get("start", ""),
             "終了時間": r.get("end", ""),
             "マッチ数": int(r.get("matched", 0)),

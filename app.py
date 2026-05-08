@@ -3832,6 +3832,9 @@ if selected_key == "timee_management":
                 "年齢": w.get("年齢"),
                 "業務": "\n".join(sorted(_worker_groups.get(wid, set()))),
                 "初回登録日": w.get("初回登録日", ""),
+                "Good率": str(w.get("good_rate") or ""),
+                "直前キャンセル率": str(w.get("cancel_rate") or ""),
+                "タイミーメモ": str(w.get("timee_memo") or ""),
                 "メモ": w.get("メモ", ""),
                 "タグ": ", ".join(w.get("タグ", []) or []),
                 "直雇勧誘済": bool(w.get("直雇勧誘済", False)),
@@ -3874,6 +3877,12 @@ if selected_key == "timee_management":
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
                            "fontSize": "12px", "display": "flex", "alignItems": "center"})
             _gb.configure_column("初回登録日", width=110)
+            _gb.configure_column("Good率", width=90)
+            _gb.configure_column("直前キャンセル率", width=120)
+            _gb.configure_column("タイミーメモ", width=240,
+                cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
+                           "fontSize": "12px", "background": "#f0f4f8",
+                           "display": "flex", "alignItems": "center"})
             _gb.configure_column("メモ", width=260,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.5",
                            "background": "#fff8e1", "display": "flex", "alignItems": "center"})
@@ -4138,29 +4147,22 @@ if selected_key == "timee_management":
                             else:
                                 _bg, _fg, _bd = "#ffffff", "#222", "1px solid #d8dee5"
 
-                            # 求人ブロックがあればそれを優先表示（タイミー画面と同様の N/M 複数行）
+                            # 求人ブロックがあれば1日分を合算して N/M で表示
                             _postings_today = _postings_by_day.get(_day, [])
                             if _postings_today:
-                                _post_lines = []
-                                for _p in _postings_today:
-                                    _pn = int(_p.get("マッチ数", 0) or 0)
-                                    _pm = int(_p.get("募集人数", 0) or 0)
-                                    _ps = str(_p.get("開始時間", "") or "")
-                                    _pe = str(_p.get("終了時間", "") or "")
-                                    if _is_past:
-                                        _pcolor = "#888"
-                                    elif _pm > 0 and _pn >= _pm:
-                                        _pcolor = "#28a745"
-                                    elif _pm > 0 and _pn < _pm:
-                                        _pcolor = "#d97706"
-                                    else:
-                                        _pcolor = "#1565c0"
-                                    _post_lines.append(
-                                        f"<div style='font-size:11px;color:{_pcolor};font-weight:700;"
-                                        f"line-height:1.35;'>{_ps}～{_pe} {_pn}/{_pm}</div>"
-                                    )
+                                _sum_n = sum(int(_p.get("マッチ数", 0) or 0) for _p in _postings_today)
+                                _sum_m = sum(int(_p.get("募集人数", 0) or 0) for _p in _postings_today)
+                                if _is_past:
+                                    _pcolor = "#888"
+                                elif _sum_m > 0 and _sum_n >= _sum_m:
+                                    _pcolor = "#28a745"
+                                elif _sum_m > 0 and _sum_n < _sum_m:
+                                    _pcolor = "#d97706"
+                                else:
+                                    _pcolor = "#1565c0"
                                 _cnt_html = (
-                                    "<div style='margin-top:4px;'>" + "".join(_post_lines) + "</div>"
+                                    f"<div style='font-size:16px;color:{_pcolor};font-weight:800;"
+                                    f"margin-top:4px;line-height:1.2;'>{_sum_n}/{_sum_m}</div>"
                                 )
                             elif _cnt > 0:
                                 _cnt_html = (

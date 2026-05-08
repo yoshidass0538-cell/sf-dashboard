@@ -125,49 +125,185 @@ def _open_template_create(page, template_label: str) -> None:
 
 # ---------------------------------------------------------------- フォーム入力
 def _fill_date(page, target: _date) -> None:
-    """求人日入力。react-datepicker 想定。"""
-    # 「求人日」のラベル直近の input をクリック
-    date_input = page.locator(
-        'xpath=//label[contains(., "求人日")]/following::input[1]'
-    ).first
-    date_input.wait_for(state="visible", timeout=DEFAULT_TIMEOUT_MS)
-    date_input.click()
-    # react-datepicker が開く想定 → 年/月セレクト + 日クリック
-    year_select = page.locator(
-        'select.react-datepicker__year-select'
-    ).first
-    month_select = page.locator(
-        'select.react-datepicker__month-select'
-    ).first
-    year_select.wait_for(state="visible", timeout=10000)
-    year_select.select_option(value=str(target.year))
-    month_select.select_option(value=str(target.month - 1))
-    day_cell = page.locator(
-        f'.react-datepicker__day--{target.day:03d}:not(.react-datepicker__day--outside-month)'
-    ).first
-    day_cell.click()
+    """求人日入力。インライン月別カレンダー想定。
+
+    複数のパターンに対応:
+      1) aria-label に "YYYY年M月D日" を持つボタン/セルを直接クリック
+      2) 「YYYY年M月」のヘッダ表示まで「次の月」ボタンで送ってから日数字をクリック
+      3) react-datepicker フォールバック
+    """
+    print(f"[stage] _fill_date target={target.isoformat()}", flush=True)
+
+    # 求人日セクションを限定（labelテキストから先のセクションを対象に）
+    section = page.locator(
+        'xpath=//*[normalize-space()="求人日" or contains(., "求人日")]/following::*[1]'
+    )
+
+    # --- パターン1: aria-label で直クリック ---
+    aria_label = f"{target.year}年{target.month}月{target.day}日"
+    cand = page.locator(f'[aria-label*="{aria_label}"]')
+    if cand.count():
+        try:
+            cand.first.click(timeout=5000)
+            print("[stage] _fill_date OK via aria-label", flush=True)
+            return
+        except Exception as e:
+            print(f"[stage] _fill_date aria-label click failed: {e}", flush=True)
+
+    # --- パターン2: ヘッダー「YYYY年M月」を表示するまで送って日をクリック ---
+    target_header_re = re.compile(rf"{target.year}\s*年\s*{target.month}\s*月")
+    next_btn_locators = [
+        'xpath=//*[contains(., "求人日")]/following::button[@aria-label="次の月" or contains(@aria-label, "次") or contains(., "›") or contains(., "▶") or contains(., ">")][1]',
+        'xpath=//*[contains(., "次の月")]',
+    ]
+    prev_btn_locators = [
+        'xpath=//*[contains(., "求人日")]/following::button[@aria-label="前の月" or contains(@aria-label, "前") or contains(., "‹") or contains(., "◀") or contains(., "<")][1]',
+    ]
+
+    def _current_calendar_header() -> str:
+        for loc in [
+            'xpath=//*[contains(., "求人日")]/following::*[contains(text(), "年") and contains(text(), "月")][1]',
+            'xpath=//*[contains(@class, "calendar")]/descendant::*[contains(text(), "年") and contains(text(), "月")][1]',
+        ]:
+            try:
+                el = page.locator(loc)
+                if el.count():
+                    return el.first.inner_text(timeout=1000)
+            except Exception:
+                continue
+        return ""
+
+    for _step in range(24):
+        header = _current_calendar_header()
+        print(f"[stage] _fill_date header='{header}'", flush=True)
+        if target_header_re.search(header):
+            break
+        # 進む方向判定（雑に: 現在のヘッダから年月抽出して比較）
+        m = re.search(r"(\d{4})\s*年\s*(\d{1,2})\s*月", header)
+        forward = True
+        if m:
+            cy, cm = int(m.group(1)), int(m.group(2))
+            forward = (cy, cm) < (target.year, target.month)
+        clicked = False
+        for loc in (next_btn_locators if forward else prev_btn_locators):
+            try:
+                btn = page.locator(loc).first
+                btn.click(timeout=2000)
+                clicked = True
+                break
+            except Exception:
+                continue
+        if not clicked:
+            print("[stage] _fill_date: nav button not found, abort nav", flush=True)
+            break
+
+    # 日数字のクリック（カレンダー領域内の数字テキスト）
+    day_loc_candidates = [
+        f'xpath=//*[contains(., "求人日")]/following::button[normalize-space(text())="{target.day}"][1]',
+        f'xpath=//*[contains(., "求人日")]/following::*[normalize-space(text())="{target.day}" and not(contains(@class, "outside")) and not(contains(@class, "disabled"))][1]',
+    ]
+    for loc in day_loc_candidates:
+        try:
+            el = page.locator(loc).first
+            el.click(timeout=3000)
+            print(f"[stage] _fill_date OK via day-text {target.day}", flush=True)
+            return
+        except Exception as e:
+            print(f"[stage] _fill_date day-text {target.day} failed via {loc}: {e}", flush=True)
+
+    # --- パターン3: react-datepicker fallback ---
+    try:
+        date_input = page.locator(
+            'xpath=//label[contains(., "求人日")]/following::input[1]'
+        ).first
+        date_input.click()
+        page.locator('select.react-datepicker__year-select').first.select_option(value=str(target.year))
+        page.locator('select.react-datepicker__month-select').first.select_option(value=str(target.month - 1))
+        page.locator(
+            f'.react-datepicker__day--{target.day:03d}:not(.react-datepicker__day--outside-month)'
+        ).first.click()
+        print("[stage] _fill_date OK via react-datepicker", flush=True)
+        return
+    except Exception as e:
+        print(f"[stage] _fill_date react-datepicker fallback failed: {e}", flush=True)
+
+    raise RuntimeError(f"求人日 {target.isoformat()} の選択に失敗")
 
 
 def _select_time(page, label: str, value: str) -> None:
-    """「開始」「終了」「休憩の開始」など、ラベルに紐づく時刻セレクトに value をセット。
+    """ラベル直近の時刻入力に value をセット。
 
-    タイミーは時間選択がカスタム dropdown の場合があるので、まず <select> として試し、
-    だめなら role=combobox / button を開いて選択肢をクリックする。
+    複数パターンをフォールバック:
+      1) <input type="time"> として fill
+      2) <select> として select_option
+      3) 通常inputに fill (タイミーは "--:--" placeholder のテキスト入力の可能性)
+      4) 通常inputをクリックしてリストから選ぶ
     """
-    # まず <select> として試す
-    sel = page.locator(
-        f'xpath=//label[contains(., "{label}")]/following::select[1]'
-    )
-    if sel.count():
-        sel.first.select_option(label=value)
-        return
+    print(f"[stage] _select_time label='{label}' value='{value}'", flush=True)
 
-    # それがなければ button/combobox 経由
-    trigger = page.locator(
-        f'xpath=//label[contains(., "{label}")]/following::*[self::button or @role="combobox"][1]'
-    ).first
-    trigger.click()
-    page.get_by_role("option", name=re.compile(rf"^{re.escape(value)}\b")).first.click()
+    # 1) 直近の input をfillで試す
+    try:
+        inp = page.locator(
+            f'xpath=//label[contains(., "{label}")]/following::input[1]'
+        ).first
+        inp.click(timeout=3000)
+        # 既存値があれば消す
+        try:
+            inp.press("Control+a")
+            inp.press("Delete")
+        except Exception:
+            pass
+        inp.fill(value, timeout=3000)
+        # blur してフォーマット確定（不要かもしれないが念のため）
+        try:
+            inp.press("Tab")
+        except Exception:
+            pass
+        # 値が反映されているか確認（input value を読む）
+        cur = inp.input_value(timeout=1000)
+        if value in cur or cur.replace(":", "") == value.replace(":", ""):
+            print(f"[stage] _select_time '{label}' OK via input.fill -> '{cur}'", flush=True)
+            return
+        print(f"[stage] _select_time '{label}' input.fill mismatch: '{cur}'", flush=True)
+    except Exception as e:
+        print(f"[stage] _select_time '{label}' fill failed: {e}", flush=True)
+
+    # 2) <select> として
+    try:
+        sel = page.locator(
+            f'xpath=//label[contains(., "{label}")]/following::select[1]'
+        )
+        if sel.count():
+            sel.first.select_option(label=value, timeout=3000)
+            print(f"[stage] _select_time '{label}' OK via select", flush=True)
+            return
+    except Exception as e:
+        print(f"[stage] _select_time '{label}' select failed: {e}", flush=True)
+
+    # 3) input/buttonクリックしてリストから選ぶ
+    try:
+        trigger = page.locator(
+            f'xpath=//label[contains(., "{label}")]/following::*[self::input or self::button or @role="combobox"][1]'
+        ).first
+        trigger.click(timeout=3000)
+        # 開いたリストから value を含むオプションをクリック
+        opt_loc_candidates = [
+            f'role=option[name="{value}"]',
+            f'xpath=//*[@role="option"][normalize-space(text())="{value}"]',
+            f'xpath=//li[normalize-space(text())="{value}"]',
+            f'xpath=//*[normalize-space(text())="{value}"]',
+        ]
+        for loc in opt_loc_candidates:
+            try:
+                page.locator(loc).first.click(timeout=2000)
+                print(f"[stage] _select_time '{label}' OK via dropdown {loc}", flush=True)
+                return
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[stage] _select_time '{label}' dropdown failed: {e}", flush=True)
+
+    raise RuntimeError(f"時刻 '{label}'='{value}' のセットに失敗")
 
 
 def _fill_break_minutes(page, minutes: int) -> None:

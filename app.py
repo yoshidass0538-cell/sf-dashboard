@@ -3604,6 +3604,30 @@ if selected_key == "timee_management":
     def _tm_reload():
         _tm_load.clear()
 
+    def _tm_month_nav(state_key: str, fallback: str):
+        """⬅ 前月 / YYYY年M月 / 翌月 ➡ ナビUI。返り値: (year, month, 'YYYY-MM')"""
+        cur = st.session_state.get(state_key, fallback)
+        try:
+            _yv, _mv = map(int, str(cur).split("-"))
+        except Exception:
+            cur = fallback
+            _yv, _mv = map(int, str(cur).split("-"))
+        _c1, _c2, _c3 = st.columns([1, 4, 1])
+        if _c1.button("⬅ 前月", key=f"{state_key}_prev", use_container_width=True):
+            _ny, _nm = (_yv, _mv - 1) if _mv > 1 else (_yv - 1, 12)
+            st.session_state[state_key] = f"{_ny:04d}-{_nm:02d}"
+            st.rerun()
+        _c2.markdown(
+            f"<div style='text-align:center;font-size:18px;font-weight:700;"
+            f"padding:8px 0;'>{_yv}年{_mv}月</div>",
+            unsafe_allow_html=True,
+        )
+        if _c3.button("翌月 ➡", key=f"{state_key}_next", use_container_width=True):
+            _ny, _nm = (_yv, _mv + 1) if _mv < 12 else (_yv + 1, 1)
+            st.session_state[state_key] = f"{_ny:04d}-{_nm:02d}"
+            st.rerun()
+        return _yv, _mv, f"{_yv:04d}-{_mv:02d}"
+
     # ---- 求人作成: GitHub Actions の workflow_dispatch をトリガー ----
     def _tm_trigger_post_job(post_type: str, headcount: int, dates: list[str]) -> tuple[bool, str]:
         import os as _os, requests as _rq
@@ -4082,12 +4106,7 @@ if selected_key == "timee_management":
                 st.info("就業日データが正しく取り込まれていません。")
             else:
                 _default_m = _today.strftime("%Y-%m")
-                if _default_m not in _avail_months:
-                    _default_m = _avail_months[0]
-                _sel_m = st.selectbox("月を選択", _avail_months,
-                                      index=_avail_months.index(_default_m),
-                                      key="tm_cal_month")
-                _y, _m = map(int, _sel_m.split("-"))
+                _y, _m, _sel_m = _tm_month_nav("tm_cal_month_nav", _default_m)
 
                 # 業務(グループ)で絞り込み（任意）
                 _cal_groups = st.multiselect(
@@ -4255,6 +4274,10 @@ if selected_key == "timee_management":
             from datetime import datetime as _tm_dt
             import html as _tm_html
 
+            # 月送りナビ
+            _sch_default_m = _today.strftime("%Y-%m")
+            _sch_y, _sch_m, _sch_sel_m = _tm_month_nav("tm_sch_month_nav", _sch_default_m)
+
             # フィルタUI
             _c_grp, _c_q = st.columns([3, 2])
             _sel_sch_groups = _c_grp.multiselect(
@@ -4330,13 +4353,10 @@ if selected_key == "timee_management":
                     f"<tbody>{''.join(_body_rows)}</tbody></table>"
                 )
 
-            # 当月初日（=過去月／当月以降の境界）
-            _this_month_start = _today.replace(day=1)
-
-            # 過去月分は (YYYY-MM) ごとにバケット化して後でタブ表示する
-            _past_month_buckets: dict[str, list[tuple]] = {}
-
+            # 選択月のみを対象に、日付昇順で表示
             for _date_str in sorted(_by_date.keys()):
+                if not _date_str.startswith(_sch_sel_m):
+                    continue
                 try:
                     _d_obj = _tm_dt.strptime(_date_str, "%Y-%m-%d").date()
                 except ValueError:
@@ -4358,18 +4378,9 @@ if selected_key == "timee_management":
                 _wd = _WEEKDAYS[_d_obj.weekday()]
                 _is_today = (_d_obj == _today)
                 _is_weekend = _d_obj.weekday() >= 5
-                _is_past_month = _d_obj < _this_month_start
+                _is_past = _d_obj < _today
 
-                if _is_past_month:
-                    # 過去月: 月キーでバケット化して後でタブ表示
-                    _ym = f"{_d_obj.year:04d}-{_d_obj.month:02d}"
-                    _past_month_buckets.setdefault(_ym, []).append((_date_str, _d_obj, _day_rows))
-                    _total_shown += len(_day_rows)
-                    continue
-
-                # 当月以降（過去日含む）: 従来通りインラインで表示
-                _is_past_in_month = _d_obj < _today
-                if _is_past_in_month:
+                if _is_past:
                     _label = f"📅 {_date_str} ({_wd}) — {len(_day_rows)}名 ／ 経過済"
                     with st.expander(_label, expanded=False):
                         st.markdown(_render_day_table_html(_day_rows, is_past=True),
@@ -4397,27 +4408,10 @@ if selected_key == "timee_management":
 
                 _total_shown += len(_day_rows)
 
-            # 過去月（当月より前）はタブにまとめて収納
-            if _past_month_buckets:
-                st.divider()
-                st.markdown("##### 🗂 過去月（タブで収納）")
-                _ym_keys = sorted(_past_month_buckets.keys(), reverse=True)  # 新しい月が左
-                _tab_labels = []
-                for _ym in _ym_keys:
-                    _y, _mo = _ym.split("-")
-                    _cnt = sum(len(rows) for _, _, rows in _past_month_buckets[_ym])
-                    _tab_labels.append(f"{int(_y)}年{int(_mo)}月 ({_cnt})")
-                _past_tabs = st.tabs(_tab_labels)
-                for _tab, _ym in zip(_past_tabs, _ym_keys):
-                    with _tab:
-                        for _date_str, _d_obj, _day_rows in _past_month_buckets[_ym]:
-                            _wd = _WEEKDAYS[_d_obj.weekday()]
-                            _label = f"📅 {_date_str} ({_wd}) — {len(_day_rows)}名 ／ 経過済"
-                            with st.expander(_label, expanded=False):
-                                st.markdown(_render_day_table_html(_day_rows, is_past=True),
-                                            unsafe_allow_html=True)
-
-            st.caption(f"表示中 {_total_shown:,} 件 / 全 {len(_snapshot):,} 件")
+            if _total_shown == 0:
+                st.info(f"{_sch_y}年{_sch_m}月 の予定はありません。")
+            else:
+                st.caption(f"表示中 {_total_shown:,} 件（{_sch_y}年{_sch_m}月）／ 全 {len(_snapshot):,} 件")
 
     st.stop()
 

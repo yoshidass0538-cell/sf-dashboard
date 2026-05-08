@@ -238,15 +238,18 @@ def run_sync() -> None:
                 except Exception:
                     stale = True
             # 取得済みだが good_rate が「数字+%」形式でない場合は抽出失敗とみなして即時再試行。
-            # no_match (timee_not_in_list=True) のワーカーも posting path 経由で再挑戦するため
-            # stale 扱いにする(TTL 6時間 を待たない)。
+            # ただし non_disclosed (Timee側で非開示)は再試行しても無意味なので除外。
+            # no_match (timee_not_in_list=True) は posting path 再挑戦のため stale 扱い。
             if not stale:
-                _gr_raw = w.get("good_rate") or ""
-                _gr_clean = "".join(c for c in _gr_raw if c not in "​‌‍﻿").strip()
-                import re as _re
-                _is_valid_pct = bool(_re.match(r"^\d+\s*%$", _gr_clean))
-                if not _is_valid_pct:
-                    stale = True
+                if w.get("timee_non_disclosed", False):
+                    pass  # 非開示は TTL 待ち
+                else:
+                    _gr_raw = w.get("good_rate") or ""
+                    _gr_clean = "".join(c for c in _gr_raw if c not in "​‌‍﻿").strip()
+                    import re as _re
+                    _is_valid_pct = bool(_re.match(r"^\d+\s*%$", _gr_clean))
+                    if not _is_valid_pct:
+                        stale = True
             if stale:
                 candidates.append(wid)
         # 古いものから優先（None=未取得→最古扱い）
@@ -273,26 +276,38 @@ def run_sync() -> None:
             updated = 0
             no_match = 0
             key_to_wid = store.build_key_to_id(workers)
+            non_disclosed_n = 0
             for k, fields in detail_map.items():
                 wid = key_to_wid.get(k)
                 if not wid:
                     continue
                 w = workers[wid]
-                if fields.get("_status") == "no_match":
-                    # Timeeのワーカー管理に出てこない(=未稼働)。fetched_atだけ更新して
-                    # 再試行スパムを止める。値は空のまま
+                _status = fields.get("_status")
+                if _status == "no_match":
+                    # Timeeのワーカー管理に出てこない(=未稼働)。fetched_atだけ更新
                     w["timee_detail_fetched_at"] = now_iso
                     w["timee_not_in_list"] = True
                     no_match += 1
+                    continue
+                if _status == "non_disclosed":
+                    # Timee側で統計非開示。値は空、再試行抑止フラグを立てる
+                    w["good_rate"] = ""
+                    w["cancel_rate"] = ""
+                    w["timee_memo"] = fields.get("timee_memo", "")  # メモは取得できる場合あり
+                    w["timee_detail_fetched_at"] = now_iso
+                    w["timee_non_disclosed"] = True
+                    w["timee_not_in_list"] = False
+                    non_disclosed_n += 1
                     continue
                 w["good_rate"] = fields.get("good_rate", "")
                 w["cancel_rate"] = fields.get("cancel_rate", "")
                 w["timee_memo"] = fields.get("timee_memo", "")
                 w["timee_detail_fetched_at"] = now_iso
                 w["timee_not_in_list"] = False
+                w["timee_non_disclosed"] = False
                 updated += 1
-            print(f"[Timee Sync] worker_detail updated {updated}名 / no_match {no_match}名")
-            if updated or no_match:
+            print(f"[Timee Sync] worker_detail updated {updated}名 / no_match {no_match}名 / non_disclosed {non_disclosed_n}名")
+            if updated or no_match or non_disclosed_n:
                 store.save_workers(workers)
     except Exception as e:
         print(f"[WARN] ワーカー詳細取得に失敗: {e}")

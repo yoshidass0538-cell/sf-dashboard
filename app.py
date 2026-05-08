@@ -3881,9 +3881,9 @@ if selected_key == "timee_management":
                 "次回出勤日": _format_next_shift(wid),
                 "業務": "\n".join(sorted(_worker_groups.get(wid, set()))),
                 "初回登録日": w.get("初回登録日", ""),
-                "Good率": str(w.get("good_rate") or ""),
-                "直前キャンセル率": str(w.get("cancel_rate") or ""),
-                "タイミーメモ": str(w.get("timee_memo") or ""),
+                "Good率": str(w.get("good_rate") or "") or "—",
+                "直前キャンセル率": str(w.get("cancel_rate") or "") or "—",
+                "タイミーメモ": str(w.get("timee_memo") or "") or "—",
                 "メモ": w.get("メモ", ""),
                 "タグ": ", ".join(w.get("タグ", []) or []),
                 "直雇勧誘済": bool(w.get("直雇勧誘済", False)),
@@ -4007,11 +4007,11 @@ if selected_key == "timee_management":
                 _di1, _di2 = st.columns(2)
                 _di1.metric("平均Good率（直近30回）", _good if _good else "—")
                 _di2.metric("直前キャンセル率", _cancel if _cancel else "—")
+                st.markdown("**タイミー管理用メモ** （タイミー上の値・読取専用）")
                 if _tmm:
-                    st.markdown("**タイミー管理用メモ** （タイミー上の値・読取専用）")
                     st.code(_tmm, language=None)
                 else:
-                    st.caption("タイミー管理用メモ: （未取得 or 空）")
+                    st.markdown("—")
                 if _detail_at:
                     st.caption(f"タイミー側情報の最終取得: {_detail_at}")
 

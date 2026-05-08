@@ -379,20 +379,31 @@ def _extract_detail_fields(page) -> Dict[str, str]:
     cancel_raw = _zw_strip(result.get("cancel_rate") or "")
     memo_raw = _zw_strip(result.get("timee_memo") or "")
 
-    good = good_raw
-    m = re.search(r"\d+\s*%", good_raw)
-    if m:
-        good = m.group(0).replace(" ", "")
-    cancel = cancel_raw
-    m = re.search(r"\d+\s*%", cancel_raw)
-    if m:
-        cancel = m.group(0).replace(" ", "")
+    # 「※ワーカーには公開されません」(=Timee側で統計非開示) は空文字 + non_disclosed フラグ
+    non_disclosed = False
+    if "公開されません" in good_raw or "公開されません" in cancel_raw:
+        non_disclosed = True
 
-    return {
+    good = good_raw if not non_disclosed else ""
+    if not non_disclosed:
+        m = re.search(r"\d+\s*%", good_raw)
+        if m:
+            good = m.group(0).replace(" ", "")
+
+    cancel = cancel_raw if not non_disclosed else ""
+    if not non_disclosed:
+        m = re.search(r"\d+\s*%", cancel_raw)
+        if m:
+            cancel = m.group(0).replace(" ", "")
+
+    out = {
         "good_rate": good,
         "cancel_rate": cancel,
         "timee_memo": memo_raw,
     }
+    if non_disclosed:
+        out["_status"] = "non_disclosed"
+    return out
 
 
 # ---------------------------------------------------------------- メインAPI

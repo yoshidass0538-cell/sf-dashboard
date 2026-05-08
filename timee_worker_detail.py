@@ -346,6 +346,106 @@ def _extract_detail_fields(page) -> Dict[str, str]:
 
 
 # ---------------------------------------------------------------- メインAPI
+def _search_and_open_worker(page, name: str, kana: str) -> bool:
+    """ワーカー管理トップで kana 検索→結果から該当ワーカーをクリックして詳細ページへ。
+
+    成功時 True、見つからない/失敗で False。
+    """
+    target_key = _key(name, kana)
+    kana_q = (kana or "").replace(" ", "").replace("　", "")
+    if not kana_q:
+        return False
+
+    # ワーカー管理トップ
+    try:
+        page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/users",
+                  wait_until="domcontentloaded")
+        page.wait_for_selector('input#nameKana', timeout=10000)
+    except Exception as e:
+        print(f"[stage] search nav failed for {target_key}: {e}", flush=True)
+        return False
+
+    # カナを入力
+    try:
+        inp = page.locator('input#nameKana')
+        inp.fill("")
+        inp.fill(kana_q)
+    except Exception as e:
+        print(f"[stage] search fill failed for {target_key}: {e}", flush=True)
+        return False
+
+    # 「検索」ボタンをクリック
+    clicked = False
+    for loc in [
+        'xpath=//button[normalize-space()="検索"]',
+        'xpath=//button[contains(., "検索")]',
+    ]:
+        try:
+            btn = page.locator(loc).first
+            btn.click(timeout=3000)
+            clicked = True
+            break
+        except Exception:
+            continue
+    if not clicked:
+        # Enter キーで送信を試す
+        try:
+            inp.press("Enter")
+            clicked = True
+        except Exception:
+            pass
+    if not clicked:
+        print(f"[stage] search submit failed for {target_key}", flush=True)
+        return False
+
+    # 結果描画待ち
+    try:
+        page.wait_for_load_state("networkidle", timeout=10000)
+    except Exception:
+        pass
+    page.wait_for_timeout(700)
+
+    # 該当ワーカーをクリック: テキストに name または kana を含む clickable 要素
+    clicked_result = False
+    norm_kana = kana.replace(" ", "").replace("　", "")
+    norm_name = name.replace(" ", "").replace("　", "")
+    candidates = [
+        # tr 行 / role=row 行 / li
+        f'xpath=//tr[contains(., "{norm_kana}") or contains(., "{norm_name}")]',
+        f'xpath=//*[@role="row"][contains(., "{norm_kana}") or contains(., "{norm_name}")]',
+        f'xpath=//li[contains(., "{norm_kana}") or contains(., "{norm_name}")]',
+        f'xpath=//a[contains(., "{norm_kana}") or contains(., "{norm_name}")]',
+    ]
+    for loc in candidates:
+        try:
+            el = page.locator(loc).first
+            if el.count() == 0:
+                continue
+            el.scroll_into_view_if_needed(timeout=2000)
+            el.click(timeout=3000)
+            clicked_result = True
+            break
+        except Exception:
+            continue
+    if not clicked_result:
+        print(f"[stage] search result row click failed for {target_key}", flush=True)
+        _dump(page, f"search_noclick_{target_key.replace('|', '_')}")
+        return False
+
+    # 詳細ページの描画待ち
+    try:
+        page.wait_for_selector(
+            'xpath=//*[contains(text(), "平均Good率") or contains(text(), "管理用メモ")]',
+            timeout=15000,
+        )
+        page.wait_for_timeout(400)
+    except Exception:
+        print(f"[stage] detail not loaded for {target_key}", flush=True)
+        _dump(page, f"detail_fail_{target_key.replace('|', '_')}")
+        return False
+    return True
+
+
 def fetch_worker_details(
     targets: List[Tuple[str, str]],
     email: Optional[str] = None,
@@ -355,7 +455,6 @@ def fetch_worker_details(
     """指定された (氏名, カナ) のリストについて 3項目を取得。
 
     返り値: {"氏名|カナ": {"good_rate": "...", "cancel_rate": "...", "timee_memo": "..."}}
-    一覧で見つからなかったワーカーは結果に含まれない。
     """
     from playwright.sync_api import sync_playwright
 
@@ -376,36 +475,11 @@ def fetch_worker_details(
         page.set_default_timeout(DEFAULT_TIMEOUT_MS)
         try:
             _login(page, email, password)
-            url_rows = _collect_worker_urls(page)
-            print(f"[stage] worker list collected: {len(url_rows)}", flush=True)
-
-            # name+kana → href のマップ作成（部分一致）
             for name, kana in targets:
                 target_key = _key(name, kana)
-                href = None
-                for r in url_rows:
-                    if _name_kana_match(r.get("text", ""), name, kana):
-                        href = r.get("href")
-                        break
-                if not href:
-                    print(f"[stage] worker not found in list: {target_key}", flush=True)
+                ok = _search_and_open_worker(page, name, kana)
+                if not ok:
                     continue
-
-                # 詳細ページ訪問
-                full_url = href if href.startswith("http") else f"https://app-new.taimee.co.jp{href}"
-                print(f"[stage] visit detail: {target_key} -> {full_url}", flush=True)
-                try:
-                    page.goto(full_url, wait_until="domcontentloaded")
-                    page.wait_for_selector(
-                        'xpath=//*[contains(text(), "平均Good率") or contains(text(), "管理用メモ")]',
-                        timeout=15000,
-                    )
-                    page.wait_for_timeout(500)
-                except Exception as e:
-                    print(f"[stage] detail load failed for {target_key}: {e}", flush=True)
-                    _dump(page, f"detail_fail_{target_key}")
-                    continue
-
                 fields = _extract_detail_fields(page)
                 print(f"[stage] {target_key}: {fields}", flush=True)
                 out[target_key] = fields

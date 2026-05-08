@@ -257,7 +257,9 @@ _DETAIL_EXTRACTOR_JS = r"""
 () => {
   const out = { good_rate: '', cancel_rate: '', timee_memo: '' };
 
-  function norm(s) { return (s || '').replace(/\s+/g, ''); }
+  // ゼロ幅文字 (U+200B..U+200D, U+FEFF) を空白扱いするための正規化
+  function strip(s) { return (s || '').replace(/[​-‍﻿]/g, '').trim(); }
+  function norm(s) { return strip(s).replace(/\s+/g, ''); }
 
   function findLabelLeaf(labels) {
     // 「ラベル文字列と完全一致(空白除去後)」の葉ノード(子要素なし)を返す
@@ -279,10 +281,10 @@ _DETAIL_EXTRACTOR_JS = r"""
     let parent = leaf.parentElement;
     for (let depth = 0; depth < 4 && parent; depth++) {
       const leaves = Array.from(parent.querySelectorAll('*')).filter(e => e.children.length === 0);
-      // ラベル要素自身は除外、テキストが空でも除外
       for (const cand of leaves) {
         if (cand === leaf) continue;
-        const t = (cand.textContent || '').trim();
+        // ゼロ幅/空白のみのセルは値として無効
+        const t = strip(cand.textContent);
         if (!t) continue;
         if (norm(t) === lnorm) continue;
         return t;
@@ -317,7 +319,7 @@ _DETAIL_EXTRACTOR_JS = r"""
       for (const cand of leaves) {
         if (cand === memoLeaf) continue;
         const raw = cand.textContent || '';
-        const t = raw.trim();
+        const t = strip(raw);
         if (!t) continue;
         if (/^管理用メモ/.test(t)) continue;
         if (/ワーカーには公開されません/.test(t)) continue;
@@ -327,7 +329,7 @@ _DETAIL_EXTRACTOR_JS = r"""
       if (bestText) memoVal = bestText;
       parent = parent.parentElement;
     }
-    out.timee_memo = memoVal;
+    out.timee_memo = strip(memoVal) ? memoVal : '';
   }
 
   return out;

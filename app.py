@@ -4049,12 +4049,17 @@ if selected_key == "timee_management":
                     f"<tbody>{''.join(_body_rows)}</tbody></table>"
                 )
 
+            # 当月初日（=過去月／当月以降の境界）
+            _this_month_start = _today.replace(day=1)
+
+            # 過去月分は (YYYY-MM) ごとにバケット化して後でタブ表示する
+            _past_month_buckets: dict[str, list[tuple]] = {}
+
             for _date_str in sorted(_by_date.keys()):
                 try:
                     _d_obj = _tm_dt.strptime(_date_str, "%Y-%m-%d").date()
                 except ValueError:
                     continue
-                _is_past = _d_obj < _today
 
                 # フィルタ適用
                 _day_rows = _by_date[_date_str]
@@ -4072,9 +4077,18 @@ if selected_key == "timee_management":
                 _wd = _WEEKDAYS[_d_obj.weekday()]
                 _is_today = (_d_obj == _today)
                 _is_weekend = _d_obj.weekday() >= 5
+                _is_past_month = _d_obj < _this_month_start
 
-                if _is_past:
-                    # 過去日: 折りたたみで収納（日付ラベルだけ表示、クリックで展開）
+                if _is_past_month:
+                    # 過去月: 月キーでバケット化して後でタブ表示
+                    _ym = f"{_d_obj.year:04d}-{_d_obj.month:02d}"
+                    _past_month_buckets.setdefault(_ym, []).append((_date_str, _d_obj, _day_rows))
+                    _total_shown += len(_day_rows)
+                    continue
+
+                # 当月以降（過去日含む）: 従来通りインラインで表示
+                _is_past_in_month = _d_obj < _today
+                if _is_past_in_month:
                     _label = f"📅 {_date_str} ({_wd}) — {len(_day_rows)}名 ／ 経過済"
                     with st.expander(_label, expanded=False):
                         st.markdown(_render_day_table_html(_day_rows, is_past=True),
@@ -4101,6 +4115,26 @@ if selected_key == "timee_management":
                                 unsafe_allow_html=True)
 
                 _total_shown += len(_day_rows)
+
+            # 過去月（当月より前）はタブにまとめて収納
+            if _past_month_buckets:
+                st.divider()
+                st.markdown("##### 🗂 過去月（タブで収納）")
+                _ym_keys = sorted(_past_month_buckets.keys(), reverse=True)  # 新しい月が左
+                _tab_labels = []
+                for _ym in _ym_keys:
+                    _y, _mo = _ym.split("-")
+                    _cnt = sum(len(rows) for _, _, rows in _past_month_buckets[_ym])
+                    _tab_labels.append(f"{int(_y)}年{int(_mo)}月 ({_cnt})")
+                _past_tabs = st.tabs(_tab_labels)
+                for _tab, _ym in zip(_past_tabs, _ym_keys):
+                    with _tab:
+                        for _date_str, _d_obj, _day_rows in _past_month_buckets[_ym]:
+                            _wd = _WEEKDAYS[_d_obj.weekday()]
+                            _label = f"📅 {_date_str} ({_wd}) — {len(_day_rows)}名 ／ 経過済"
+                            with st.expander(_label, expanded=False):
+                                st.markdown(_render_day_table_html(_day_rows, is_past=True),
+                                            unsafe_allow_html=True)
 
             st.caption(f"表示中 {_total_shown:,} 件 / 全 {len(_snapshot):,} 件")
 

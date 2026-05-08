@@ -3825,29 +3825,7 @@ if selected_key == "timee_management":
                 _sel_w = _workers.get(_sel_wid, {})
 
                 st.divider()
-
-                # 編集対象切替セレクト（一覧スクロール無しで切替可）
-                _opt_ids = [wid for wid, _ in _filtered]
-                if _sel_wid not in _opt_ids:
-                    _opt_ids = [_sel_wid] + _opt_ids
-                def _label(wid):
-                    _w = _workers.get(wid, {})
-                    return f"{_w.get('氏名','')}（{_w.get('カナ','')}） ID:{wid}"
-                # 行クリック等で外部から選択が変わった場合に
-                # selectbox の session_state を最新に同期（widget生成前に上書き）
-                if st.session_state.get("tm_edit_pick") != _sel_wid:
-                    st.session_state["tm_edit_pick"] = _sel_wid
-                _new_pick = st.selectbox(
-                    "📝 編集対象を切替",
-                    _opt_ids,
-                    format_func=_label,
-                    key="tm_edit_pick",
-                )
-                if _new_pick != _sel_wid:
-                    st.session_state["tm_selected_wid"] = _new_pick
-                    st.rerun()
-
-                st.subheader(f"編集中: {_sel_w.get('氏名','')}（{_sel_w.get('カナ','')}）　ID:{_sel_wid}")
+                st.subheader(f"📝 編集中: {_sel_w.get('氏名','')}（{_sel_w.get('カナ','')}）　ID:{_sel_wid}")
 
                 _ec1, _ec2 = st.columns([3, 2])
                 with _ec1:
@@ -3868,11 +3846,11 @@ if selected_key == "timee_management":
                         value=bool(_sel_w.get("直雇勧誘済", False)),
                         key=f"tm_promo_{_sel_wid}",
                     )
-                    _new_check = st.text_input(
-                        "チェック日 (YYYY-MM-DD)",
-                        value=str(_sel_w.get("チェック日") or ""),
-                        key=f"tm_chk_{_sel_wid}",
-                    )
+                    _existing_chk = str(_sel_w.get("チェック日") or "").strip()
+                    if _existing_chk:
+                        st.caption(f"📅 勧誘済日: {_existing_chk}")
+                    else:
+                        st.caption("📅 勧誘済日: （未記録）")
 
                 _bs, _bc = st.columns([1, 1])
                 if _bs.button("💾 保存", key=f"tm_save_{_sel_wid}", type="primary", use_container_width=True):
@@ -3886,8 +3864,11 @@ if selected_key == "timee_management":
                     else:
                         _latest[_sel_wid]["メモ"] = _new_memo
                         _latest[_sel_wid]["タグ"] = [t.strip() for t in _new_tags.split(",") if t.strip()]
+                        _was_promoted = bool(_latest[_sel_wid].get("直雇勧誘済", False))
                         _latest[_sel_wid]["直雇勧誘済"] = bool(_new_promoted)
-                        _latest[_sel_wid]["チェック日"] = _new_check.strip() or None
+                        # 直雇用勧誘済を「未→済」にした保存時に、本日付をチェック日として自動記録
+                        if (not _was_promoted) and _new_promoted:
+                            _latest[_sel_wid]["チェック日"] = _today.isoformat()
                         try:
                             _tms.save_workers(_latest)
                         except Exception as _e:

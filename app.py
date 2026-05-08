@@ -3877,7 +3877,8 @@ if selected_key == "timee_management":
                 resizable=True, sortable=True, filter=False,
                 wrapText=True, autoHeight=True,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
-                           "display": "flex", "alignItems": "center"},
+                           "display": "flex", "alignItems": "center",
+                           "justifyContent": "center", "textAlign": "center"},
             )
             # rerun後も選択を復元するため、保存中の wid に対応する行 index を渡す
             _persist_wid = st.session_state.get("tm_selected_wid")
@@ -3900,17 +3901,20 @@ if selected_key == "timee_management":
             _gb.configure_column("次回出勤日", width=100)
             _gb.configure_column("業務", width=240,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
-                           "fontSize": "12px", "display": "flex", "alignItems": "center"})
+                           "fontSize": "12px", "display": "flex", "alignItems": "center",
+                           "justifyContent": "center", "textAlign": "center"})
             _gb.configure_column("初回登録日", width=110)
             _gb.configure_column("Good率", width=90)
             _gb.configure_column("直前キャンセル率", width=120)
             _gb.configure_column("タイミーメモ", width=240,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
                            "fontSize": "12px", "background": "#f0f4f8",
-                           "display": "flex", "alignItems": "center"})
+                           "display": "flex", "alignItems": "center",
+                           "justifyContent": "center", "textAlign": "center"})
             _gb.configure_column("メモ", width=260,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.5",
-                           "background": "#fff8e1", "display": "flex", "alignItems": "center"})
+                           "background": "#fff8e1", "display": "flex", "alignItems": "center",
+                           "justifyContent": "center", "textAlign": "center"})
             _gb.configure_column("タグ", width=180)
             _gb.configure_column("直雇勧誘済", width=110)
             _gb.configure_column("チェック日", width=120)

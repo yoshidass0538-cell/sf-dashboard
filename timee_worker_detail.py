@@ -417,7 +417,7 @@ def _search_and_open_worker(page, name: str, kana: str) -> bool:
     try:
         clicked_via_js = page.evaluate(
             r"""
-            (norm_name, norm_kana) => {
+            ([norm_name, norm_kana]) => {
               function norm(s) { return (s || '').replace(/\s+/g, ''); }
               // 候補: user-list-item / tr / [role=row]
               const cands = Array.from(document.querySelectorAll(
@@ -426,19 +426,18 @@ def _search_and_open_worker(page, name: str, kana: str) -> bool:
               for (const el of cands) {
                 const t = norm(el.textContent);
                 if ((norm_kana && t.includes(norm_kana)) || (norm_name && t.includes(norm_name))) {
-                  // クリック対象: 最も外側の行コンテナ(tr または親) or 自身
+                  // クリック対象優先順: 内部の <a> → 親<tr> → 自身
+                  const a = el.querySelector('a[href]') || (el.closest('tr') ? el.closest('tr').querySelector('a[href]') : null);
+                  if (a) { a.click(); return 'a:' + (a.getAttribute('href') || ''); }
                   let target = el.closest('tr') || el;
-                  // 中の <a> を優先
-                  const a = target.querySelector('a[href]');
-                  if (a) { a.click(); return a.getAttribute('href') || 'clicked'; }
                   target.click();
-                  return 'clicked';
+                  return 'el:' + (target.tagName || '');
                 }
               }
               return null;
             }
             """,
-            norm_name, norm_kana,
+            [norm_name, norm_kana],
         )
         if clicked_via_js:
             print(f"[stage] search result clicked via JS for {target_key} ({clicked_via_js})", flush=True)
@@ -450,11 +449,12 @@ def _search_and_open_worker(page, name: str, kana: str) -> bool:
     except Exception as e:
         print(f"[stage] search result JS click error for {target_key}: {e}", flush=True)
 
-    # 戦略2: 結果が1件しかない前提で先頭の user-list-item をクリック
+    # 戦略2: 結果が1件しかない前提で先頭の user-list-item の中の<a>をクリック
     if not clicked_result:
         for loc in [
+            'xpath=(//*[@data-testid="user-list-item"]//a[@href])[1]',
+            'xpath=(//tbody//tr//a[@href])[1]',
             'xpath=//*[@data-testid="user-list-item"]',
-            'xpath=//tbody//tr[.//div[@data-testid="user-list-item"] or .//*[contains(@data-testid, "user")]]',
             'xpath=//tbody//tr[1]',
         ]:
             try:
@@ -464,7 +464,7 @@ def _search_and_open_worker(page, name: str, kana: str) -> bool:
                 el.scroll_into_view_if_needed(timeout=2000)
                 el.click(timeout=3000)
                 clicked_result = True
-                print(f"[stage] search result clicked via fallback locator for {target_key}", flush=True)
+                print(f"[stage] search result clicked via fallback {loc[:60]}... for {target_key}", flush=True)
                 break
             except Exception:
                 continue
@@ -476,13 +476,17 @@ def _search_and_open_worker(page, name: str, kana: str) -> bool:
 
     # 詳細ページの描画待ち
     try:
+        page.wait_for_load_state("domcontentloaded", timeout=5000)
+    except Exception:
+        pass
+    try:
         page.wait_for_selector(
             'xpath=//*[contains(text(), "平均Good率") or contains(text(), "管理用メモ")]',
             timeout=15000,
         )
         page.wait_for_timeout(400)
     except Exception:
-        print(f"[stage] detail not loaded for {target_key}", flush=True)
+        print(f"[stage] detail not loaded for {target_key} url={page.url}", flush=True)
         _dump(page, f"detail_fail_{target_key.replace('|', '_')}")
         return False
     return True

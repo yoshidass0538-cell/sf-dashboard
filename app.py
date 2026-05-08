@@ -3820,8 +3820,8 @@ if selected_key == "timee_management":
             _filtered.append((wid, w))
         _filtered.sort(key=lambda kv: kv[1].get("初回登録日", ""), reverse=True)
 
-        # ワーカーごとの「次回出勤日」(今日以降の最古就業日) を集計
-        _next_shift: dict[str, str] = {}
+        # ワーカーごとの「現在マッチング中の出勤日」一覧（今日以降）
+        _upcoming_shifts: dict[str, set[str]] = {}
         for _r in _snapshot:
             _wid = _r.get("id")
             if not _wid:
@@ -3829,19 +3829,20 @@ if selected_key == "timee_management":
             _ds = str(_r.get("就業日") or "")
             if _ds < _today_iso:
                 continue
-            _cur = _next_shift.get(_wid)
-            if _cur is None or _ds < _cur:
-                _next_shift[_wid] = _ds
+            _upcoming_shifts.setdefault(_wid, set()).add(_ds)
 
         def _format_next_shift(wid: str) -> str:
-            ds = _next_shift.get(wid)
-            if not ds:
+            ds_set = _upcoming_shifts.get(wid)
+            if not ds_set:
                 return "未定"
-            try:
-                d = _tm_date.fromisoformat(ds)
-                return f"{d.month}/{d.day}"
-            except Exception:
-                return ds
+            out = []
+            for ds in sorted(ds_set):
+                try:
+                    d = _tm_date.fromisoformat(ds)
+                    out.append(f"{d.month}/{d.day}")
+                except Exception:
+                    out.append(ds)
+            return "\n".join(out)
 
         # data_editor 用 DataFrame
         _rows = []

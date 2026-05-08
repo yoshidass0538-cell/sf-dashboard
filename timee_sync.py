@@ -236,13 +236,15 @@ def run_sync() -> None:
                     stale = last_dt < cutoff
                 except Exception:
                     stale = True
-            # 取得済みだが good_rate が(ゼロ幅文字除去後)空 かつ no_match でない場合は
-            # 抽出失敗とみなして TTL 内でも即時再試行
+            # 取得済みだが good_rate が「数字+%」形式でない場合は抽出失敗とみなして即時再試行
+            # (空文字 / ゼロ幅文字 / ラベル誤抽出「直前キャンセル率」等を全て捉える)
             if not stale:
                 not_in_list = bool(w.get("timee_not_in_list", False))
                 _gr_raw = w.get("good_rate") or ""
                 _gr_clean = "".join(c for c in _gr_raw if c not in "​‌‍﻿").strip()
-                if not _gr_clean and not not_in_list:
+                import re as _re
+                _is_valid_pct = bool(_re.match(r"^\d+\s*%$", _gr_clean))
+                if (not _is_valid_pct) and (not not_in_list):
                     stale = True
             if stale:
                 candidates.append(wid)

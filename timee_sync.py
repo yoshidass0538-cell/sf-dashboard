@@ -241,7 +241,20 @@ def run_sync() -> None:
         # 古いものから優先（None=未取得→最古扱い）
         candidates.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
         targets_wids = candidates[:WORKER_DETAIL_MAX_PER_RUN]
-        targets = [(workers[wid]["氏名"], workers[wid]["カナ"]) for wid in targets_wids]
+        # 各wid の今日以降最古の 就業日 を求める(求人パス用)
+        wid_to_shift: dict[str, str] = {}
+        for r in snapshot_curr:
+            _wid = r.get("id")
+            _ds = str(r.get("就業日") or "")
+            if not _wid or _ds < today_iso:
+                continue
+            cur = wid_to_shift.get(_wid)
+            if cur is None or _ds < cur:
+                wid_to_shift[_wid] = _ds
+        targets = [
+            (workers[wid]["氏名"], workers[wid]["カナ"], wid_to_shift.get(wid))
+            for wid in targets_wids
+        ]
         print(f"[Timee Sync] worker_detail candidates={len(candidates)} fetching={len(targets)}")
         if targets:
             detail_map = fetch_worker_details(targets)

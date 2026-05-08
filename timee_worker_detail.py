@@ -531,20 +531,198 @@ def _search_and_open_worker(page, name: str, kana: str):
     return True
 
 
+def _open_offerings_calendar(page) -> None:
+    """求人一覧カレンダーへ遷移。"""
+    page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/offerings",
+              wait_until="domcontentloaded")
+    page.wait_for_timeout(1500)
+    try:
+        page.wait_for_selector('time[datetime]', timeout=15000, state="attached")
+    except Exception:
+        pass
+
+
+def _navigate_offerings_to_month(page, year: int, month: int) -> None:
+    """求人カレンダーで指定月へ移動 (timee_job_calendar と同じ実装の縮小版)。"""
+    target_text = f"{year}年{month}月"
+    for _step in range(24):
+        try:
+            res = page.evaluate(
+                r"""() => {
+                    const re = /^(\d{4})\s*年\s*(\d{1,2})\s*月\s*$/;
+                    const all = Array.from(document.querySelectorAll('div, span, h1, h2, h3, h4, p'));
+                    for (const el of all) {
+                      const t = (el.textContent || '').trim();
+                      if (t.length > 12) continue;
+                      if (re.test(t)) return t;
+                    }
+                    return '';
+                }"""
+            )
+            heading = (res or "").strip()
+        except Exception:
+            heading = ""
+        if heading == target_text:
+            return
+        m = re.search(r"(\d{4})\s*年\s*(\d{1,2})\s*月", heading)
+        forward = True
+        if m:
+            cy, cm = int(m.group(1)), int(m.group(2))
+            forward = (cy, cm) < (year, month)
+        sel = ('xpath=//button[.//*[@aria-label="次の月"]]' if forward
+               else 'xpath=//button[.//*[@aria-label="前の月"]]')
+        try:
+            page.locator(sel).first.click(timeout=2000)
+            page.wait_for_timeout(400)
+        except Exception:
+            return
+
+
+def _fetch_via_posting_path(page, name: str, kana: str, shift_iso: str) -> bool:
+    """求人カレンダー → 日付クリック → 初回ワーカー限定公開求人 → ワーカー確認 →
+    ワーカー名クリック → 詳細ページ到達。
+
+    shift_iso: 'YYYY-MM-DD' 形式。ワーカーの就業予定日。
+    成功時 True。
+    """
+    target_key = _key(name, kana)
+    print(f"[stage] _fetch_via_posting_path target={target_key} date={shift_iso}", flush=True)
+    try:
+        y, mo, da = shift_iso.split("-")
+        y, mo, da = int(y), int(mo), int(da)
+    except Exception:
+        return False
+
+    # 求人カレンダー → 該当月へ
+    _open_offerings_calendar(page)
+    _navigate_offerings_to_month(page, y, mo)
+    page.wait_for_timeout(500)
+
+    # 該当日のセル <time datetime="YYYY-MM-DD"> をクリック → popup or 詳細遷移
+    try:
+        date_el = page.locator(f'time[datetime="{shift_iso}"]').first
+        date_el.scroll_into_view_if_needed(timeout=2000)
+        date_el.click(timeout=3000)
+        page.wait_for_timeout(800)
+    except Exception as e:
+        print(f"[stage] posting path: date cell click failed: {e}", flush=True)
+        _dump(page, f"posting_date_fail_{target_key.replace('|','_')}")
+        return False
+
+    # popup or 別ページに「初回ワーカー限定公開」 と書かれた求人カードがあるはず
+    # その求人タイトル(例:「【株式会社GIFT】コールスタッフ募集！」)のリンクをクリック
+    try:
+        clicked = page.evaluate(
+            r"""() => {
+              // 「初回ワーカー限定公開」のラベルから祖先ブロックを辿り、
+              // その中の求人タイトルリンク (a[href*="/offerings/"]) を探してクリック
+              const all = Array.from(document.querySelectorAll('*'));
+              const label = all.find(el => el.children.length === 0 &&
+                                            (el.textContent || '').replace(/\s+/g, '') === '初回ワーカー限定公開');
+              if (!label) return null;
+              let parent = label.parentElement;
+              for (let depth = 0; depth < 6 && parent; depth++) {
+                const link = parent.querySelector('a[href*="/offerings/"]');
+                if (link) { link.click(); return link.getAttribute('href'); }
+                parent = parent.parentElement;
+              }
+              return null;
+            }"""
+        )
+        if not clicked:
+            print(f"[stage] posting path: 初回ワーカー限定公開 link not found", flush=True)
+            _dump(page, f"posting_initial_fail_{target_key.replace('|','_')}")
+            return False
+        print(f"[stage] posting path: clicked posting -> {clicked}", flush=True)
+        page.wait_for_load_state("domcontentloaded", timeout=8000)
+        page.wait_for_timeout(700)
+    except Exception as e:
+        print(f"[stage] posting path: initial-only link click failed: {e}", flush=True)
+        _dump(page, f"posting_initial_exc_{target_key.replace('|','_')}")
+        return False
+
+    # 求人詳細ページの「ワーカーを確認」ボタンをクリック
+    clicked_confirm = False
+    for loc in [
+        'xpath=//a[contains(., "ワーカーを確認")]',
+        'xpath=//button[contains(., "ワーカーを確認")]',
+    ]:
+        try:
+            el = page.locator(loc).first
+            if el.count() == 0:
+                continue
+            el.click(timeout=3000)
+            clicked_confirm = True
+            break
+        except Exception:
+            continue
+    if not clicked_confirm:
+        print(f"[stage] posting path: ワーカーを確認 click failed", flush=True)
+        _dump(page, f"posting_confirm_fail_{target_key.replace('|','_')}")
+        return False
+    page.wait_for_load_state("domcontentloaded", timeout=8000)
+    page.wait_for_timeout(700)
+
+    # ワーカーリストから該当ワーカー名のリンクをクリック
+    try:
+        clicked = page.evaluate(
+            r"""([norm_name, norm_kana]) => {
+              function norm(s) { return (s || '').replace(/\s+/g, ''); }
+              const links = Array.from(document.querySelectorAll('a[href*="/users/"]'));
+              for (const a of links) {
+                // a 自身か周辺(行)テキストに名前・カナを含む
+                const row = a.closest('tr, [role="row"], li, [class*="row"]') || a.parentElement;
+                const t = norm((row && row.textContent) || a.textContent || '');
+                if ((norm_kana && t.includes(norm_kana)) || (norm_name && t.includes(norm_name))) {
+                  a.click();
+                  return a.getAttribute('href');
+                }
+              }
+              return null;
+            }""",
+            [name.replace(" ", "").replace("　", ""), kana.replace(" ", "").replace("　", "")],
+        )
+        if not clicked:
+            print(f"[stage] posting path: worker name link not found", flush=True)
+            _dump(page, f"posting_worker_fail_{target_key.replace('|','_')}")
+            return False
+        print(f"[stage] posting path: worker link clicked -> {clicked}", flush=True)
+        page.wait_for_load_state("domcontentloaded", timeout=8000)
+        page.wait_for_selector(
+            'xpath=//*[contains(text(), "平均Good率") or contains(text(), "管理用メモ")]',
+            timeout=15000,
+        )
+        page.wait_for_timeout(400)
+        return True
+    except Exception as e:
+        print(f"[stage] posting path: worker click/load failed: {e}", flush=True)
+        _dump(page, f"posting_worker_load_fail_{target_key.replace('|','_')}")
+        return False
+
+
 def fetch_worker_details(
-    targets: List[Tuple[str, str]],
+    targets: List[Tuple[str, str, Optional[str]]],
     email: Optional[str] = None,
     password: Optional[str] = None,
     headless: bool = True,
 ) -> Dict[str, Dict[str, str]]:
-    """指定された (氏名, カナ) のリストについて 3項目を取得。
+    """指定された (氏名, カナ, 就業日(任意)) のリストについて 3項目を取得。
 
+    検索パス → no_match なら 求人パス (shift_iso が指定されていれば) を試す。
     返り値: {"氏名|カナ": {"good_rate": "...", "cancel_rate": "...", "timee_memo": "..."}}
     """
     from playwright.sync_api import sync_playwright
 
     if not targets:
         return {}
+
+    # (name, kana) のみで来た場合の互換
+    norm_targets: List[Tuple[str, str, Optional[str]]] = []
+    for t in targets:
+        if len(t) == 2:
+            norm_targets.append((t[0], t[1], None))
+        else:
+            norm_targets.append((t[0], t[1], t[2]))
 
     email = email or os.environ.get("TIMEE_EMAIL", "")
     password = password or os.environ.get("TIMEE_PASSWORD", "")
@@ -560,16 +738,29 @@ def fetch_worker_details(
         page.set_default_timeout(DEFAULT_TIMEOUT_MS)
         try:
             _login(page, email, password)
-            for name, kana in targets:
+            for name, kana, shift_iso in norm_targets:
                 target_key = _key(name, kana)
                 ret = _search_and_open_worker(page, name, kana)
-                if ret == "no_match":
-                    # 未稼働ワーカーは Timee のワーカー管理に出ない。
-                    # 空フィールドで保存して再試行スパムを防ぐ
+
+                # no_match (=未稼働) かつ就業予定日がある場合、求人経由で再挑戦
+                if ret == "no_match" and shift_iso:
+                    print(f"[stage] {target_key} no_match → posting path試行", flush=True)
+                    ok = _fetch_via_posting_path(page, name, kana, shift_iso)
+                    if ok:
+                        fields = _extract_detail_fields(page)
+                        print(f"[stage] (posting) {target_key}: {fields}", flush=True)
+                        out[target_key] = fields
+                        continue
+                    # 求人経由でも失敗 → no_match扱い
                     out[target_key] = {
-                        "good_rate": "",
-                        "cancel_rate": "",
-                        "timee_memo": "",
+                        "good_rate": "", "cancel_rate": "", "timee_memo": "",
+                        "_status": "no_match",
+                    }
+                    continue
+
+                if ret == "no_match":
+                    out[target_key] = {
+                        "good_rate": "", "cancel_rate": "", "timee_memo": "",
                         "_status": "no_match",
                     }
                     continue

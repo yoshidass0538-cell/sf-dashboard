@@ -272,6 +272,20 @@ _DETAIL_EXTRACTOR_JS = r"""
     return null;
   }
 
+  // 詳細ページに現れる既知ラベル(これらは値として誤採用しないように除外)
+  const KNOWN_LABELS = [
+    '平均Good率（直近30回の評価）', '平均Good率',
+    '直前キャンセル率', 'この店舗で働いた回数', '働いた回数',
+    '働いた合計時間', '今週働ける残り時間', '管理用メモ',
+    'バッジ', '所属グループ', 'ブロック設定', 'グループの変更'
+  ];
+  const KNOWN_LABELS_NORM = KNOWN_LABELS.map(norm);
+
+  function isKnownLabel(t) {
+    const tn = norm(t);
+    return KNOWN_LABELS_NORM.some(k => k === tn);
+  }
+
   function valueFor(labels) {
     const found = findLabelLeaf(labels);
     if (!found) return '';
@@ -287,6 +301,8 @@ _DETAIL_EXTRACTOR_JS = r"""
         const t = strip(cand.textContent);
         if (!t) continue;
         if (norm(t) === lnorm) continue;
+        // 隣の行の見出しに行ってしまった場合は無視して次の候補へ
+        if (isKnownLabel(t)) continue;
         return t;
       }
       parent = parent.parentElement;
@@ -323,6 +339,8 @@ _DETAIL_EXTRACTOR_JS = r"""
         if (!t) continue;
         if (/^管理用メモ/.test(t)) continue;
         if (/ワーカーには公開されません/.test(t)) continue;
+        // 既知ラベル(=隣の行の見出し) は除外
+        if (isKnownLabel(t)) continue;
         // 長めのものを採用
         if (t.length > bestText.length) bestText = raw;
       }

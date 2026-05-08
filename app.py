@@ -3826,10 +3826,13 @@ if selected_key == "timee_management":
                 def _label(wid):
                     _w = _workers.get(wid, {})
                     return f"{_w.get('氏名','')}（{_w.get('カナ','')}） ID:{wid}"
+                # 行クリック等で外部から選択が変わった場合に
+                # selectbox の session_state を最新に同期（widget生成前に上書き）
+                if st.session_state.get("tm_edit_pick") != _sel_wid:
+                    st.session_state["tm_edit_pick"] = _sel_wid
                 _new_pick = st.selectbox(
                     "📝 編集対象を切替",
                     _opt_ids,
-                    index=_opt_ids.index(_sel_wid),
                     format_func=_label,
                     key="tm_edit_pick",
                 )

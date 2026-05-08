@@ -3743,7 +3743,18 @@ if selected_key == "timee_management":
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
                            "display": "flex", "alignItems": "center"},
             )
-            _gb.configure_selection(selection_mode="single", use_checkbox=False)
+            # rerun後も選択を復元するため、保存中の wid に対応する行 index を渡す
+            _persist_wid = st.session_state.get("tm_selected_wid")
+            _pre_idx = []
+            if _persist_wid:
+                _idx_match = _wdf.index[_wdf["ID"] == _persist_wid].tolist()
+                if _idx_match:
+                    _pre_idx = [int(_idx_match[0])]
+            _gb.configure_selection(
+                selection_mode="single",
+                use_checkbox=False,
+                pre_selected_rows=_pre_idx,
+            )
             _gb.configure_column("印", pinned="left", width=60)
             _gb.configure_column("ID", width=90)
             _gb.configure_column("氏名", width=130)
@@ -3783,19 +3794,50 @@ if selected_key == "timee_management":
                 key="tm_worker_grid",
             )
 
-            # 選択行を取得
+            # ----- 選択ワーカーの決定 -----
+            # 優先順位: 行クリック(grid) > session_state
             _sel = _grid.get("selected_rows")
             try:
-                _has_sel = (_sel is not None) and (len(_sel) > 0)
+                _has_grid_sel = (_sel is not None) and (len(_sel) > 0)
             except Exception:
-                _has_sel = False
-            if _has_sel:
+                _has_grid_sel = False
+
+            _grid_wid = None
+            if _has_grid_sel:
                 _sel_row = _sel.iloc[0] if hasattr(_sel, "iloc") else _sel[0]
-                _sel_wid = str(_sel_row.get("ID") if hasattr(_sel_row, "get") else _sel_row["ID"])
+                _grid_wid = str(_sel_row.get("ID") if hasattr(_sel_row, "get") else _sel_row["ID"])
+
+            _prev_wid = st.session_state.get("tm_selected_wid")
+            # 行クリックで別ワーカーに切替: session_state 更新 → 即rerun
+            if _grid_wid and _grid_wid != _prev_wid:
+                st.session_state["tm_selected_wid"] = _grid_wid
+                st.rerun()
+
+            _sel_wid = _prev_wid or _grid_wid
+            if _sel_wid and _sel_wid in _workers:
                 _sel_w = _workers.get(_sel_wid, {})
 
                 st.divider()
-                st.subheader(f"📝 編集中: {_sel_w.get('氏名','')}（{_sel_w.get('カナ','')}）　ID:{_sel_wid}")
+
+                # 編集対象切替セレクト（一覧スクロール無しで切替可）
+                _opt_ids = [wid for wid, _ in _filtered]
+                if _sel_wid not in _opt_ids:
+                    _opt_ids = [_sel_wid] + _opt_ids
+                def _label(wid):
+                    _w = _workers.get(wid, {})
+                    return f"{_w.get('氏名','')}（{_w.get('カナ','')}） ID:{wid}"
+                _new_pick = st.selectbox(
+                    "📝 編集対象を切替",
+                    _opt_ids,
+                    index=_opt_ids.index(_sel_wid),
+                    format_func=_label,
+                    key="tm_edit_pick",
+                )
+                if _new_pick != _sel_wid:
+                    st.session_state["tm_selected_wid"] = _new_pick
+                    st.rerun()
+
+                st.subheader(f"編集中: {_sel_w.get('氏名','')}（{_sel_w.get('カナ','')}）　ID:{_sel_wid}")
 
                 _ec1, _ec2 = st.columns([3, 2])
                 with _ec1:
@@ -3845,6 +3887,7 @@ if selected_key == "timee_management":
                         st.success("保存しました")
                         st.rerun()
                 if _bc.button("選択解除", key=f"tm_clear_{_sel_wid}", use_container_width=True):
+                    st.session_state.pop("tm_selected_wid", None)
                     st.rerun()
 
         # キャンセル履歴展開

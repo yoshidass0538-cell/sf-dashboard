@@ -3604,6 +3604,13 @@ if selected_key == "timee_management":
     def _tm_reload():
         _tm_load.clear()
 
+    def _tm_pct_or_dash(v) -> str:
+        """「N%」形式の値だけそのまま、それ以外（空/「※公開されません」/誤値）は「—」"""
+        import re as _re_pct
+        s = str(v or "").strip()
+        s = "".join(c for c in s if c not in "​‌‍﻿").strip()
+        return s if _re_pct.match(r"^\d+%$", s) else "—"
+
     def _tm_month_nav(state_key: str, fallback: str):
         """⬅ 前月 / YYYY年M月 / 翌月 ➡ ナビUI。返り値: (year, month, 'YYYY-MM')"""
         cur = st.session_state.get(state_key, fallback)
@@ -3881,9 +3888,9 @@ if selected_key == "timee_management":
                 "次回出勤日": _format_next_shift(wid),
                 "業務": "\n".join(sorted(_worker_groups.get(wid, set()))),
                 "初回登録日": w.get("初回登録日", ""),
-                "Good率": str(w.get("good_rate") or "") or "—",
-                "直前キャンセル率": str(w.get("cancel_rate") or "") or "—",
-                "タイミーメモ": str(w.get("timee_memo") or "") or "—",
+                "Good率": _tm_pct_or_dash(w.get("good_rate")),
+                "直前キャンセル率": _tm_pct_or_dash(w.get("cancel_rate")),
+                "タイミーメモ": (str(w.get("timee_memo") or "").strip() or "—"),
                 "メモ": w.get("メモ", ""),
                 "タグ": ", ".join(w.get("タグ", []) or []),
                 "直雇勧誘済": bool(w.get("直雇勧誘済", False)),
@@ -4000,13 +4007,13 @@ if selected_key == "timee_management":
                 st.subheader(f"📝 編集中: {_sel_w.get('氏名','')}（{_sel_w.get('カナ','')}）　ID:{_sel_wid}")
 
                 # タイミー詳細(読取専用): 平均Good率 / 直前キャンセル率 / 管理用メモ
-                _good = str(_sel_w.get("good_rate") or "").strip()
-                _cancel = str(_sel_w.get("cancel_rate") or "").strip()
+                _good = _tm_pct_or_dash(_sel_w.get("good_rate"))
+                _cancel = _tm_pct_or_dash(_sel_w.get("cancel_rate"))
                 _tmm = str(_sel_w.get("timee_memo") or "").strip()
                 _detail_at = str(_sel_w.get("timee_detail_fetched_at") or "").strip()
                 _di1, _di2 = st.columns(2)
-                _di1.metric("平均Good率（直近30回）", _good if _good else "—")
-                _di2.metric("直前キャンセル率", _cancel if _cancel else "—")
+                _di1.metric("平均Good率（直近30回）", _good)
+                _di2.metric("直前キャンセル率", _cancel)
                 st.markdown("**タイミー管理用メモ** （タイミー上の値・読取専用）")
                 if _tmm:
                     st.code(_tmm, language=None)

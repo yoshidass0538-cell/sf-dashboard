@@ -40,14 +40,22 @@ WORKER_DETAIL_MAX_PER_RUN = 20
 
 
 JST = timezone(timedelta(hours=9))
-CHATWORK_ROOM_ID = "435890729"
+# Chatwork 通知ルーム(マッチング/キャンセル推奨アラートとも統一)
+CHATWORK_ROOM_ID = "436179947"
+CHATWORK_ALERT_ROOM_ID = os.environ.get("CHATWORK_ALERT_ROOM_ID", CHATWORK_ROOM_ID)
 CHATWORK_API_URL = "https://api.chatwork.com/v2"
+
+# 初回マッチング(出勤回数=0)のキャンセル推奨条件
+ALERT_GOOD_RATE_MAX = 80      # これ未満ならアラート
+ALERT_CANCEL_RATE_MIN = 10    # これより大きいならアラート
+
+import re as _re_module
 
 
 # ----------------------------------------------------------------------
 # Chatwork
 # ----------------------------------------------------------------------
-def _chatwork_send(body: str) -> None:
+def _chatwork_send(body: str, room_id: str = CHATWORK_ROOM_ID) -> None:
     token = os.environ.get("CHATWORK_API_TOKEN", "")
     if not token:
         print("[WARN] CHATWORK_API_TOKEN 未設定のため通知スキップ")
@@ -57,12 +65,71 @@ def _chatwork_send(body: str) -> None:
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     }
     resp = requests.post(
-        f"{CHATWORK_API_URL}/rooms/{CHATWORK_ROOM_ID}/messages",
+        f"{CHATWORK_API_URL}/rooms/{room_id}/messages",
         headers=headers,
         data={"body": body, "self_unread": 1},
         timeout=15,
     )
-    print(f"[Chatwork] status={resp.status_code} body={resp.text[:200]}")
+    print(f"[Chatwork] room={room_id} status={resp.status_code} body={resp.text[:200]}")
+
+
+def _parse_pct(s) -> int | None:
+    """「N%」形式から整数を抽出。"""
+    if not s:
+        return None
+    m = _re_module.search(r"(\d+)\s*%", str(s))
+    return int(m.group(1)) if m else None
+
+
+def _send_cancel_alert(records: list[dict], worker: dict, reasons: list[str]) -> None:
+    """初回マッチワーカーが基準未達の場合のキャンセル推奨アラート。"""
+    rec0 = records[0]
+    lines = ["[info][title]⚠️ 初回マッチング・基準未達(キャンセル推奨)[/title]"]
+    lines.append(f"ID: {rec0['id']}")
+    lines.append(f"{worker.get('氏名', '')}（{worker.get('カナ', '')}）"
+                 f"{worker.get('性別', '')}{worker.get('年齢', '')}歳")
+    if len(records) == 1:
+        lines.append(f"就業日: {_format_shift(records[0])}")
+    else:
+        lines.append("就業日:")
+        for r in sorted(records, key=lambda x: x.get("就業日", "")):
+            lines.append(_format_shift(r))
+    lines.append(f"平均Good率: {worker.get('good_rate') or '—'}")
+    lines.append(f"直前キャンセル率: {worker.get('cancel_rate') or '—'}")
+    for r in reasons:
+        lines.append(f"・{r}")
+    lines.append("")
+    lines.append("→ 求人の募集要項を満たしていないため、マッチングのキャンセルを推奨します。")
+    lines.append("[/info]")
+    _chatwork_send("\n".join(lines), room_id=CHATWORK_ALERT_ROOM_ID)
+
+
+def _check_and_alert_first_matches(new_matches: list[dict], workers: dict) -> int:
+    """新規マッチ ∩ 出勤回数=0 のワーカーで Good率<80% or キャンセル率>10% ならアラート。
+    返り値: アラート送信件数。
+    """
+    by_id: dict[str, list[dict]] = {}
+    for r in new_matches:
+        if int(r.get("出勤回数", 0) or 0) != 0:
+            continue
+        by_id.setdefault(r["id"], []).append(r)
+    sent = 0
+    for wid, records in by_id.items():
+        w = workers.get(wid, {})
+        if w.get("timee_non_disclosed"):
+            # 値非開示なら閾値判定不可。スキップ
+            continue
+        good = _parse_pct(w.get("good_rate"))
+        cancel = _parse_pct(w.get("cancel_rate"))
+        reasons = []
+        if good is not None and good < ALERT_GOOD_RATE_MAX:
+            reasons.append(f"平均Good率 {good}% < {ALERT_GOOD_RATE_MAX}%")
+        if cancel is not None and cancel > ALERT_CANCEL_RATE_MIN:
+            reasons.append(f"直前キャンセル率 {cancel}% > {ALERT_CANCEL_RATE_MIN}%")
+        if reasons:
+            _send_cancel_alert(records, w, reasons)
+            sent += 1
+    return sent
 
 
 def _format_shift(rec: dict) -> str:
@@ -220,6 +287,12 @@ def run_sync() -> None:
     store.save_meta(meta)
 
     # 4.4. ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の継続ローテ更新
+    # 初回マッチ(出勤回数=0)の新規ワーカーは最優先で取得 (アラート判定用)
+    new_first_match_wids = {
+        r["id"] for r in new_matches
+        if int(r.get("出勤回数", 0) or 0) == 0 and r.get("id") in workers
+    }
+    print(f"[Timee Sync] new first-match wids: {len(new_first_match_wids)}")
     try:
         # 候補: ワーカーマスタ全員 (過去ワーカー含む)。non_disclosed は再試行不要なので除外。
         # TTL での skip は廃止し、常に「最古に取得した順」に MAX_PER_RUN 名を処理。
@@ -231,7 +304,11 @@ def run_sync() -> None:
         ]
         # 古いものから優先（None=未取得→最古扱い）
         candidates.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
-        targets_wids = candidates[:WORKER_DETAIL_MAX_PER_RUN]
+        # 初回マッチ未取得ワーカーは最優先で先頭に持ってくる(アラート判定のため)
+        priority = [wid for wid in new_first_match_wids
+                    if wid in workers and not workers[wid].get("timee_non_disclosed", False)]
+        rest = [wid for wid in candidates if wid not in set(priority)]
+        targets_wids = (priority + rest)[:WORKER_DETAIL_MAX_PER_RUN]
         # 各wid の今日以降最古の 就業日 を求める(求人パス用)
         wid_to_shift: dict[str, str] = {}
         for r in snapshot_curr:
@@ -307,6 +384,13 @@ def run_sync() -> None:
 
     # 5. 通知
     _send_match_notifications(new_matches, workers)
+    # 5.5. キャンセル推奨アラート(初回マッチ × 基準未達)
+    try:
+        alert_n = _check_and_alert_first_matches(new_matches, workers)
+        if alert_n:
+            print(f"[Timee Sync] cancel-recommend alerts sent: {alert_n}名")
+    except Exception as e:
+        print(f"[WARN] alert check失敗: {e}")
     print("[Timee Sync] done")
 
 

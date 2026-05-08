@@ -76,40 +76,50 @@ TEMPLATE_LABEL = {
 
 
 def _open_template_create(page, template_label: str) -> None:
-    """サイドボードのひな形カードから「このひな形を元に求人を作成」を押す。
+    """求人のひな形一覧ページから、対象テンプレートカードの
+    「このひな形を元に求人を作成」リンク(<a>) を押す。
 
-    ひな形カードは「【株式会社GIFT】コールスタッフ募集！」ブロック内に複数あり、
-    指定 template_label（例: 通常求人 / 求人向け(ハードル高)）のカードを選ぶ。
+    template_label: "通常求人"（リピーター用） / "求人向け(ハードル高)"（新規用）
+
+    DOM 上、各ひな形カードは <div data-testid="offer-card-list-item"> でラップされ、
+    カード末尾に <p>{テンプレラベル}</p> が入っている。クリック対象は <a> タグ。
     """
-    # 求人ホーム（ひな形一覧があるページ）。/clients/{id}/offers などタイミー側の構造に依存。
-    # 既知の URL に直接遷移できないため、まずはトップから「求人」メニューに入るパスを試す。
     page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/", wait_until="domcontentloaded")
 
-    # 「求人」「ひな形」等のナビゲーションを試す
-    for nav_label in ["ひな形から作成", "求人を作成", "求人", "ひな形"]:
-        try:
-            page.get_by_role("link", name=re.compile(nav_label)).first.click(timeout=3000)
-            break
-        except Exception:
-            continue
-
-    # ひな形カード（template_label のテキストを含むブロック）から「このひな形を元に求人を作成」を押す
-    # カードがどう構造化されているかは未確認のため、複数パターンを試す
+    # 左ナビ「求人のひな形」へ
+    nav = page.get_by_role("link", name=re.compile(r"^求人のひな形$|求人のひな形"))
+    if nav.count():
+        nav.first.click()
+    else:
+        # フォールバック: 適当な「求人」or「ひな形」リンクを試す
+        for nav_label in ["求人のひな形", "ひな形", "求人"]:
+            try:
+                page.get_by_role("link", name=re.compile(nav_label)).first.click(timeout=3000)
+                break
+            except Exception:
+                continue
     page.wait_for_load_state("domcontentloaded")
-    card = page.locator(
-        f'xpath=//*[contains(., "{template_label}")][.//button or .//a]'
-    ).first
-    card.wait_for(state="visible", timeout=DEFAULT_TIMEOUT_MS)
 
-    create_button = card.get_by_role(
-        "button", name=re.compile(r"このひな形を元に求人を作成|求人を作成")
+    # ひな形カードが描画されるまで待つ
+    page.wait_for_selector('[data-testid="offer-card-list-item"]',
+                           timeout=DEFAULT_TIMEOUT_MS, state="visible")
+
+    # template_label テキストを含むカードを特定
+    target_card = page.locator('[data-testid="offer-card-list-item"]').filter(
+        has_text=template_label
     ).first
-    if not create_button.count():
-        # 「このひな形を元に求人を作成」が card 直下にない場合、カード周辺で探す
-        create_button = page.get_by_role(
-            "button", name=re.compile(r"このひな形を元に求人を作成")
-        ).first
-    create_button.click()
+    target_card.wait_for(state="visible", timeout=DEFAULT_TIMEOUT_MS)
+
+    # 「このひな形を元に求人を作成」リンク(<a>) をカード内で探す
+    create_link = target_card.get_by_role(
+        "link", name=re.compile(r"このひな形を元に求人を作成|求人を作成")
+    )
+    if create_link.count() == 0:
+        # フォールバック: テキストで取得（<a> 内の <span> にテキストがある場合）
+        create_link = target_card.locator(
+            'xpath=.//a[.//*[contains(text(), "このひな形を元に求人を作成") or contains(text(), "求人を作成")]]'
+        )
+    create_link.first.click()
     page.wait_for_load_state("domcontentloaded")
 
 

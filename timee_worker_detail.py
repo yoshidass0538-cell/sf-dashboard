@@ -711,18 +711,17 @@ def _fetch_via_posting_path(page, name: str, kana: str, shift_iso: str) -> bool:
     page.wait_for_load_state("domcontentloaded", timeout=8000)
     page.wait_for_timeout(700)
 
-    # ワーカーリストから該当ワーカー名のリンクをクリック
+    # ワーカー名リンクは新規タブで開く仕様 (target=_blank/外部リンクアイコン)。
+    # click では同タブが遷移しないので href を取り出して page.goto で同タブ移動する。
     try:
-        clicked = page.evaluate(
+        href = page.evaluate(
             r"""([norm_name, norm_kana]) => {
               function norm(s) { return (s || '').replace(/\s+/g, ''); }
               const links = Array.from(document.querySelectorAll('a[href*="/users/"]'));
               for (const a of links) {
-                // a 自身か周辺(行)テキストに名前・カナを含む
                 const row = a.closest('tr, [role="row"], li, [class*="row"]') || a.parentElement;
                 const t = norm((row && row.textContent) || a.textContent || '');
                 if ((norm_kana && t.includes(norm_kana)) || (norm_name && t.includes(norm_name))) {
-                  a.click();
                   return a.getAttribute('href');
                 }
               }
@@ -730,12 +729,13 @@ def _fetch_via_posting_path(page, name: str, kana: str, shift_iso: str) -> bool:
             }""",
             [name.replace(" ", "").replace("　", ""), kana.replace(" ", "").replace("　", "")],
         )
-        if not clicked:
-            print(f"[stage] posting path: worker name link not found", flush=True)
+        if not href:
+            print(f"[stage] posting path: worker name href not found", flush=True)
             _dump(page, f"posting_worker_fail_{target_key.replace('|','_')}")
             return False
-        print(f"[stage] posting path: worker link clicked -> {clicked}", flush=True)
-        page.wait_for_load_state("domcontentloaded", timeout=8000)
+        full_url = href if href.startswith("http") else f"https://app-new.taimee.co.jp{href}"
+        print(f"[stage] posting path: goto worker detail {full_url}", flush=True)
+        page.goto(full_url, wait_until="domcontentloaded", timeout=15000)
         page.wait_for_selector(
             'xpath=//*[contains(text(), "平均Good率") or contains(text(), "管理用メモ")]',
             timeout=15000,
@@ -743,7 +743,7 @@ def _fetch_via_posting_path(page, name: str, kana: str, shift_iso: str) -> bool:
         page.wait_for_timeout(400)
         return True
     except Exception as e:
-        print(f"[stage] posting path: worker click/load failed: {e}", flush=True)
+        print(f"[stage] posting path: worker goto/load failed: {e}", flush=True)
         _dump(page, f"posting_worker_load_fail_{target_key.replace('|','_')}")
         return False
 

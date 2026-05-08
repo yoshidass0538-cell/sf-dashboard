@@ -315,13 +315,16 @@ def run_sync() -> None:
         # 未稼働ワーカー(現在マッチング中・出勤回数=0)は最優先で先頭に持ってくる。
         # 新規マッチ ⊂ 現マッチ なので current_first_match_wids にまとめる。
         priority_set = (current_first_match_wids | new_first_match_wids)
-        priority = [wid for wid in priority_set
-                    if wid in workers and not workers[wid].get("timee_non_disclosed", False)]
+        priority_all = [wid for wid in priority_set
+                        if wid in workers and not workers[wid].get("timee_non_disclosed", False)]
         # 優先内も古いもの順にソート(同一バッチで全員捌けない場合の公平性確保)
-        priority.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
+        priority_all.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
         # priority(=posting_path対象)は1run あたりPOSTING_PATH_MAX_PER_RUNまでに制限
-        priority = priority[:POSTING_PATH_MAX_PER_RUN]
-        rest = [wid for wid in candidates if wid not in set(priority)]
+        priority = priority_all[:POSTING_PATH_MAX_PER_RUN]
+        # rest からは「全priority」(処理しきれない priority も含む) を除外
+        # ⇒ priority超過分が rest 経由で posting_path にかかる二重消費を防ぐ
+        priority_all_set = set(priority_all)
+        rest = [wid for wid in candidates if wid not in priority_all_set]
         targets_wids = (priority + rest)[:WORKER_DETAIL_MAX_PER_RUN]
         # 各wid の今日以降最古の 就業日 を求める(求人パス用)
         wid_to_shift: dict[str, str] = {}

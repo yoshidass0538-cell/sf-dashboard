@@ -37,6 +37,8 @@ from timee_worker_detail import fetch_worker_details
 # ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の更新間隔と1回あたり上限
 WORKER_DETAIL_TTL_HOURS = 6
 WORKER_DETAIL_MAX_PER_RUN = 20
+# posting_path(求人カレンダー経由)は1ワーカー20-30秒かかるので、1 run あたり上限を別途設定
+POSTING_PATH_MAX_PER_RUN = 6
 
 
 JST = timezone(timedelta(hours=9))
@@ -317,6 +319,8 @@ def run_sync() -> None:
                     if wid in workers and not workers[wid].get("timee_non_disclosed", False)]
         # 優先内も古いもの順にソート(同一バッチで全員捌けない場合の公平性確保)
         priority.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
+        # priority(=posting_path対象)は1run あたりPOSTING_PATH_MAX_PER_RUNまでに制限
+        priority = priority[:POSTING_PATH_MAX_PER_RUN]
         rest = [wid for wid in candidates if wid not in set(priority)]
         targets_wids = (priority + rest)[:WORKER_DETAIL_MAX_PER_RUN]
         # 各wid の今日以降最古の 就業日 を求める(求人パス用)

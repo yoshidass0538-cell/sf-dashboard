@@ -3600,6 +3600,103 @@ if selected_key == "timee_management":
     def _tm_reload():
         _tm_load.clear()
 
+    # ---- 求人作成: GitHub Actions の workflow_dispatch をトリガー ----
+    def _tm_trigger_post_job(post_type: str, headcount: int, dates: list[str]) -> tuple[bool, str]:
+        import os as _os, requests as _rq
+        pat = ""
+        repo = "yoshidass0538-cell/sf-dashboard"
+        try:
+            if "github" in st.secrets:
+                pat = st.secrets["github"].get("pat", "") or ""
+                repo = st.secrets["github"].get("repo", repo) or repo
+        except Exception:
+            pass
+        pat = pat or _os.environ.get("GH_PAT", "")
+        if not pat:
+            return False, "GH_PAT が未設定です。Streamlit Secrets [github] pat に GitHub PAT を設定してください。"
+        url = f"https://api.github.com/repos/{repo}/actions/workflows/timee_post_job.yml/dispatches"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {pat}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        body = {
+            "ref": "main",
+            "inputs": {
+                "post_type": post_type,
+                "headcount": str(headcount),
+                "dates": ",".join(dates),
+                "group_name": "手かかからない人",
+            },
+        }
+        try:
+            r = _rq.post(url, headers=headers, json=body, timeout=15)
+            if r.status_code == 204:
+                return True, "求人作成ジョブを起動しました。Actions ログで進捗を確認してください。"
+            return False, f"GitHub API エラー: HTTP {r.status_code} {r.text[:200]}"
+        except Exception as _e:
+            return False, f"通信エラー: {_e}"
+
+    @st.dialog("📢 タイミー求人を作成")
+    def _tm_post_job_dialog():
+        from datetime import date as _d, timedelta as _td
+        _stage = st.session_state.get("tm_post_stage", "type")
+
+        if _stage == "type":
+            st.write("どちらの求人を作成しますか？")
+            _c1, _c2 = st.columns(2)
+            if _c1.button("👥 リピーター", use_container_width=True, type="primary",
+                          key="tm_post_btn_repeater"):
+                st.session_state["tm_post_type"] = "repeater"
+                st.session_state["tm_post_stage"] = "form"
+                st.rerun()
+            if _c2.button("🆕 新規", use_container_width=True, type="primary",
+                          key="tm_post_btn_new"):
+                st.session_state["tm_post_type"] = "new"
+                st.session_state["tm_post_stage"] = "form"
+                st.rerun()
+            return
+
+        # _stage == "form"
+        _ptype = st.session_state.get("tm_post_type", "repeater")
+        _label = "リピーター" if _ptype == "repeater" else "新規"
+        st.markdown(f"#### 種別: {_label}")
+        _n = st.selectbox("募集人数", list(range(1, 7)), index=0, key="tm_post_headcount")
+
+        _today_d = _d.today()
+        _opts = [_today_d + _td(days=_i) for _i in range(0, 60)]
+        _wd_l = ["月", "火", "水", "木", "金", "土", "日"]
+        _picked = st.multiselect(
+            "求人日（最低1日選択）",
+            _opts,
+            format_func=lambda d: f"{d.isoformat()} ({_wd_l[d.weekday()]})",
+            key="tm_post_dates",
+        )
+
+        _b1, _b2 = st.columns([1, 2])
+        if _b1.button("← 戻る", use_container_width=True, key="tm_post_back"):
+            st.session_state["tm_post_stage"] = "type"
+            st.rerun()
+        if _b2.button(
+            "🚀 求人を作成", type="primary",
+            disabled=not _picked,
+            use_container_width=True, key="tm_post_submit",
+        ):
+            ok, msg = _tm_trigger_post_job(
+                post_type=_ptype,
+                headcount=int(_n),
+                dates=[d.isoformat() for d in _picked],
+            )
+            if ok:
+                st.success(f"✅ {msg}")
+                st.info(f"種別: {_label} ／ 人数: {_n} ／ 日付: {len(_picked)}件")
+                # 選択状態をクリア（次回再オープン時にtype選択から）
+                st.session_state.pop("tm_post_stage", None)
+                st.session_state.pop("tm_post_type", None)
+                st.session_state.pop("tm_post_dates", None)
+            else:
+                st.error(f"❌ {msg}")
+
     try:
         _workers, _snapshot = _tm_load()
     except Exception as _e:
@@ -4043,6 +4140,15 @@ if selected_key == "timee_management":
                     f"|　🔴 直雇用勧誘済　🔵 初回ワーカー　"
                     f"|　業務フィルタ: {len(_cal_sel_set)}件選択中"
                 )
+
+        # ----- 求人作成ボタン -----
+        st.divider()
+        if st.button("📢 求人を作成する", use_container_width=True, type="primary",
+                     key="tm_open_post_dialog"):
+            # 毎回 type 選択から再開
+            st.session_state["tm_post_stage"] = "type"
+            st.session_state.pop("tm_post_type", None)
+            _tm_post_job_dialog()
 
     # ----- 就業日カレンダー（日別セクション・過去日は折りたたみ収納） -----
     with _tab_schedule:

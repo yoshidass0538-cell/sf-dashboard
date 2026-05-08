@@ -1,0 +1,81 @@
+name: Timee Post Job
+
+# Streamlit アプリから workflow_dispatch でトリガー。
+on:
+  workflow_dispatch:
+    inputs:
+      post_type:
+        description: 'リピーター=repeater / 新規=new'
+        required: true
+        type: choice
+        options:
+          - repeater
+          - new
+      headcount:
+        description: '募集人数 (1-6)'
+        required: true
+        type: string
+      dates:
+        description: '日付（カンマ区切り YYYY-MM-DD）'
+        required: true
+        type: string
+      group_name:
+        description: '公開するグループ名（リピーター時のみ使用）'
+        required: false
+        type: string
+        default: '手かかからない人'
+
+concurrency:
+  group: timee-post-job
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: timee-post-pip-${{ hashFiles('**/timee_post_job.py') }}
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install playwright
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-v1
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Post jobs
+        env:
+          TIMEE_EMAIL: ${{ secrets.TIMEE_EMAIL }}
+          TIMEE_PASSWORD: ${{ secrets.TIMEE_PASSWORD }}
+        run: |
+          python timee_post_job.py \
+            --post-type "${{ inputs.post_type }}" \
+            --headcount "${{ inputs.headcount }}" \
+            --dates "${{ inputs.dates }}" \
+            --group-name "${{ inputs.group_name }}"
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timee-post-failure-dump
+          path: tmp/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -47,6 +47,7 @@ WORKSHEET_NAME = "timee_data"
 WORKERS_CELL = "A1"
 SNAPSHOT_CELL = "A2"
 META_CELL = "A3"
+POSTINGS_CELL = "A4"  # 求人一覧スナップショット (list of {日付, 開始時間, 終了時間, マッチ数, 募集人数, 状態})
 
 # 過去アーカイブ（同期では触らない・容量制限を避けるため別ワークシート＋行ベース保存）
 ARCHIVE_WORKSHEET = "timee_archive"
@@ -240,6 +241,21 @@ def load_meta() -> dict:
 
 def save_meta(meta: dict) -> None:
     _save_cell(META_CELL, meta)
+
+
+# ----------------------------------------------------------------------
+# 求人一覧スナップショット（タイミー求人カレンダーから取得・全置換）
+# ----------------------------------------------------------------------
+def load_postings() -> list[dict]:
+    """求人一覧スナップショットを読み込み。
+    要素: {日付, 開始時間, 終了時間, マッチ数, 募集人数, 状態}
+    """
+    return _load_cell(POSTINGS_CELL, [])
+
+
+def save_postings(postings: list[dict]) -> None:
+    """求人一覧スナップショットを全置換保存。"""
+    _save_cell(POSTINGS_CELL, postings)
 
 
 # ----------------------------------------------------------------------

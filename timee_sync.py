@@ -31,6 +31,7 @@ import requests
 
 import timee_master_store as store
 from timee_downloader import download_month_excel, parse_excel_records
+from timee_job_calendar import fetch_month_postings
 
 
 JST = timezone(timedelta(hours=9))
@@ -212,6 +213,22 @@ def run_sync() -> None:
     store.save_workers(workers)
     store.save_snapshot(snapshot_curr)
     store.save_meta(meta)
+
+    # 4.5. 求人一覧（カレンダー）スナップショット取得（当月＋翌月）
+    try:
+        all_postings = []
+        for y, m in [(today.year, today.month), _next_month(today)]:
+            try:
+                month_postings = fetch_month_postings(y, m)
+                print(f"[Timee Sync] postings {y}-{m:02d}: {len(month_postings)}件")
+                all_postings.extend(month_postings)
+            except Exception as e:
+                print(f"[WARN] 求人一覧 {y}-{m:02d} 取得失敗: {e}")
+        if all_postings:
+            store.save_postings(all_postings)
+            print(f"[Timee Sync] postings saved: total {len(all_postings)}件")
+    except Exception as e:
+        print(f"[WARN] 求人一覧の保存に失敗: {e}")
 
     # 5. 通知
     _send_match_notifications(new_matches, workers)

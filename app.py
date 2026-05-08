@@ -3591,11 +3591,15 @@ if selected_key == "timee_management":
             archive = _tms.load_archive()
         except Exception:
             archive = []
+        try:
+            postings = _tms.load_postings()
+        except Exception:
+            postings = []
         # snapshot側を優先（同じ(id,就業日)が両方にあればsnapshot採用）
         seen = {(r.get("id"), r.get("就業日")) for r in snapshot}
         merged = list(snapshot) + [r for r in archive
                                    if (r.get("id"), r.get("就業日")) not in seen]
-        return workers, merged
+        return workers, merged, postings
 
     def _tm_reload():
         _tm_load.clear()
@@ -3699,7 +3703,7 @@ if selected_key == "timee_management":
                 st.error(f"❌ {msg}")
 
     try:
-        _workers, _snapshot = _tm_load()
+        _workers, _snapshot, _postings = _tm_load()
     except Exception as _e:
         st.error(f"タイミーデータの読み込みに失敗しました: {_e}")
         st.stop()
@@ -4038,6 +4042,21 @@ if selected_key == "timee_management":
                 )
                 _cal_sel_set = set(_cal_groups)
 
+                # 日別 求人ブロック一覧（タイミー求人カレンダー由来 / 5分同期で更新）
+                _postings_by_day: dict[int, list[dict]] = {}
+                for _p in _postings:
+                    _pdate = str(_p.get("日付", "") or "")
+                    if not _pdate.startswith(_sel_m):
+                        continue
+                    try:
+                        _pday = int(_pdate[8:10])
+                    except ValueError:
+                        continue
+                    _postings_by_day.setdefault(_pday, []).append(_p)
+                # 同日内は開始時間→募集人数 で並べる
+                for _lst in _postings_by_day.values():
+                    _lst.sort(key=lambda x: (x.get("開始時間", ""), x.get("終了時間", ""), x.get("募集人数", 0)))
+
                 # 日別人数を集計（業務フィルタ反映、カナ氏名）
                 # 初回ワーカー = 「初回登録日 == その就業日」のワーカー
                 # 直雇 = 直雇用勧誘済=Trueのワーカー
@@ -4103,12 +4122,40 @@ if selected_key == "timee_management":
                             else:
                                 _bg, _fg, _bd = "#ffffff", "#222", "1px solid #d8dee5"
 
-                            if _cnt > 0:
+                            # 求人ブロックがあればそれを優先表示（タイミー画面と同様の N/M 複数行）
+                            _postings_today = _postings_by_day.get(_day, [])
+                            if _postings_today:
+                                _post_lines = []
+                                for _p in _postings_today:
+                                    _pn = int(_p.get("マッチ数", 0) or 0)
+                                    _pm = int(_p.get("募集人数", 0) or 0)
+                                    _ps = str(_p.get("開始時間", "") or "")
+                                    _pe = str(_p.get("終了時間", "") or "")
+                                    if _is_past:
+                                        _pcolor = "#888"
+                                    elif _pm > 0 and _pn >= _pm:
+                                        _pcolor = "#28a745"
+                                    elif _pm > 0 and _pn < _pm:
+                                        _pcolor = "#d97706"
+                                    else:
+                                        _pcolor = "#1565c0"
+                                    _post_lines.append(
+                                        f"<div style='font-size:11px;color:{_pcolor};font-weight:700;"
+                                        f"line-height:1.35;'>{_ps}～{_pe} {_pn}/{_pm}</div>"
+                                    )
+                                _cnt_html = (
+                                    "<div style='margin-top:4px;'>" + "".join(_post_lines) + "</div>"
+                                )
+                            elif _cnt > 0:
                                 _cnt_html = (
                                     f"<div style='font-size:16px;font-weight:800;margin-top:4px;"
                                     f"color:{'#888' if _is_past else '#1565c0'};'>{_cnt}<span style='font-size:10px;'>名</span></div>"
                                 )
-                                # カナ氏名を表示（初回=青●、直雇用勧誘済=赤●、リピーター(印無)=黄●）
+                            else:
+                                _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:6px;'>—</div>"
+
+                            # マッチ済ワーカーのカナ氏名（印付き）。求人ブロック有無に関わらず表示。
+                            if _cnt > 0:
                                 _name_list = sorted(_by_day_kana.get(_day, []), key=lambda t: t[0])
                                 _txt_color = "#bbb" if _is_past else "#444"
                                 _blue = "#aaa" if _is_past else "#1976d2"
@@ -4122,7 +4169,6 @@ if selected_key == "timee_management":
                                         _dots += f"<span style='color:{_red};{_dot_style}'>●</span>"
                                     if _is_first:
                                         _dots += f"<span style='color:{_blue};{_dot_style}'>●</span>"
-                                    # 印無し（リピーター）= 黄
                                     if not _is_promoted and not _is_first:
                                         _dots += f"<span style='color:{_yellow};{_dot_style}'>●</span>"
                                     if _dots:
@@ -4133,7 +4179,6 @@ if selected_key == "timee_management":
                                     )
                                 _names_html = "<br>".join(_name_lines)
                             else:
-                                _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:6px;'>—</div>"
                                 _names_html = ""
 
                             st.markdown(

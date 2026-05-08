@@ -257,59 +257,77 @@ _DETAIL_EXTRACTOR_JS = r"""
 () => {
   const out = { good_rate: '', cancel_rate: '', timee_memo: '' };
 
-  function findValueByLabel(labels) {
-    // ラベル要素の次のテキストを返す
-    const all = Array.from(document.querySelectorAll('*'));
+  function norm(s) { return (s || '').replace(/\s+/g, ''); }
+
+  function findLabelLeaf(labels) {
+    // 「ラベル文字列と完全一致(空白除去後)」の葉ノード(子要素なし)を返す
+    const candidates = Array.from(document.querySelectorAll('*'));
     for (const lab of labels) {
-      const node = all.find(el => {
-        const t = (el.textContent || '').replace(/\s+/g, '');
-        return t === lab.replace(/\s+/g, '') || t.startsWith(lab.replace(/\s+/g, ''));
-      });
-      if (!node) continue;
-      // 兄弟要素 or 親内の次の要素
-      let v = '';
-      let sib = node.nextElementSibling;
-      while (sib && !v) {
-        v = (sib.textContent || '').trim();
-        sib = sib.nextElementSibling;
+      const n = norm(lab);
+      const leaf = candidates.find(el => el.children.length === 0 && norm(el.textContent) === n);
+      if (leaf) return { leaf, label: lab };
+    }
+    return null;
+  }
+
+  function valueFor(labels) {
+    const found = findLabelLeaf(labels);
+    if (!found) return '';
+    const { leaf, label } = found;
+    const lnorm = norm(label);
+    // 親(行コンテナ)を最大4段上まで辿り、ラベル以外の葉テキストを探す
+    let parent = leaf.parentElement;
+    for (let depth = 0; depth < 4 && parent; depth++) {
+      const leaves = Array.from(parent.querySelectorAll('*')).filter(e => e.children.length === 0);
+      // ラベル要素自身は除外、テキストが空でも除外
+      for (const cand of leaves) {
+        if (cand === leaf) continue;
+        const t = (cand.textContent || '').trim();
+        if (!t) continue;
+        if (norm(t) === lnorm) continue;
+        return t;
       }
-      if (!v && node.parentElement) {
-        // 親の中で node の後ろのテキスト
-        const parent = node.parentElement;
-        const idx = Array.prototype.indexOf.call(parent.children, node);
-        for (let i = idx + 1; i < parent.children.length; i++) {
-          const t = (parent.children[i].textContent || '').trim();
-          if (t) { v = t; break; }
-        }
-      }
-      if (v) return v;
+      parent = parent.parentElement;
     }
     return '';
   }
 
-  out.good_rate = findValueByLabel(['平均Good率（直近30回の評価）', '平均Good率']);
-  out.cancel_rate = findValueByLabel(['直前キャンセル率']);
+  out.good_rate = valueFor(['平均Good率（直近30回の評価）', '平均Good率']);
+  out.cancel_rate = valueFor(['直前キャンセル率']);
 
-  // 管理用メモ: ラベル直近の textarea or それに代わるテキスト領域
-  const all = Array.from(document.querySelectorAll('*'));
-  const memoLabel = all.find(el => {
-    const t = (el.textContent || '').replace(/\s+/g, '');
-    return t.startsWith('管理用メモ');
-  });
-  if (memoLabel) {
-    // 周辺の textarea
-    const ta = memoLabel.parentElement && memoLabel.parentElement.querySelector('textarea');
-    if (ta) {
-      out.timee_memo = ta.value || ta.textContent || '';
-    } else {
-      // 後続の長いテキスト要素
-      let sib = memoLabel.nextElementSibling;
-      while (sib && !out.timee_memo) {
-        const t = (sib.textContent || '').trim();
-        if (t && t.length > 0) out.timee_memo = t;
-        sib = sib.nextElementSibling;
+  // 管理用メモ: ラベルが「管理用メモ」+ 注意書き「※ワーカーには公開されません」の隣に値領域。
+  // - <textarea> がある場合はそれを優先
+  // - 無ければラベル要素の親(または祖父)内で、
+  //   ラベルおよび注意書き以外の長めのテキストノードを採用
+  const memoFound = findLabelLeaf(['管理用メモ']);
+  if (memoFound) {
+    const memoLeaf = memoFound.leaf;
+    // textarea の場合（編集モード時など）
+    let parent = memoLeaf.parentElement;
+    let memoVal = '';
+    for (let depth = 0; depth < 4 && parent && !memoVal; depth++) {
+      const ta = parent.querySelector('textarea');
+      if (ta) {
+        memoVal = ta.value || ta.textContent || '';
+        break;
       }
+      // ラベル/注意書きでない長文(改行を含む)テキストを探す
+      const leaves = Array.from(parent.querySelectorAll('*')).filter(e => e.children.length === 0);
+      let bestText = '';
+      for (const cand of leaves) {
+        if (cand === memoLeaf) continue;
+        const raw = cand.textContent || '';
+        const t = raw.trim();
+        if (!t) continue;
+        if (/^管理用メモ/.test(t)) continue;
+        if (/ワーカーには公開されません/.test(t)) continue;
+        // 長めのものを採用
+        if (t.length > bestText.length) bestText = raw;
+      }
+      if (bestText) memoVal = bestText;
+      parent = parent.parentElement;
     }
+    out.timee_memo = memoVal;
   }
 
   return out;

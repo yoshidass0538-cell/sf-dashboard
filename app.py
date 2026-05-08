@@ -3725,6 +3725,13 @@ if selected_key == "timee_management":
         _tm_reload()
         st.rerun()
 
+    # ----- 求人作成ボタン（タイミー管理直下） -----
+    if st.button("📢 求人を作成する", use_container_width=True, type="primary",
+                 key="tm_open_post_dialog"):
+        st.session_state["tm_post_stage"] = "type"
+        st.session_state.pop("tm_post_type", None)
+        _tm_post_job_dialog()
+
     st.divider()
 
     _tab_workers, _tab_calendar, _tab_schedule = st.tabs(
@@ -4101,18 +4108,23 @@ if selected_key == "timee_management":
                                     f"<div style='font-size:16px;font-weight:800;margin-top:4px;"
                                     f"color:{'#888' if _is_past else '#1565c0'};'>{_cnt}<span style='font-size:10px;'>名</span></div>"
                                 )
-                                # 全員のカナ氏名を表示（初回=青●、直雇用勧誘済=赤●、両方=赤+青）
+                                # カナ氏名を表示（初回=青●、直雇用勧誘済=赤●、リピーター(印無)=黄●）
                                 _name_list = sorted(_by_day_kana.get(_day, []), key=lambda t: t[0])
                                 _txt_color = "#bbb" if _is_past else "#444"
                                 _blue = "#aaa" if _is_past else "#1976d2"
                                 _red = "#aaa" if _is_past else "#e53935"
+                                _yellow = "#ccc" if _is_past else "#f5b400"
+                                _dot_style = "font-size:14px;font-weight:700;line-height:1;vertical-align:middle;"
                                 _name_lines = []
                                 for _kana, _is_first, _is_promoted in _name_list:
                                     _dots = ""
                                     if _is_promoted:
-                                        _dots += f"<span style='color:{_red};font-weight:700;'>●</span>"
+                                        _dots += f"<span style='color:{_red};{_dot_style}'>●</span>"
                                     if _is_first:
-                                        _dots += f"<span style='color:{_blue};font-weight:700;'>●</span>"
+                                        _dots += f"<span style='color:{_blue};{_dot_style}'>●</span>"
+                                    # 印無し（リピーター）= 黄
+                                    if not _is_promoted and not _is_first:
+                                        _dots += f"<span style='color:{_yellow};{_dot_style}'>●</span>"
                                     if _dots:
                                         _dots += " "
                                     _name_lines.append(
@@ -4138,18 +4150,9 @@ if selected_key == "timee_management":
                 # 凡例
                 st.caption(
                     f"📆 {_y}年{_m}月　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜　"
-                    f"|　🔴 直雇用勧誘済　🔵 初回ワーカー　"
+                    f"|　🔴 直雇用勧誘済　🔵 初回ワーカー　🟡 リピーター　"
                     f"|　業務フィルタ: {len(_cal_sel_set)}件選択中"
                 )
-
-        # ----- 求人作成ボタン -----
-        st.divider()
-        if st.button("📢 求人を作成する", use_container_width=True, type="primary",
-                     key="tm_open_post_dialog"):
-            # 毎回 type 選択から再開
-            st.session_state["tm_post_stage"] = "type"
-            st.session_state.pop("tm_post_type", None)
-            _tm_post_job_dialog()
 
     # ----- 就業日カレンダー（日別セクション・過去日は折りたたみ収納） -----
     with _tab_schedule:

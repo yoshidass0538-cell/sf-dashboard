@@ -308,6 +308,7 @@ def _select_time(page, label: str, value: str) -> None:
 
 def _fill_break_minutes(page, minutes: int) -> None:
     """「休憩時間」入力（デフォルト0が入っているので消して入れ直す）。"""
+    print(f"[stage] _fill_break_minutes minutes={minutes}", flush=True)
     inp = page.locator(
         'xpath=//label[contains(., "休憩時間")]/following::input[1]'
     ).first
@@ -318,28 +319,94 @@ def _fill_break_minutes(page, minutes: int) -> None:
     inp.fill(str(minutes))
 
 
+def _open_react_select(page, anchor_xpath: str) -> None:
+    """react-select系コントロールを開く。dummyInput はviewport外にあるため、
+    祖先の .control コンテナをクリックする。
+
+    anchor_xpath: 例 '//label[contains(., "締切")]'
+    """
+    combo = page.locator(
+        f'xpath={anchor_xpath}/following::input[@role="combobox"][1]'
+    ).first
+    if combo.count():
+        # 祖先の control コンテナ
+        ctrl = combo.locator(
+            'xpath=ancestor::div[contains(@class, "control") or contains(@class, "Control")][1]'
+        )
+        try:
+            if ctrl.count():
+                ctrl.first.scroll_into_view_if_needed(timeout=3000)
+                ctrl.first.click(timeout=5000)
+                return
+        except Exception:
+            pass
+        # fallback: dummy input を force click
+        try:
+            combo.scroll_into_view_if_needed(timeout=3000)
+            combo.click(force=True, timeout=5000)
+            return
+        except Exception:
+            pass
+
+    # role=combobox の input が無い場合、汎用の clickable を試す
+    for tag in ['button', '*[contains(@class, "control") or contains(@class, "Control")]']:
+        try:
+            el = page.locator(f'xpath={anchor_xpath}/following::{tag}[1]').first
+            el.scroll_into_view_if_needed(timeout=2000)
+            el.click(force=True, timeout=3000)
+            return
+        except Exception:
+            continue
+    raise RuntimeError(f"selectコントロールを開けない (anchor={anchor_xpath})")
+
+
+def _pick_react_select_option(page, option_pattern: re.Pattern) -> None:
+    """開いているreact-selectのリストから option_pattern にマッチするものをクリック。"""
+    candidates = [
+        ("role-option-name", lambda: page.get_by_role("option", name=option_pattern).first),
+        ("xpath-role-option", lambda: page.locator(
+            f'xpath=//*[@role="option" and contains(., "{option_pattern.pattern}")]'
+        ).first),
+        ("xpath-li", lambda: page.locator(
+            f'xpath=//li[contains(., "{option_pattern.pattern}")]'
+        ).first),
+    ]
+    for name, getter in candidates:
+        try:
+            el = getter()
+            el.click(timeout=3000)
+            print(f"[stage] _pick_react_select_option OK via {name}", flush=True)
+            return
+        except Exception as e:
+            print(f"[stage] _pick_react_select_option {name} failed: {e}", flush=True)
+    raise RuntimeError(f"option not found: {option_pattern.pattern}")
+
+
 def _select_deadline_same_as_start(page) -> None:
     """求人の締切時間 = 「【推奨】開始時刻と同時」 を選ぶ。"""
+    print("[stage] _select_deadline_same_as_start", flush=True)
+    # まず素の <select> として
     sel = page.locator(
         'xpath=//label[contains(., "締切")]/following::select[1]'
     )
     if sel.count():
-        # value/labelに「開始時刻と同時」が含まれるオプションを選ぶ
-        opts = sel.first.locator("option").all_inner_texts()
-        for t in opts:
-            if "開始時刻と同時" in t:
-                sel.first.select_option(label=t)
-                return
-    # ボタン/combobox 経由
-    trigger = page.locator(
-        'xpath=//label[contains(., "締切")]/following::*[self::button or @role="combobox"][1]'
-    ).first
-    trigger.click()
-    page.get_by_role("option", name=re.compile(r"開始時刻と同時")).first.click()
+        try:
+            opts = sel.first.locator("option").all_inner_texts()
+            for t in opts:
+                if "開始時刻と同時" in t:
+                    sel.first.select_option(label=t)
+                    print("[stage] _select_deadline OK via <select>", flush=True)
+                    return
+        except Exception:
+            pass
+
+    _open_react_select(page, '//label[contains(., "締切")]')
+    _pick_react_select_option(page, re.compile(r"開始時刻と同時"))
 
 
 def _set_headcount(page, n: int) -> None:
     """募集人数を n にする。デフォルト1なので、↑ボタンを (n-1) 回押すか、直接入力する。"""
+    print(f"[stage] _set_headcount n={n}", flush=True)
     # 直接入力できる input がある場合
     input_box = page.locator(
         'xpath=//label[contains(., "募集人数")]/following::input[@type="number" or @inputmode="numeric"][1]'
@@ -360,6 +427,7 @@ def _set_headcount(page, n: int) -> None:
 
 
 def _select_publish_setting(page, setting: str) -> None:
+    print(f"[stage] _select_publish_setting setting='{setting}'", flush=True)
     """公開設定 ラジオ。setting = '一般公開' / 'グループ限定公開' / '初回ワーカー限定公開' / 'URL限定公開'。
 
     ラベルの後ろに「（24個のグループあり）」のような可変サフィックスが付くため、
@@ -375,21 +443,23 @@ def _select_publish_setting(page, setting: str) -> None:
 
 def _disable_auto_switch_to_public(page) -> None:
     """グループ限定公開の下にある「自動で『一般公開』に切り替え」プルダウンで「自動切り替えをしない」を選択。"""
+    print("[stage] _disable_auto_switch_to_public", flush=True)
     sel = page.locator(
         'xpath=//*[contains(., "自動で") and contains(., "一般公開") and contains(., "切り替え")]/following::select[1]'
     )
     if sel.count():
-        opts = sel.first.locator("option").all_inner_texts()
-        for t in opts:
-            if "自動切り替えをしない" in t or "切り替えをしない" in t:
-                sel.first.select_option(label=t)
-                return
-    # combobox 経由
-    trigger = page.locator(
-        'xpath=//*[contains(., "自動で") and contains(., "切り替え")]/following::*[self::button or @role="combobox"][1]'
-    ).first
-    trigger.click()
-    page.get_by_role("option", name=re.compile(r"自動切り替えをしない|切り替えをしない")).first.click()
+        try:
+            opts = sel.first.locator("option").all_inner_texts()
+            for t in opts:
+                if "自動切り替えをしない" in t or "切り替えをしない" in t:
+                    sel.first.select_option(label=t)
+                    print("[stage] _disable_auto_switch_to_public OK via <select>", flush=True)
+                    return
+        except Exception:
+            pass
+
+    _open_react_select(page, '//*[contains(., "自動で") and contains(., "切り替え")]')
+    _pick_react_select_option(page, re.compile(r"自動切り替えをしない|切り替えをしない"))
 
 
 def _select_public_group(page, group_name: str) -> None:
@@ -398,35 +468,43 @@ def _select_public_group(page, group_name: str) -> None:
     実際の選択肢は「手かかからない人（68人）」など人数サフィックスが付くため、
     前方一致 / contains マッチさせる。
     """
-    # まず group_name を含む select option を探す
+    print(f"[stage] _select_public_group group_name='{group_name}'", flush=True)
+    # まず素の <select>
     sel = page.locator(
         'xpath=//label[contains(., "公開するグループ")]/following::select[1]'
     )
     if sel.count():
-        opts = sel.first.locator("option").all_inner_texts()
-        for t in opts:
-            if group_name in t:
-                sel.first.select_option(label=t)
-                return
+        try:
+            opts = sel.first.locator("option").all_inner_texts()
+            for t in opts:
+                if group_name in t:
+                    sel.first.select_option(label=t)
+                    print("[stage] _select_public_group OK via <select>", flush=True)
+                    return
+        except Exception:
+            pass
 
     # チェックボックス/multi-select 形式
     box_label = page.locator(
         f'xpath=//*[contains(., "公開するグループ")]/following::label[contains(., "{group_name}")][1]'
-    ).first
+    )
     if box_label.count():
-        box_label.click()
-        return
+        try:
+            box_label.first.scroll_into_view_if_needed(timeout=2000)
+            box_label.first.click(timeout=3000)
+            print("[stage] _select_public_group OK via checkbox label", flush=True)
+            return
+        except Exception:
+            pass
 
-    # combobox 経由
-    trigger = page.locator(
-        'xpath=//label[contains(., "公開するグループ")]/following::*[self::button or @role="combobox"][1]'
-    ).first
-    trigger.click()
-    page.get_by_role("option", name=re.compile(re.escape(group_name))).first.click()
+    # react-select 経由
+    _open_react_select(page, '//label[contains(., "公開するグループ")]')
+    _pick_react_select_option(page, re.compile(re.escape(group_name)))
 
 
 def _fill_money(page, label: str, yen: int) -> None:
     """時給/交通費 のような円単位 input を埋める。"""
+    print(f"[stage] _fill_money label='{label}' yen={yen}", flush=True)
     inp = page.locator(
         f'xpath=//label[contains(., "{label}")]/following::input[1]'
     ).first
@@ -439,6 +517,7 @@ def _fill_money(page, label: str, yen: int) -> None:
 
 def _set_auto_message(page, send: bool) -> None:
     """自動送信メッセージ送信設定: 「送信する」/「送信しない」ラジオ。"""
+    print(f"[stage] _set_auto_message send={send}", flush=True)
     label_text = "送信する" if send else "送信しない"
     target = page.locator(
         f'xpath=//*[contains(., "送信設定") or contains(., "自動送信メッセージ")]/following::label[normalize-space()="{label_text}" or contains(., "{label_text}")][1]'
@@ -458,6 +537,7 @@ def _set_auto_message_target_all(page) -> None:
 
 def _click_confirm_input(page) -> None:
     """「入力した求人内容を確認」ボタンを押す。"""
+    print("[stage] _click_confirm_input", flush=True)
     page.get_by_role(
         "button", name=re.compile(r"入力した求人内容を確認")
     ).first.click()
@@ -466,6 +546,7 @@ def _click_confirm_input(page) -> None:
 
 def _check_kyugyo_handate(page) -> None:
     """「休業手当に関する事項を確認しました。」チェックボックスを ON。"""
+    print("[stage] _check_kyugyo_handate", flush=True)
     # ラベルクリックでトグル
     label = page.locator(
         'xpath=//label[contains(., "休業手当") and contains(., "確認しました")]'
@@ -476,6 +557,7 @@ def _check_kyugyo_handate(page) -> None:
 
 def _click_publish(page) -> None:
     """「求人を公開」ボタンを押す。"""
+    print("[stage] _click_publish", flush=True)
     page.get_by_role("button", name=re.compile(r"^求人を公開$|求人を公開")).first.click()
     # 公開後はリダイレクトされる想定 → 完了待ち
     page.wait_for_load_state("domcontentloaded")

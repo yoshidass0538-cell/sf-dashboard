@@ -351,10 +351,15 @@ def _extract_detail_fields(page) -> Dict[str, str]:
     except Exception as e:
         print(f"[stage] _extract_detail_fields evaluate failed: {e}", flush=True)
         result = {}
-    # 後処理: ラベル文字列まで含まれている場合があるので、% / 数字 を抽出
-    good_raw = (result.get("good_rate") or "").strip()
-    cancel_raw = (result.get("cancel_rate") or "").strip()
-    memo_raw = (result.get("timee_memo") or "").strip()
+    # 後処理:
+    # - ゼロ幅文字(U+200B-U+200D, U+FEFF)を除去
+    # - % / 数字 を抽出
+    def _zw_strip(s: str) -> str:
+        return "".join(c for c in (s or "") if c not in "​‌‍﻿").strip()
+
+    good_raw = _zw_strip(result.get("good_rate") or "")
+    cancel_raw = _zw_strip(result.get("cancel_rate") or "")
+    memo_raw = _zw_strip(result.get("timee_memo") or "")
 
     good = good_raw
     m = re.search(r"\d+\s*%", good_raw)

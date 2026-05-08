@@ -222,11 +222,12 @@ def run_sync() -> None:
     # 4.4. ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の間引き更新
     try:
         from datetime import timedelta as _td
-        # 候補: current snapshot に出現するワーカー
-        snapshot_wids = {r["id"] for r in snapshot_curr}
+        # 候補: ワーカーマスタ全員 (過去ワーカー含む)。
+        # current snapshot は posting path 用の shift_iso 計算に使う
+        all_wids = list(workers.keys())
         candidates = []
         cutoff = now_jst - _td(hours=WORKER_DETAIL_TTL_HOURS)
-        for wid in snapshot_wids:
+        for wid in all_wids:
             w = workers.get(wid, {})
             last = w.get("timee_detail_fetched_at")  # ISO形式 or None
             stale = True

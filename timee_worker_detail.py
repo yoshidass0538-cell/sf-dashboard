@@ -405,28 +405,70 @@ def _search_and_open_worker(page, name: str, kana: str) -> bool:
         pass
     page.wait_for_timeout(700)
 
-    # 該当ワーカーをクリック: テキストに name または kana を含む clickable 要素
-    clicked_result = False
+    # 該当ワーカーをクリック
+    # 実DOM: 検索結果は <div data-testid="user-list-item"> 等で描画。
+    # テキストに「光井 香織」「ミツイ カオリ」のようにスペース有り文字列が入るため、
+    # 空白除去後の比較を JS で行う。
     norm_kana = kana.replace(" ", "").replace("　", "")
     norm_name = name.replace(" ", "").replace("　", "")
-    candidates = [
-        # tr 行 / role=row 行 / li
-        f'xpath=//tr[contains(., "{norm_kana}") or contains(., "{norm_name}")]',
-        f'xpath=//*[@role="row"][contains(., "{norm_kana}") or contains(., "{norm_name}")]',
-        f'xpath=//li[contains(., "{norm_kana}") or contains(., "{norm_name}")]',
-        f'xpath=//a[contains(., "{norm_kana}") or contains(., "{norm_name}")]',
-    ]
-    for loc in candidates:
-        try:
-            el = page.locator(loc).first
-            if el.count() == 0:
-                continue
-            el.scroll_into_view_if_needed(timeout=2000)
-            el.click(timeout=3000)
+    clicked_result = False
+
+    # 戦略1: JS で空白除去マッチした行(またはその祖先)をクリック
+    try:
+        clicked_via_js = page.evaluate(
+            r"""
+            (norm_name, norm_kana) => {
+              function norm(s) { return (s || '').replace(/\s+/g, ''); }
+              // 候補: user-list-item / tr / [role=row]
+              const cands = Array.from(document.querySelectorAll(
+                '[data-testid="user-list-item"], tbody tr, [role="row"]'
+              ));
+              for (const el of cands) {
+                const t = norm(el.textContent);
+                if ((norm_kana && t.includes(norm_kana)) || (norm_name && t.includes(norm_name))) {
+                  // クリック対象: 最も外側の行コンテナ(tr または親) or 自身
+                  let target = el.closest('tr') || el;
+                  // 中の <a> を優先
+                  const a = target.querySelector('a[href]');
+                  if (a) { a.click(); return a.getAttribute('href') || 'clicked'; }
+                  target.click();
+                  return 'clicked';
+                }
+              }
+              return null;
+            }
+            """,
+            norm_name, norm_kana,
+        )
+        if clicked_via_js:
+            print(f"[stage] search result clicked via JS for {target_key} ({clicked_via_js})", flush=True)
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
             clicked_result = True
-            break
-        except Exception:
-            continue
+    except Exception as e:
+        print(f"[stage] search result JS click error for {target_key}: {e}", flush=True)
+
+    # 戦略2: 結果が1件しかない前提で先頭の user-list-item をクリック
+    if not clicked_result:
+        for loc in [
+            'xpath=//*[@data-testid="user-list-item"]',
+            'xpath=//tbody//tr[.//div[@data-testid="user-list-item"] or .//*[contains(@data-testid, "user")]]',
+            'xpath=//tbody//tr[1]',
+        ]:
+            try:
+                el = page.locator(loc).first
+                if el.count() == 0:
+                    continue
+                el.scroll_into_view_if_needed(timeout=2000)
+                el.click(timeout=3000)
+                clicked_result = True
+                print(f"[stage] search result clicked via fallback locator for {target_key}", flush=True)
+                break
+            except Exception:
+                continue
+
     if not clicked_result:
         print(f"[stage] search result row click failed for {target_key}", flush=True)
         _dump(page, f"search_noclick_{target_key.replace('|', '_')}")

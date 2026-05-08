@@ -645,22 +645,34 @@ def _fetch_via_posting_path(page, name: str, kana: str, shift_iso: str) -> bool:
         _dump(page, f"posting_date_fail_{target_key.replace('|','_')}")
         return False
 
-    # popup or 別ページに「初回ワーカー限定公開」 と書かれた求人カードがあるはず
-    # その求人タイトル(例:「【株式会社GIFT】コールスタッフ募集！」)のリンクをクリック
+    # popup の各<section>(求人ブロック)のうち、textContentに「初回ワーカー限定公開」を
+    # 含むセクションの<a href="/offerings/...">をクリック。
+    # 実DOM: <span>初回ワーカー</span><span>限定公開</span> と分割表示されているため
+    # leaf完全一致では探せない。section配下の連結テキストで判定する。
     try:
         clicked = page.evaluate(
             r"""() => {
-              // 「初回ワーカー限定公開」のラベルから祖先ブロックを辿り、
-              // その中の求人タイトルリンク (a[href*="/offerings/"]) を探してクリック
-              const all = Array.from(document.querySelectorAll('*'));
-              const label = all.find(el => el.children.length === 0 &&
-                                            (el.textContent || '').replace(/\s+/g, '') === '初回ワーカー限定公開');
-              if (!label) return null;
-              let parent = label.parentElement;
-              for (let depth = 0; depth < 6 && parent; depth++) {
-                const link = parent.querySelector('a[href*="/offerings/"]');
-                if (link) { link.click(); return link.getAttribute('href'); }
-                parent = parent.parentElement;
+              function norm(s) { return (s || '').replace(/\s+/g, ''); }
+              // 1) <section> 単位を優先
+              const sections = Array.from(document.querySelectorAll('section'));
+              for (const sec of sections) {
+                if (norm(sec.textContent).includes('初回ワーカー限定公開')) {
+                  const link = sec.querySelector('a[href*="/offerings/"]');
+                  if (link) { link.click(); return link.getAttribute('href'); }
+                }
+              }
+              // 2) section が無い場合: 求人カード単位の親をdialog内で探す
+              const dlg = document.querySelector('[role="dialog"]') || document.body;
+              // dialog 内の各 a[href*=/offerings/] を辿り、その祖先のtextContentで判定
+              const links = Array.from(dlg.querySelectorAll('a[href*="/offerings/"]'));
+              for (const a of links) {
+                let p = a.parentElement;
+                for (let i = 0; i < 8 && p; i++) {
+                  if (norm(p.textContent).includes('初回ワーカー限定公開')) {
+                    a.click(); return a.getAttribute('href');
+                  }
+                  p = p.parentElement;
+                }
               }
               return null;
             }"""

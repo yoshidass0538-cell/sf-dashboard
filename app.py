@@ -3782,6 +3782,8 @@ if selected_key == "timee_management":
                 ".ag-row-selected": {"background-color": "#fce4ec !important"},
             }
 
+            # 解除等で grid を再マウントするためのキーカウンタ
+            _grid_key_n = st.session_state.get("tm_grid_key_n", 0)
             _grid = AgGrid(
                 _wdf,
                 gridOptions=_gb.build(),
@@ -3791,11 +3793,12 @@ if selected_key == "timee_management":
                 update_mode="SELECTION_CHANGED",
                 allow_unsafe_jscode=True,
                 height=600,
-                key="tm_worker_grid",
+                key=f"tm_worker_grid_{_grid_key_n}",
             )
 
             # ----- 選択ワーカーの決定 -----
-            # 優先順位: 行クリック(grid) > session_state
+            # 行クリック検知: grid の selected_rows は再描画後もキャッシュを返すため、
+            # 「前回検出した grid wid」と異なる時のみ「新しいクリック」と判定する。
             _sel = _grid.get("selected_rows")
             try:
                 _has_grid_sel = (_sel is not None) and (len(_sel) > 0)
@@ -3808,10 +3811,14 @@ if selected_key == "timee_management":
                 _grid_wid = str(_sel_row.get("ID") if hasattr(_sel_row, "get") else _sel_row["ID"])
 
             _prev_wid = st.session_state.get("tm_selected_wid")
-            # 行クリックで別ワーカーに切替: session_state 更新 → 即rerun
-            if _grid_wid and _grid_wid != _prev_wid:
-                st.session_state["tm_selected_wid"] = _grid_wid
-                st.rerun()
+            _last_grid_wid = st.session_state.get("tm_last_grid_wid")
+
+            # grid 応答が前回と異なる = ユーザーが行を新規クリックした
+            if _grid_wid != _last_grid_wid:
+                st.session_state["tm_last_grid_wid"] = _grid_wid
+                if _grid_wid and _grid_wid != _prev_wid:
+                    st.session_state["tm_selected_wid"] = _grid_wid
+                    st.rerun()
 
             _sel_wid = _prev_wid or _grid_wid
             if _sel_wid and _sel_wid in _workers:
@@ -3891,6 +3898,10 @@ if selected_key == "timee_management":
                         st.rerun()
                 if _bc.button("選択解除", key=f"tm_clear_{_sel_wid}", use_container_width=True):
                     st.session_state.pop("tm_selected_wid", None)
+                    st.session_state.pop("tm_last_grid_wid", None)
+                    st.session_state.pop("tm_edit_pick", None)
+                    # grid を再マウントしてキャッシュ済み selected_rows をクリア
+                    st.session_state["tm_grid_key_n"] = st.session_state.get("tm_grid_key_n", 0) + 1
                     st.rerun()
 
         # キャンセル履歴展開

@@ -317,8 +317,15 @@ _DETAIL_EXTRACTOR_JS = r"""
 """
 
 
+_DETAIL_DEBUG_DUMPED = {"once": False}
+
+
 def _extract_detail_fields(page) -> Dict[str, str]:
     """詳細ページから3項目を抽出。"""
+    # 構造調査用に最初の1ページだけ詳細ダンプを残す
+    if not _DETAIL_DEBUG_DUMPED["once"]:
+        _DETAIL_DEBUG_DUMPED["once"] = True
+        _dump(page, "detail_inspect")
     try:
         result = page.evaluate(_DETAIL_EXTRACTOR_JS) or {}
     except Exception as e:

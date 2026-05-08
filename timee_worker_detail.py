@@ -1,0 +1,352 @@
+"""
+タイミー「ワーカー管理」配下の各ワーカー詳細ページから
+
+  - 平均Good率（直近30回の評価）
+  - 直前キャンセル率
+  - 管理用メモ
+
+を取得するスクリプト。
+
+GitHub Actions の timee_sync.yml に組み込んで、
+1回の同期につき最大 N 名分だけ間引き取得させる想定。
+
+認証情報は環境変数:
+- TIMEE_EMAIL
+- TIMEE_PASSWORD
+
+使い方（CLI / 単体テスト）:
+    python timee_worker_detail.py --max 5
+
+使い方（モジュール）:
+    from timee_worker_detail import fetch_worker_details
+    # targets: [(氏名, カナ), ...]
+    detail_map = fetch_worker_details([("高崎 雅朗", "タカサキ マサアキ")])
+    # detail_map: {"氏名|カナ": {"good_rate": "100%", "cancel_rate": "0%", "timee_memo": "..."}}
+
+DOM変更時は ./tmp/ にスクショ＋HTML を保存。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+LOGIN_URL = "https://app-new.taimee.co.jp/login"
+CLIENT_ID = "340847"
+DEFAULT_TIMEOUT_MS = 30000
+
+
+def _key(name: str, kana: str) -> str:
+    """氏名+カナの正規化キー（空白除去）。timee_master_store と同じ仕様。"""
+    n = (name or "").replace(" ", "").replace("　", "").strip()
+    k = (kana or "").replace(" ", "").replace("　", "").strip()
+    return f"{n}|{k}"
+
+
+def _dump(page, tag: str) -> None:
+    Path("./tmp").mkdir(parents=True, exist_ok=True)
+    ts = int(time.time())
+    try:
+        page.screenshot(path=f"./tmp/timee_workerdtl_{tag}_{ts}.png", full_page=True)
+    except Exception:
+        pass
+    try:
+        Path(f"./tmp/timee_workerdtl_{tag}_{ts}.html").write_text(
+            page.content(), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
+def _login(page, email: str, password: str) -> None:
+    page.goto(LOGIN_URL, wait_until="domcontentloaded")
+    email_input = page.locator('input[type="email"], input[name*="mail" i]').first
+    email_input.wait_for(state="visible", timeout=DEFAULT_TIMEOUT_MS)
+    email_input.fill(email)
+    page.locator('input[type="password"]').first.fill(password)
+    page.get_by_role("button", name=re.compile(r"ログイン")).click()
+    page.wait_for_url(lambda url: "/login" not in url, timeout=DEFAULT_TIMEOUT_MS)
+
+
+# ---------------------------------------------------------------- ワーカー一覧→URL収集
+_LIST_EXTRACTOR_JS = r"""
+() => {
+  // ワーカー一覧テーブルから (氏名, カナ, 詳細URL) を収集
+  const rows = [];
+  // a[href*="/workers/"] は詳細リンク想定
+  const links = Array.from(document.querySelectorAll('a[href*="/workers/"]'));
+  links.forEach(a => {
+    const href = a.getAttribute('href') || '';
+    if (!/\/workers\/[^/?#]+/.test(href)) return;
+    // a の周辺(同行)から氏名・カナを抽出
+    const row = a.closest('tr, [role="row"], li, [class*="row"]') || a.parentElement;
+    let text = (row && row.textContent || '').replace(/\s+/g, ' ').trim();
+    // a の中だけでもよければそれを使う
+    if (!text) text = (a.textContent || '').trim();
+    rows.push({ href: href, text: text.slice(0, 200) });
+  });
+  return rows;
+}
+"""
+
+
+def _collect_worker_urls(page) -> List[Dict]:
+    """ワーカー管理画面（一覧）から (氏名+カナ → 詳細URL) を収集。
+
+    ページネーションを順に辿る。
+    """
+    page.goto(
+        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/users/workers",
+        wait_until="domcontentloaded",
+    )
+    # 別URLパターンが必要な場合に備えてフォールバック: 左ナビ「ワーカー管理」
+    try:
+        page.wait_for_selector('a[href*="/workers/"]', timeout=10000)
+    except Exception:
+        try:
+            page.get_by_role("link", name=re.compile(r"^ワーカー管理$|ワーカー管理")).first.click()
+            page.wait_for_load_state("domcontentloaded")
+            page.wait_for_selector('a[href*="/workers/"]', timeout=15000)
+        except Exception:
+            pass
+
+    out: List[Dict] = []
+    seen = set()
+    for _page_idx in range(50):  # 最大50ページ
+        rows = page.evaluate(_LIST_EXTRACTOR_JS) or []
+        added = 0
+        for r in rows:
+            href = r.get("href")
+            if not href or href in seen:
+                continue
+            seen.add(href)
+            out.append(r)
+            added += 1
+        print(f"[stage] _collect_worker_urls page {_page_idx+1}: +{added} (total {len(out)})", flush=True)
+
+        # 「次へ」ボタンを探してクリック
+        clicked = False
+        for loc in [
+            'xpath=//button[normalize-space()="次へ" or contains(@aria-label, "次")]',
+            'xpath=//a[normalize-space()="次へ" or contains(@aria-label, "次")]',
+        ]:
+            try:
+                btn = page.locator(loc).first
+                if btn.count() and btn.is_enabled():
+                    btn.click(timeout=2000)
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(500)
+                    clicked = True
+                    break
+            except Exception:
+                continue
+        if not clicked:
+            break
+    return out
+
+
+def _name_kana_match(text: str, name: str, kana: str) -> bool:
+    """text に name と kana の両方が含まれていれば true。空白は無視。"""
+    norm_text = (text or "").replace(" ", "").replace("　", "")
+    n = (name or "").replace(" ", "").replace("　", "")
+    k = (kana or "").replace(" ", "").replace("　", "")
+    return (n and n in norm_text) and (k and k in norm_text)
+
+
+# ---------------------------------------------------------------- 詳細ページからフィールド抽出
+_DETAIL_EXTRACTOR_JS = r"""
+() => {
+  const out = { good_rate: '', cancel_rate: '', timee_memo: '' };
+
+  function findValueByLabel(labels) {
+    // ラベル要素の次のテキストを返す
+    const all = Array.from(document.querySelectorAll('*'));
+    for (const lab of labels) {
+      const node = all.find(el => {
+        const t = (el.textContent || '').replace(/\s+/g, '');
+        return t === lab.replace(/\s+/g, '') || t.startsWith(lab.replace(/\s+/g, ''));
+      });
+      if (!node) continue;
+      // 兄弟要素 or 親内の次の要素
+      let v = '';
+      let sib = node.nextElementSibling;
+      while (sib && !v) {
+        v = (sib.textContent || '').trim();
+        sib = sib.nextElementSibling;
+      }
+      if (!v && node.parentElement) {
+        // 親の中で node の後ろのテキスト
+        const parent = node.parentElement;
+        const idx = Array.prototype.indexOf.call(parent.children, node);
+        for (let i = idx + 1; i < parent.children.length; i++) {
+          const t = (parent.children[i].textContent || '').trim();
+          if (t) { v = t; break; }
+        }
+      }
+      if (v) return v;
+    }
+    return '';
+  }
+
+  out.good_rate = findValueByLabel(['平均Good率（直近30回の評価）', '平均Good率']);
+  out.cancel_rate = findValueByLabel(['直前キャンセル率']);
+
+  // 管理用メモ: ラベル直近の textarea or それに代わるテキスト領域
+  const all = Array.from(document.querySelectorAll('*'));
+  const memoLabel = all.find(el => {
+    const t = (el.textContent || '').replace(/\s+/g, '');
+    return t.startsWith('管理用メモ');
+  });
+  if (memoLabel) {
+    // 周辺の textarea
+    const ta = memoLabel.parentElement && memoLabel.parentElement.querySelector('textarea');
+    if (ta) {
+      out.timee_memo = ta.value || ta.textContent || '';
+    } else {
+      // 後続の長いテキスト要素
+      let sib = memoLabel.nextElementSibling;
+      while (sib && !out.timee_memo) {
+        const t = (sib.textContent || '').trim();
+        if (t && t.length > 0) out.timee_memo = t;
+        sib = sib.nextElementSibling;
+      }
+    }
+  }
+
+  return out;
+}
+"""
+
+
+def _extract_detail_fields(page) -> Dict[str, str]:
+    """詳細ページから3項目を抽出。"""
+    try:
+        result = page.evaluate(_DETAIL_EXTRACTOR_JS) or {}
+    except Exception as e:
+        print(f"[stage] _extract_detail_fields evaluate failed: {e}", flush=True)
+        result = {}
+    # 後処理: ラベル文字列まで含まれている場合があるので、% / 数字 を抽出
+    good_raw = (result.get("good_rate") or "").strip()
+    cancel_raw = (result.get("cancel_rate") or "").strip()
+    memo_raw = (result.get("timee_memo") or "").strip()
+
+    good = good_raw
+    m = re.search(r"\d+\s*%", good_raw)
+    if m:
+        good = m.group(0).replace(" ", "")
+    cancel = cancel_raw
+    m = re.search(r"\d+\s*%", cancel_raw)
+    if m:
+        cancel = m.group(0).replace(" ", "")
+
+    return {
+        "good_rate": good,
+        "cancel_rate": cancel,
+        "timee_memo": memo_raw,
+    }
+
+
+# ---------------------------------------------------------------- メインAPI
+def fetch_worker_details(
+    targets: List[Tuple[str, str]],
+    email: Optional[str] = None,
+    password: Optional[str] = None,
+    headless: bool = True,
+) -> Dict[str, Dict[str, str]]:
+    """指定された (氏名, カナ) のリストについて 3項目を取得。
+
+    返り値: {"氏名|カナ": {"good_rate": "...", "cancel_rate": "...", "timee_memo": "..."}}
+    一覧で見つからなかったワーカーは結果に含まれない。
+    """
+    from playwright.sync_api import sync_playwright
+
+    if not targets:
+        return {}
+
+    email = email or os.environ.get("TIMEE_EMAIL", "")
+    password = password or os.environ.get("TIMEE_PASSWORD", "")
+    if not email or not password:
+        raise RuntimeError("TIMEE_EMAIL / TIMEE_PASSWORD が未設定です")
+
+    out: Dict[str, Dict[str, str]] = {}
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
+        context = browser.new_context(locale="ja-JP")
+        page = context.new_page()
+        page.set_default_timeout(DEFAULT_TIMEOUT_MS)
+        try:
+            _login(page, email, password)
+            url_rows = _collect_worker_urls(page)
+            print(f"[stage] worker list collected: {len(url_rows)}", flush=True)
+
+            # name+kana → href のマップ作成（部分一致）
+            for name, kana in targets:
+                target_key = _key(name, kana)
+                href = None
+                for r in url_rows:
+                    if _name_kana_match(r.get("text", ""), name, kana):
+                        href = r.get("href")
+                        break
+                if not href:
+                    print(f"[stage] worker not found in list: {target_key}", flush=True)
+                    continue
+
+                # 詳細ページ訪問
+                full_url = href if href.startswith("http") else f"https://app-new.taimee.co.jp{href}"
+                print(f"[stage] visit detail: {target_key} -> {full_url}", flush=True)
+                try:
+                    page.goto(full_url, wait_until="domcontentloaded")
+                    page.wait_for_selector(
+                        'xpath=//*[contains(text(), "平均Good率") or contains(text(), "管理用メモ")]',
+                        timeout=15000,
+                    )
+                    page.wait_for_timeout(500)
+                except Exception as e:
+                    print(f"[stage] detail load failed for {target_key}: {e}", flush=True)
+                    _dump(page, f"detail_fail_{target_key}")
+                    continue
+
+                fields = _extract_detail_fields(page)
+                print(f"[stage] {target_key}: {fields}", flush=True)
+                out[target_key] = fields
+        except Exception:
+            _dump(page, "fatal")
+            raise
+        finally:
+            context.close()
+            browser.close()
+
+    return out
+
+
+# ---------------------------------------------------------------- CLI
+def _cli():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max", type=int, default=5,
+                        help="一覧の最初N名を取得（テスト用）")
+    parser.add_argument("--no-headless", action="store_true")
+    args = parser.parse_args()
+
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=not args.no_headless)
+        context = browser.new_context(locale="ja-JP")
+        page = context.new_page()
+        page.set_default_timeout(DEFAULT_TIMEOUT_MS)
+        try:
+            _login(page, os.environ["TIMEE_EMAIL"], os.environ["TIMEE_PASSWORD"])
+            url_rows = _collect_worker_urls(page)
+        finally:
+            context.close()
+            browser.close()
+    print(json.dumps(url_rows[: args.max], ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    _cli()

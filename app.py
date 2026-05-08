@@ -3936,6 +3936,22 @@ if selected_key == "timee_management":
                 st.divider()
                 st.subheader(f"📝 編集中: {_sel_w.get('氏名','')}（{_sel_w.get('カナ','')}）　ID:{_sel_wid}")
 
+                # タイミー詳細(読取専用): 平均Good率 / 直前キャンセル率 / 管理用メモ
+                _good = str(_sel_w.get("good_rate") or "").strip()
+                _cancel = str(_sel_w.get("cancel_rate") or "").strip()
+                _tmm = str(_sel_w.get("timee_memo") or "").strip()
+                _detail_at = str(_sel_w.get("timee_detail_fetched_at") or "").strip()
+                _di1, _di2 = st.columns(2)
+                _di1.metric("平均Good率（直近30回）", _good if _good else "—")
+                _di2.metric("直前キャンセル率", _cancel if _cancel else "—")
+                if _tmm:
+                    st.markdown("**タイミー管理用メモ** （タイミー上の値・読取専用）")
+                    st.code(_tmm, language=None)
+                else:
+                    st.caption("タイミー管理用メモ: （未取得 or 空）")
+                if _detail_at:
+                    st.caption(f"タイミー側情報の最終取得: {_detail_at}")
+
                 _ec1, _ec2 = st.columns([3, 2])
                 with _ec1:
                     _new_memo = st.text_area(

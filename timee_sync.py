@@ -32,6 +32,11 @@ import requests
 import timee_master_store as store
 from timee_downloader import download_month_excel, parse_excel_records
 from timee_job_calendar import fetch_month_postings
+from timee_worker_detail import fetch_worker_details
+
+# ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の更新間隔と1回あたり上限
+WORKER_DETAIL_TTL_HOURS = 6
+WORKER_DETAIL_MAX_PER_RUN = 20
 
 
 JST = timezone(timedelta(hours=9))
@@ -213,6 +218,51 @@ def run_sync() -> None:
     store.save_workers(workers)
     store.save_snapshot(snapshot_curr)
     store.save_meta(meta)
+
+    # 4.4. ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の間引き更新
+    try:
+        from datetime import timedelta as _td
+        # 候補: current snapshot に出現するワーカー
+        snapshot_wids = {r["id"] for r in snapshot_curr}
+        candidates = []
+        cutoff = now_jst - _td(hours=WORKER_DETAIL_TTL_HOURS)
+        for wid in snapshot_wids:
+            w = workers.get(wid, {})
+            last = w.get("timee_detail_fetched_at")  # ISO形式 or None
+            stale = True
+            if last:
+                try:
+                    last_dt = datetime.fromisoformat(last)
+                    stale = last_dt < cutoff
+                except Exception:
+                    stale = True
+            if stale:
+                candidates.append(wid)
+        # 古いものから優先（None=未取得→最古扱い）
+        candidates.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
+        targets_wids = candidates[:WORKER_DETAIL_MAX_PER_RUN]
+        targets = [(workers[wid]["氏名"], workers[wid]["カナ"]) for wid in targets_wids]
+        print(f"[Timee Sync] worker_detail candidates={len(candidates)} fetching={len(targets)}")
+        if targets:
+            detail_map = fetch_worker_details(targets)
+            now_iso = now_jst.isoformat(timespec="seconds")
+            updated = 0
+            key_to_wid = store.build_key_to_id(workers)
+            for k, fields in detail_map.items():
+                wid = key_to_wid.get(k)
+                if not wid:
+                    continue
+                w = workers[wid]
+                w["good_rate"] = fields.get("good_rate", "")
+                w["cancel_rate"] = fields.get("cancel_rate", "")
+                w["timee_memo"] = fields.get("timee_memo", "")
+                w["timee_detail_fetched_at"] = now_iso
+                updated += 1
+            print(f"[Timee Sync] worker_detail updated {updated}名")
+            if updated:
+                store.save_workers(workers)
+    except Exception as e:
+        print(f"[WARN] ワーカー詳細取得に失敗: {e}")
 
     # 4.5. 求人一覧（カレンダー）スナップショット取得（当月＋翌月）
     try:

@@ -219,39 +219,16 @@ def run_sync() -> None:
     store.save_snapshot(snapshot_curr)
     store.save_meta(meta)
 
-    # 4.4. ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の間引き更新
+    # 4.4. ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の継続ローテ更新
     try:
-        from datetime import timedelta as _td
-        # 候補: ワーカーマスタ全員 (過去ワーカー含む)。
-        # current snapshot は posting path 用の shift_iso 計算に使う
+        # 候補: ワーカーマスタ全員 (過去ワーカー含む)。non_disclosed は再試行不要なので除外。
+        # TTL での skip は廃止し、常に「最古に取得した順」に MAX_PER_RUN 名を処理。
+        # → 未取得/誤値ワーカーが先頭、その後は取得済みワーカーが古い順にローテ更新される。
         all_wids = list(workers.keys())
-        candidates = []
-        cutoff = now_jst - _td(hours=WORKER_DETAIL_TTL_HOURS)
-        for wid in all_wids:
-            w = workers.get(wid, {})
-            last = w.get("timee_detail_fetched_at")  # ISO形式 or None
-            stale = True
-            if last:
-                try:
-                    last_dt = datetime.fromisoformat(last)
-                    stale = last_dt < cutoff
-                except Exception:
-                    stale = True
-            # 取得済みだが good_rate が「数字+%」形式でない場合は抽出失敗とみなして即時再試行。
-            # ただし non_disclosed (Timee側で非開示)は再試行しても無意味なので除外。
-            # no_match (timee_not_in_list=True) は posting path 再挑戦のため stale 扱い。
-            if not stale:
-                if w.get("timee_non_disclosed", False):
-                    pass  # 非開示は TTL 待ち
-                else:
-                    _gr_raw = w.get("good_rate") or ""
-                    _gr_clean = "".join(c for c in _gr_raw if c not in "​‌‍﻿").strip()
-                    import re as _re
-                    _is_valid_pct = bool(_re.match(r"^\d+\s*%$", _gr_clean))
-                    if not _is_valid_pct:
-                        stale = True
-            if stale:
-                candidates.append(wid)
+        candidates = [
+            wid for wid in all_wids
+            if not workers[wid].get("timee_non_disclosed", False)
+        ]
         # 古いものから優先（None=未取得→最古扱い）
         candidates.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
         targets_wids = candidates[:WORKER_DETAIL_MAX_PER_RUN]

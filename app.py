@@ -3645,17 +3645,19 @@ if selected_key == "timee_management":
         if _stage == "type":
             st.write("どちらの求人を作成しますか？")
             _c1, _c2 = st.columns(2)
+            # ※ ダイアログ内で st.rerun() を呼ぶとダイアログが閉じる仕様のため、
+            #    session_state を書き換えるだけにし、ボタン押下による自動rerunに任せる
             if _c1.button("👥 リピーター", use_container_width=True, type="primary",
                           key="tm_post_btn_repeater"):
                 st.session_state["tm_post_type"] = "repeater"
                 st.session_state["tm_post_stage"] = "form"
-                st.rerun()
             if _c2.button("🆕 新規", use_container_width=True, type="primary",
                           key="tm_post_btn_new"):
                 st.session_state["tm_post_type"] = "new"
                 st.session_state["tm_post_stage"] = "form"
-                st.rerun()
-            return
+            # 同一run内でステージが書き換わった場合は、その先の form 描画にフォールスルー
+            if st.session_state.get("tm_post_stage") != "form":
+                return
 
         # _stage == "form"
         _ptype = st.session_state.get("tm_post_type", "repeater")
@@ -3676,7 +3678,6 @@ if selected_key == "timee_management":
         _b1, _b2 = st.columns([1, 2])
         if _b1.button("← 戻る", use_container_width=True, key="tm_post_back"):
             st.session_state["tm_post_stage"] = "type"
-            st.rerun()
         if _b2.button(
             "🚀 求人を作成", type="primary",
             disabled=not _picked,

@@ -3912,6 +3912,11 @@ if selected_key == "timee_management":
                            "display": "flex", "alignItems": "center",
                            "justifyContent": "center", "textAlign": "center"},
             )
+            # セル内のテキスト選択 → Ctrl+C コピーを許可
+            _gb.configure_grid_options(
+                enableCellTextSelection=True,
+                ensureDomOrder=True,
+            )
             # rerun後も選択を復元するため、保存中の wid に対応する行 index を渡す
             _persist_wid = st.session_state.get("tm_selected_wid")
             _pre_idx = []

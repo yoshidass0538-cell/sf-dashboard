@@ -54,6 +54,12 @@ ARCHIVE_WORKSHEET = "timee_archive"
 ARCHIVE_HEADERS = ["id", "就業日", "出勤回数", "開始時間", "終了時間",
                    "求人タイトル", "グループ", "バッジ"]
 
+# ワーカーtimee_memo (Timee側「管理用メモ」のミラー)
+# 個別メモが長文になる/全ワーカー総和でA1の50K制限を超えるため、行ベースで分離保存
+WORKER_MEMO_WORKSHEET = "timee_worker_memos"
+WORKER_MEMO_HEADERS = ["id", "memo"]
+WORKER_MEMO_MAX_CHARS = 8000  # 1メモあたりの保存上限(セル50K対策)
+
 GS_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -136,15 +142,98 @@ def _save_cell(cell: str, value) -> None:
 
 
 # ----------------------------------------------------------------------
+# ワーカーtimee_memo（行ベース別ワークシート保存）
+# ----------------------------------------------------------------------
+def _get_worker_memo_ws():
+    client = _get_client()
+    sh = client.open_by_key(_get_sheet_id())
+    try:
+        ws = sh.worksheet(WORKER_MEMO_WORKSHEET)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=WORKER_MEMO_WORKSHEET,
+                              rows=2, cols=len(WORKER_MEMO_HEADERS))
+        ws.update(values=[WORKER_MEMO_HEADERS], range_name="A1")
+        return ws
+    try:
+        first = ws.row_values(1)
+        if first[: len(WORKER_MEMO_HEADERS)] != WORKER_MEMO_HEADERS:
+            ws.update(values=[WORKER_MEMO_HEADERS], range_name="A1")
+    except Exception:
+        pass
+    return ws
+
+
+def load_worker_memos() -> dict[str, str]:
+    try:
+        ws = _get_worker_memo_ws()
+        records = ws.get_all_records()
+    except Exception:
+        return {}
+    out = {}
+    for r in records:
+        wid = r.get("id")
+        if wid in (None, ""):
+            continue
+        try:
+            wid = f"{int(wid):06d}"
+        except (TypeError, ValueError):
+            wid = str(wid)
+        memo = r.get("memo", "")
+        if memo:
+            out[wid] = str(memo)
+    return out
+
+
+def save_worker_memos(memos: dict[str, str]) -> None:
+    """timee_memo を全置換保存。空メモは保存しない。"""
+    rows = [WORKER_MEMO_HEADERS]
+    for wid, memo in memos.items():
+        if not memo:
+            continue
+        m = str(memo)[:WORKER_MEMO_MAX_CHARS]
+        rows.append([str(wid), m])
+    ws = _get_worker_memo_ws()
+    ws.clear()
+    ws.update(values=rows, range_name="A1", value_input_option="USER_ENTERED")
+
+
+# ----------------------------------------------------------------------
 # ワーカーマスタ
 # ----------------------------------------------------------------------
 def load_workers() -> dict[str, dict]:
-    """ワーカーマスタを読み込み。失敗時は例外を伝播（空dictで上書き事故を防ぐ）。"""
-    return _load_cell(WORKERS_CELL, {})
+    """ワーカーマスタを読み込み。失敗時は例外を伝播（空dictで上書き事故を防ぐ）。
+
+    A1 の workers 本体に加え、別ワークシートの timee_memo をマージして返す。
+    """
+    workers = _load_cell(WORKERS_CELL, {})
+    try:
+        memos = load_worker_memos()
+        for wid, memo in memos.items():
+            if wid in workers:
+                workers[wid]["timee_memo"] = memo
+    except Exception as e:
+        print(f"[WARN] load_worker_memos failed: {e}")
+    return workers
 
 
 def save_workers(workers: dict[str, dict]) -> None:
-    _save_cell(WORKERS_CELL, workers)
+    """A1 には timee_memo を含まない workers を保存し、timee_memo は別ワークシートへ。
+
+    A1 セル50K文字制限を回避するため、長文になりがちな timee_memo を分離。
+    """
+    memos: dict[str, str] = {}
+    cleaned: dict[str, dict] = {}
+    for wid, w in workers.items():
+        w_copy = dict(w)
+        memo = w_copy.pop("timee_memo", "") or ""
+        if memo:
+            memos[wid] = memo
+        cleaned[wid] = w_copy
+    _save_cell(WORKERS_CELL, cleaned)
+    try:
+        save_worker_memos(memos)
+    except Exception as e:
+        print(f"[WARN] save_worker_memos failed: {e}")
 
 
 def generate_new_id(existing: dict[str, dict]) -> str:

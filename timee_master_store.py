@@ -64,6 +64,16 @@ WORKER_MEMO_MAX_CHARS = 8000  # 1メモあたりの保存上限(セル50K対策)
 WORKER_TEXT_WORKSHEET = "timee_worker_texts"
 WORKER_TEXT_HEADERS = ["id", "メモ", "キャンセル履歴_json"]
 
+# ワーカーマスタを行ベース別ワークシートに移行 (A1 セル50K対策)
+# JSONキーの重複が大規模では容量を食うため、行ごとに格納
+WORKERS_TABLE_WORKSHEET = "timee_workers_table"
+WORKERS_TABLE_HEADERS = [
+    "id", "氏名", "カナ", "性別", "年齢", "初回登録日",
+    "タグ_json", "直雇勧誘済", "チェック日",
+    "good_rate", "cancel_rate",
+    "timee_detail_fetched_at", "timee_not_in_list", "timee_non_disclosed",
+]
+
 GS_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -249,6 +259,107 @@ def load_worker_texts() -> dict[str, dict]:
     return out
 
 
+def _get_workers_table_ws():
+    client = _get_client()
+    sh = client.open_by_key(_get_sheet_id())
+    try:
+        ws = sh.worksheet(WORKERS_TABLE_WORKSHEET)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(
+            title=WORKERS_TABLE_WORKSHEET,
+            rows=2,
+            cols=len(WORKERS_TABLE_HEADERS),
+        )
+        ws.update(values=[WORKERS_TABLE_HEADERS], range_name="A1")
+        return ws
+    try:
+        first = ws.row_values(1)
+        if first[: len(WORKERS_TABLE_HEADERS)] != WORKERS_TABLE_HEADERS:
+            ws.update(values=[WORKERS_TABLE_HEADERS], range_name="A1")
+    except Exception:
+        pass
+    return ws
+
+
+def _b_to_str(v) -> str:
+    return "true" if bool(v) else "false"
+
+
+def _str_to_b(v) -> bool:
+    if isinstance(v, bool):
+        return v
+    return str(v).strip().lower() in ("true", "1", "yes")
+
+
+def _load_workers_table() -> dict[str, dict]:
+    """timee_workers_table シートからワーカーマスタを読込。"""
+    try:
+        ws = _get_workers_table_ws()
+        records = ws.get_all_records()
+    except Exception:
+        return {}
+    out = {}
+    for r in records:
+        wid_raw = r.get("id")
+        if wid_raw in (None, ""):
+            continue
+        try:
+            wid = f"{int(wid_raw):06d}"
+        except (TypeError, ValueError):
+            wid = str(wid_raw)
+        try:
+            tags = json.loads(r.get("タグ_json") or "[]")
+        except Exception:
+            tags = []
+        age_raw = str(r.get("年齢") or "").strip()
+        try:
+            age = int(age_raw) if age_raw else None
+        except ValueError:
+            age = None
+        out[wid] = {
+            "氏名": str(r.get("氏名", "") or ""),
+            "カナ": str(r.get("カナ", "") or ""),
+            "性別": str(r.get("性別", "") or ""),
+            "年齢": age,
+            "初回登録日": str(r.get("初回登録日", "") or ""),
+            "タグ": tags,
+            "直雇勧誘済": _str_to_b(r.get("直雇勧誘済")),
+            "チェック日": (str(r.get("チェック日", "") or "").strip() or None),
+            "good_rate": str(r.get("good_rate", "") or ""),
+            "cancel_rate": str(r.get("cancel_rate", "") or ""),
+            "timee_detail_fetched_at": (str(r.get("timee_detail_fetched_at", "") or "").strip() or None),
+            "timee_not_in_list": _str_to_b(r.get("timee_not_in_list")),
+            "timee_non_disclosed": _str_to_b(r.get("timee_non_disclosed")),
+        }
+    return out
+
+
+def _save_workers_table(workers: dict[str, dict]) -> None:
+    """ワーカーマスタを timee_workers_table に全置換保存。"""
+    rows = [WORKERS_TABLE_HEADERS]
+    for wid, w in workers.items():
+        tags = w.get("タグ") or []
+        rows.append([
+            str(wid),
+            str(w.get("氏名", "") or ""),
+            str(w.get("カナ", "") or ""),
+            str(w.get("性別", "") or ""),
+            "" if w.get("年齢") is None else str(int(w.get("年齢"))),
+            str(w.get("初回登録日", "") or ""),
+            json.dumps(tags, ensure_ascii=False) if tags else "",
+            _b_to_str(w.get("直雇勧誘済")),
+            str(w.get("チェック日") or ""),
+            str(w.get("good_rate", "") or ""),
+            str(w.get("cancel_rate", "") or ""),
+            str(w.get("timee_detail_fetched_at") or ""),
+            _b_to_str(w.get("timee_not_in_list")),
+            _b_to_str(w.get("timee_non_disclosed")),
+        ])
+    ws = _get_workers_table_ws()
+    ws.clear()
+    ws.update(values=rows, range_name="A1", value_input_option="USER_ENTERED")
+
+
 def save_worker_texts(texts: dict[str, dict]) -> None:
     """{wid: {"メモ", "キャンセル履歴"}} を全置換保存。空エントリは保存しない。"""
     rows = [WORKER_TEXT_HEADERS]
@@ -271,12 +382,18 @@ def save_worker_texts(texts: dict[str, dict]) -> None:
 def load_workers() -> dict[str, dict]:
     """ワーカーマスタを読み込み。失敗時は例外を伝播（空dictで上書き事故を防ぐ）。
 
-    A1 の workers 本体に加え、別ワークシートの
-    - timee_memo (Timee側ミラー)
-    - メモ / キャンセル履歴 (可変長フィールド)
-    をマージして返す。
+    優先順位: 行ベース(timee_workers_table) → A1セル(レガシー)。
+    その後、別ワークシートの timee_memo / メモ + キャンセル履歴 をマージ。
     """
-    workers = _load_cell(WORKERS_CELL, {})
+    # 1) 行ベース読込を優先
+    workers = _load_workers_table()
+    # 2) フォールバック: A1セル(マイグレーション元)
+    if not workers:
+        try:
+            workers = _load_cell(WORKERS_CELL, {})
+        except Exception:
+            workers = {}
+    # 3) timee_memo マージ
     try:
         memos = load_worker_memos()
         for wid, memo in memos.items():
@@ -284,6 +401,7 @@ def load_workers() -> dict[str, dict]:
                 workers[wid]["timee_memo"] = memo
     except Exception as e:
         print(f"[WARN] load_worker_memos failed: {e}")
+    # 4) メモ + キャンセル履歴 マージ
     try:
         texts = load_worker_texts()
         for wid, t in texts.items():
@@ -296,12 +414,10 @@ def load_workers() -> dict[str, dict]:
 
 
 def save_workers(workers: dict[str, dict]) -> None:
-    """A1セル50K文字制限を回避するため、可変長フィールドを別ワークシートに分離保存。
+    """ワーカーマスタを行ベースシート(timee_workers_table) + 別シートに分離保存。
 
-    分離対象:
-      - timee_memo → timee_worker_memos
-      - メモ + キャンセル履歴 → timee_worker_texts
-    A1 には残りの軽量フィールドのみ。
+    A1セル50K制限を完全回避するため、行ベース格納に移行。
+    可変長フィールド (timee_memo / メモ / キャンセル履歴) は別シート維持。
     """
     memos: dict[str, str] = {}
     texts: dict[str, dict] = {}
@@ -318,7 +434,13 @@ def save_workers(workers: dict[str, dict]) -> None:
         if user_memo or cancel_history:
             texts[wid] = {"メモ": user_memo, "キャンセル履歴": cancel_history}
         cleaned[wid] = w_copy
-    _save_cell(WORKERS_CELL, cleaned)
+    # 行ベースで保存
+    _save_workers_table(cleaned)
+    # 旧A1セルは空にしてレガシーデータの混乱を避ける
+    try:
+        _save_cell(WORKERS_CELL, {})
+    except Exception:
+        pass
     try:
         save_worker_memos(memos)
     except Exception as e:

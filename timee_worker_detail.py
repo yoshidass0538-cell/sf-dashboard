@@ -137,27 +137,74 @@ def _collect_worker_urls(page) -> List[Dict]:
             out.append(r)
             added += 1
         print(f"[stage] _collect_worker_urls page {_page_idx+1}: +{added} (total {len(out)}) url={page.url}", flush=True)
-        if added == 0 and _page_idx == 0:
-            # 初回0件: ダンプして調査用に残す
-            _dump(page, f"list_empty_page{_page_idx+1}")
+        # 初回ページのサンプルURLを最大3件出力（URL構造確認用）
+        if _page_idx == 0:
+            for s in out[:3]:
+                print(f"[stage]   sample href={s.get('href')} text={s.get('text','')[:80]}", flush=True)
+            if added == 0:
+                _dump(page, f"list_empty_page{_page_idx+1}")
 
-        # 「次へ」ボタンを探してクリック
+        # ページネーション: 複数パターンを試す
         clicked = False
-        for loc in [
-            'xpath=//button[normalize-space()="次へ" or contains(@aria-label, "次")]',
-            'xpath=//a[normalize-space()="次へ" or contains(@aria-label, "次")]',
-        ]:
+        # 1) 矢印 / 次へボタン
+        next_btn_locators = [
+            'xpath=//button[normalize-space()="次へ" or @aria-label="次へ" or contains(@aria-label, "次のページ") or @aria-label="Next" or contains(@aria-label, "next")]',
+            'xpath=//a[normalize-space()="次へ" or @aria-label="次へ" or @aria-label="Next" or contains(@aria-label, "next")]',
+            # 矢印アイコン
+            'xpath=//button[contains(., "›") or contains(., "▶") or contains(., "»")]',
+            # rel=next
+            'xpath=//a[@rel="next"]',
+        ]
+        for loc in next_btn_locators:
             try:
                 btn = page.locator(loc).first
-                if btn.count() and btn.is_enabled():
-                    btn.click(timeout=2000)
-                    page.wait_for_load_state("domcontentloaded")
-                    page.wait_for_timeout(500)
-                    clicked = True
-                    break
+                if btn.count() == 0:
+                    continue
+                # disabled なら次ページなし
+                try:
+                    if not btn.is_enabled():
+                        continue
+                except Exception:
+                    pass
+                btn.scroll_into_view_if_needed(timeout=2000)
+                btn.click(timeout=3000)
+                page.wait_for_load_state("domcontentloaded")
+                page.wait_for_timeout(700)
+                clicked = True
+                print(f"[stage]   pagination clicked via {loc[:60]}...", flush=True)
+                break
             except Exception:
                 continue
+        # 2) 数字ページネーション（「{次のページ}」リンク）
         if not clicked:
+            try:
+                cur_page = _page_idx + 1
+                next_page = cur_page + 1
+                # 「2」「3」などの数字ボタン/リンク
+                num_loc = f'xpath=(//button[normalize-space()="{next_page}"] | //a[normalize-space()="{next_page}"])[1]'
+                btn = page.locator(num_loc).first
+                if btn.count():
+                    btn.click(timeout=3000)
+                    page.wait_for_load_state("domcontentloaded")
+                    page.wait_for_timeout(700)
+                    clicked = True
+                    print(f"[stage]   pagination clicked number {next_page}", flush=True)
+            except Exception:
+                pass
+        # 3) 無限スクロール: 末尾までスクロール
+        if not clicked:
+            try:
+                prev_height = page.evaluate("() => document.body.scrollHeight")
+                page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(1500)
+                new_height = page.evaluate("() => document.body.scrollHeight")
+                if new_height > prev_height:
+                    clicked = True
+                    print(f"[stage]   pagination via scroll (height {prev_height}->{new_height})", flush=True)
+            except Exception:
+                pass
+        if not clicked:
+            print(f"[stage] _collect_worker_urls: no more pages after {_page_idx+1}", flush=True)
             break
     return out
 

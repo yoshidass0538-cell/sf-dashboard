@@ -65,44 +65,54 @@ def _login(page, email: str, password: str) -> None:
 # ---------------------------------------------------------------- ナビゲーション
 def _navigate_to_jobs_calendar(page) -> None:
     """左ナビ「求人一覧」をクリックして求人カレンダー画面へ。"""
-    # 候補URLを順に試す
-    candidate_urls = [
-        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/offers/calendar",
-        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/offers",
-        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/jobs/calendar",
-        f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/jobs",
-    ]
-    for url in candidate_urls:
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=15000)
-            print(f"[stage] _navigate_to_jobs_calendar tried url={url} -> current={page.url}", flush=True)
-            # 求人カレンダーの特徴: 「ひな形から求人を作成」 ボタン or 月ヘッダ
-            if page.locator('xpath=//*[contains(., "ひな形から求人を作成")]').count():
-                print(f"[stage] _navigate_to_jobs_calendar reached calendar via {url}", flush=True)
-                break
-        except Exception as e:
-            print(f"[stage] _navigate_to_jobs_calendar {url} failed: {e}", flush=True)
-
-    # それでも到達できない場合はナビリンク経由
-    if not page.locator('xpath=//*[contains(., "ひな形から求人を作成")]').count():
-        try:
-            page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/", wait_until="domcontentloaded")
-            nav = page.get_by_role("link", name=re.compile(r"^求人一覧$|求人一覧"))
-            if nav.count():
-                nav.first.click()
+    # まずクライアントトップに行ってからナビをクリック（実績パターン）
+    try:
+        page.goto(f"https://app-new.taimee.co.jp/clients/{CLIENT_ID}/", wait_until="domcontentloaded")
+        # ナビ要素のレンダリング待ち
+        page.wait_for_timeout(800)
+        # 「求人一覧」リンクをクリック（role=link, button, テキストの順で試す）
+        clicked = False
+        for getter_name, getter in [
+            ("link-strict", lambda: page.get_by_role("link", name="求人一覧").first),
+            ("link-regex", lambda: page.get_by_role("link", name=re.compile(r"求人一覧")).first),
+            ("button-regex", lambda: page.get_by_role("button", name=re.compile(r"求人一覧")).first),
+            ("text", lambda: page.get_by_text("求人一覧").first),
+        ]:
+            try:
+                el = getter()
+                el.click(timeout=5000)
                 page.wait_for_load_state("domcontentloaded")
-                print(f"[stage] _navigate_to_jobs_calendar via nav -> {page.url}", flush=True)
-        except Exception as e:
-            print(f"[stage] _navigate_to_jobs_calendar nav fallback failed: {e}", flush=True)
+                clicked = True
+                print(f"[stage] _navigate_to_jobs_calendar clicked via {getter_name} -> {page.url}", flush=True)
+                break
+            except Exception as e:
+                print(f"[stage] _navigate_to_jobs_calendar {getter_name} failed: {e}", flush=True)
+        if not clicked:
+            print("[stage] _navigate_to_jobs_calendar: could not click 求人一覧 nav", flush=True)
+            _dump(page, "nav_fail")
+    except Exception as e:
+        print(f"[stage] _navigate_to_jobs_calendar nav exception: {e}", flush=True)
+        _dump(page, "nav_exception")
 
-    # カレンダー領域が描画されるまで少し待つ（"YYYY年M月" 単独表示を期待）
+    # Reactレンダリング・カレンダー描画待ち
+    page.wait_for_timeout(1500)
+    print(f"[stage] _navigate_to_jobs_calendar landed url={page.url}", flush=True)
+    # カレンダー領域が描画されるまで待つ
     try:
         page.wait_for_function(
-            r"() => /\d{4}\s*年\s*\d{1,2}\s*月(?!\d)/.test(document.body.innerText)",
-            timeout=10000,
+            r"""() => {
+                // 月ヘッダ "YYYY年M月" 単独表記 + ひな形作成ボタンの両方が見つかれば描画完了とみなす
+                const hasHeader = !!Array.from(document.querySelectorAll('h1, h2, h3, h4, [class*="heading"], [class*="title"]'))
+                  .find(el => /\d{4}\s*年\s*\d{1,2}\s*月(?!\s*\d)/.test((el.textContent || '').trim()) && (el.textContent || '').trim().length < 40);
+                const hasButton = /ひな形から求人を作成/.test(document.body.innerText);
+                return hasHeader && hasButton;
+            }""",
+            timeout=15000,
         )
+        print("[stage] _navigate_to_jobs_calendar: calendar markers detected", flush=True)
     except Exception:
-        pass
+        print("[stage] _navigate_to_jobs_calendar: calendar markers NOT detected within 15s, dumping", flush=True)
+        _dump(page, "no_calendar_markers")
 
 
 def _navigate_to_month(page, year: int, month: int) -> None:

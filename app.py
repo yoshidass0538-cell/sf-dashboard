@@ -4009,7 +4009,9 @@ if selected_key == "timee_management":
             _gb.configure_column("氏名", flex=1, minWidth=100)
             _gb.configure_column("カナ", flex=1, minWidth=110)
             _gb.configure_column("性別", width=55, suppressSizeToFit=True)
-            _gb.configure_column("年齢", width=60, type=["numericColumn"], suppressSizeToFit=True)
+            _gb.configure_column("年齢", width=60, type=["numericColumn"], suppressSizeToFit=True,
+                cellStyle={"display": "flex", "alignItems": "center",
+                           "justifyContent": "center", "textAlign": "center"})
             _gb.configure_column("次回出勤日", width=90, suppressSizeToFit=True)
             _gb.configure_column("業務", flex=2, minWidth=140,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
@@ -4056,7 +4058,9 @@ if selected_key == "timee_management":
             _gb.configure_column("タグ", flex=1, minWidth=120)
             _gb.configure_column("直雇勧誘済", width=95, suppressSizeToFit=True)
             _gb.configure_column("チェック日", width=110, suppressSizeToFit=True)
-            _gb.configure_column("キャンセル数", width=90, type=["numericColumn"], suppressSizeToFit=True)
+            _gb.configure_column("キャンセル数", width=90, type=["numericColumn"], suppressSizeToFit=True,
+                cellStyle={"display": "flex", "alignItems": "center",
+                           "justifyContent": "center", "textAlign": "center"})
 
             _ag_css_w = {
                 ".ag-header-cell": {"background-color": "#E91E63", "color": "#fff",

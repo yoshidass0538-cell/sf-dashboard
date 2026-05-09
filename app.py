@@ -3590,7 +3590,7 @@ if selected_key == "skill_tree":
         get_skill_tree, save_skill_tree, clear_skill_tree_cache, next_branch_id,
     )
 
-    # 親→子伝搬: 子全部チェックなら親自動チェック(再帰)
+    # 上方向(子→親)伝搬: 子全部チェックなら親自動チェック(再帰)
     def _skt_propagate(branch_data):
         _nodes_b = branch_data.get("nodes", []) or []
         _children_of = {}
@@ -3611,19 +3611,46 @@ if selected_key == "skill_tree":
                     _n["checked"] = _new_v
                     _changed = True
 
-    # チェックボックス変更時の自動保存コールバック(親自動チェック付き)
+    # 下方向(親→子孫)伝搬: 親をチェック/解除するとすべての子孫に同じ値を適用
+    def _skt_propagate_down(branch_data, root_id, value):
+        _nodes_b = branch_data.get("nodes", []) or []
+        _children_of = {}
+        for _n in _nodes_b:
+            _p = _n.get("parent")
+            if _p is not None:
+                _children_of.setdefault(_p, []).append(_n["id"])
+        _by_id = {_n["id"]: _n for _n in _nodes_b}
+        _stack = list(_children_of.get(root_id, []))
+        while _stack:
+            _cur = _stack.pop()
+            _node_cur = _by_id.get(_cur)
+            if _node_cur is None:
+                continue
+            _node_cur["checked"] = value
+            _stack.extend(_children_of.get(_cur, []))
+
+    # チェックボックス変更時の自動保存コールバック(双方向伝搬付き)
     def _skt_on_check_change(_bid, _nid, _wkey):
         _new_val = bool(st.session_state.get(_wkey, False))
         try:
             _data_x = get_skill_tree()
             for _b in _data_x.get("branches", []):
                 if int(_b.get("id", 0)) == _bid:
+                    # 対象ノードを更新
+                    _has_children = False
                     for _n in _b.get("nodes", []):
                         if int(_n.get("id", 0)) == _nid:
                             _n["checked"] = _new_val
-                            break
+                    # 子孫の存在判定
+                    _has_children = any(
+                        _n.get("parent") == _nid for _n in _b.get("nodes", [])
+                    )
+                    # 親をトグルしたら子孫も同じ値に
+                    if _has_children:
+                        _skt_propagate_down(_b, _nid, _new_val)
+                    # 子→親 自動チェック
                     _skt_propagate(_b)
-                    # session_state のチェックboxウィジェット側も同期
+                    # session_state のチェックboxウィジェットも同期
                     for _n in _b.get("nodes", []):
                         _wkey2 = f"skt_inline_b{_bid}_n{_n['id']}"
                         st.session_state[_wkey2] = bool(_n.get("checked", False))
@@ -3669,6 +3696,26 @@ if selected_key == "skill_tree":
                     if _n.get("parent") == _nid:
                         _n["parent"] = _parent_d
                 _ns.pop(_idx_d)
+                return
+
+    def _skt_cb_move_node(_bid, _nid, _dir):
+        _skt0 = st.session_state.get("skt_edit")
+        if not _skt0:
+            return
+        for _b in _skt0.get("branches", []):
+            if _b.get("id") == _bid:
+                _ns = _b.get("nodes", []) or []
+                _idx_m = None
+                for _i, _n in enumerate(_ns):
+                    if _n.get("id") == _nid:
+                        _idx_m = _i
+                        break
+                if _idx_m is None:
+                    return
+                if _dir == "up" and _idx_m > 0:
+                    _ns[_idx_m - 1], _ns[_idx_m] = _ns[_idx_m], _ns[_idx_m - 1]
+                elif _dir == "down" and _idx_m < len(_ns) - 1:
+                    _ns[_idx_m], _ns[_idx_m + 1] = _ns[_idx_m + 1], _ns[_idx_m]
                 return
 
     # ----- 編集UI(画面上で直接編集) -----
@@ -3730,38 +3777,11 @@ if selected_key == "skill_tree":
                         _node_ids = [n["id"] for n in _nodes]
                         _label_by_id = {n["id"]: n.get("label", "") for n in _nodes}
 
-                        # ドラッグ&ドロップ並び替え(オプション、エキスパンダ内)
-                        with st.expander("🔃 ノード並び替え（ドラッグ&ドロップ）", expanded=False):
-                            from streamlit_sortables import sort_items as _skt_sort
-                            _sort_input = [
-                                f"{(_n.get('label') or '(無題)').strip() or '(無題)'}　⟨#{_n['id']}⟩"
-                                for _n in _nodes
-                            ]
-                            _sort_output = _skt_sort(
-                                _sort_input,
-                                direction="vertical",
-                                key=f"skt_sort_b{_bid}",
-                            )
-                            if _sort_output != _sort_input:
-                                _new_order = []
-                                for _s in _sort_output:
-                                    try:
-                                        _tail = _s.rsplit("⟨#", 1)[1]
-                                        _nid_x = int(_tail.rstrip("⟩"))
-                                        for _n in _nodes:
-                                            if _n["id"] == _nid_x:
-                                                _new_order.append(_n)
-                                                break
-                                    except Exception:
-                                        pass
-                                if len(_new_order) == len(_nodes):
-                                    _nodes.clear()
-                                    _nodes.extend(_new_order)
-                                    st.rerun()
-
                         for _ni, _node in enumerate(_nodes):
                             _nid = _node["id"]
-                            _nc1, _nc2, _nc3, _nc4 = st.columns([3, 2.4, 1.2, 1])
+                            _nc1, _nc2, _ncu, _ncd, _nc3, _nc4 = st.columns(
+                                [3, 2.2, 0.6, 0.6, 1.2, 1]
+                            )
                             _node["label"] = _nc1.text_input(
                                 f"ノード {_ni + 1}",
                                 value=_node.get("label", ""),
@@ -3791,6 +3811,24 @@ if selected_key == "skill_tree":
                                 label_visibility="collapsed",
                             )
                             _node["parent"] = _opt_ids[_new_p_idx]
+                            if _ni > 0:
+                                _ncu.button(
+                                    "⬆",
+                                    key=f"skt_b{_bid}_n{_nid}_up",
+                                    help="上へ",
+                                    use_container_width=True,
+                                    on_click=_skt_cb_move_node,
+                                    args=(_bid, _nid, "up"),
+                                )
+                            if _ni < len(_nodes) - 1:
+                                _ncd.button(
+                                    "⬇",
+                                    key=f"skt_b{_bid}_n{_nid}_down",
+                                    help="下へ",
+                                    use_container_width=True,
+                                    on_click=_skt_cb_move_node,
+                                    args=(_bid, _nid, "down"),
+                                )
                             _nc3.button(
                                 "➕ 子",
                                 key=f"skt_b{_bid}_n{_nid}_addchild",

@@ -108,12 +108,18 @@ def get_skill_tree() -> dict:
 
 
 def save_skill_tree(data: dict) -> tuple[bool, str]:
-    """スキルツリーをSheetsに保存。失敗時は例外伝播。"""
+    """スキルツリーをSheetsに保存。失敗時は例外伝播。
+
+    cache はクリアせず in-place で更新する（クリアすると次の get で
+    Sheets 再読込が走り read quota を圧迫するため）。
+    """
     if not isinstance(data, dict) or not isinstance(data.get("branches"), list):
         raise ValueError("invalid skill_tree data")
     ws = _get_ws()
     ws.update(CELL, [[json.dumps(data, ensure_ascii=False)]])
-    clear_skill_tree_cache()
+    # キャッシュを直接更新
+    cache = _shared_cache()
+    cache["data"] = json.loads(json.dumps(data))
     return True, "スキルツリーを保存しました。"
 
 

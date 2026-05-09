@@ -508,6 +508,119 @@ if selected_key == "_master":
 
     st.divider()
 
+    # --- 🌳 スキルツリー編集 ---
+    with st.expander("🌳 スキルツリー編集", expanded=False):
+        from skill_tree_store import (
+            get_skill_tree, save_skill_tree, clear_skill_tree_cache, next_branch_id,
+        )
+
+        st.caption(
+            "起点ラベル・各分岐の名前/色/ステージを編集できます。"
+            "「💾 保存」を押すと全ユーザーに反映されます。"
+        )
+
+        # 編集状態(マスタ画面を開いた時にSheetsから初期化)
+        if "skt_edit" not in st.session_state:
+            try:
+                st.session_state["skt_edit"] = get_skill_tree()
+            except Exception as _e:
+                st.error(f"読み込みに失敗: {_e}")
+                st.session_state["skt_edit"] = None
+
+        if st.session_state.get("skt_edit") is not None:
+            _skt = st.session_state["skt_edit"]
+
+            _skt["start_label"] = st.text_input(
+                "起点ラベル", value=_skt.get("start_label", "新人入社"),
+                key="skt_in_start",
+            )
+
+            st.markdown("**分岐**")
+
+            _del_idx = None
+            _move_op = None  # (idx, "up" | "down")
+
+            for _idx, _branch in enumerate(_skt.get("branches", [])):
+                _bid = _branch.get("id", _idx)
+                with st.container(border=True):
+                    _c1, _c2, _c3, _c4, _c5 = st.columns([4, 1.4, 0.6, 0.6, 0.6])
+                    _branch["label"] = _c1.text_input(
+                        "分岐名", value=_branch.get("label", ""),
+                        key=f"skt_in_b{_bid}_label",
+                    )
+                    _branch["color"] = _c2.color_picker(
+                        "色", value=_branch.get("color", "#888888"),
+                        key=f"skt_in_b{_bid}_color",
+                    )
+                    if _idx > 0:
+                        if _c3.button("⬆", key=f"skt_b{_bid}_up", help="上へ"):
+                            _move_op = (_idx, "up")
+                    if _idx < len(_skt["branches"]) - 1:
+                        if _c4.button("⬇", key=f"skt_b{_bid}_down", help="下へ"):
+                            _move_op = (_idx, "down")
+                    if _c5.button("🗑", key=f"skt_b{_bid}_del", help="削除"):
+                        _del_idx = _idx
+
+                    _stages_text = "\n".join(_branch.get("stages", []))
+                    _new_stages = st.text_area(
+                        "ステージ（1行=1ノード、上から下へ並ぶ順）",
+                        value=_stages_text,
+                        key=f"skt_in_b{_bid}_stages",
+                        height=120,
+                    )
+                    _branch["stages"] = [s.strip() for s in _new_stages.split("\n") if s.strip()]
+
+            # 並び替え操作
+            if _move_op is not None:
+                _i, _dir = _move_op
+                if _dir == "up" and _i > 0:
+                    _skt["branches"][_i - 1], _skt["branches"][_i] = (
+                        _skt["branches"][_i], _skt["branches"][_i - 1]
+                    )
+                elif _dir == "down" and _i < len(_skt["branches"]) - 1:
+                    _skt["branches"][_i], _skt["branches"][_i + 1] = (
+                        _skt["branches"][_i + 1], _skt["branches"][_i]
+                    )
+                st.rerun()
+
+            if _del_idx is not None:
+                _skt["branches"].pop(_del_idx)
+                st.rerun()
+
+            if st.button("➕ 分岐を追加", key="skt_add_branch"):
+                _skt["branches"].append({
+                    "id": next_branch_id(_skt["branches"]),
+                    "label": "新規分岐",
+                    "color": "#888888",
+                    "stages": ["ステージ1"],
+                })
+                st.rerun()
+
+            st.markdown("---")
+            _sc1, _sc2 = st.columns([1, 1])
+            if _sc1.button("💾 スキルツリーを保存", key="skt_save", type="primary",
+                           use_container_width=True):
+                try:
+                    ok, msg = save_skill_tree(_skt)
+                    st.toast(msg, icon="✅" if ok else "⚠️")
+                    # 保存後、編集状態と入力ウィジェットの状態をクリアして再読込
+                    for _k in list(st.session_state.keys()):
+                        if _k.startswith("skt_in_") or _k == "skt_edit":
+                            del st.session_state[_k]
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"保存に失敗: {_e}")
+
+            if _sc2.button("🔄 リセット(Sheetsから再読込)", key="skt_reset",
+                           use_container_width=True):
+                clear_skill_tree_cache()
+                for _k in list(st.session_state.keys()):
+                    if _k.startswith("skt_in_") or _k == "skt_edit":
+                        del st.session_state[_k]
+                st.rerun()
+
+    st.divider()
+
     # --- 📝 トーク種類管理 ---
     with st.expander("📝 トーク種類管理", expanded=False):
         from tool_members_store import (
@@ -3584,25 +3697,45 @@ if selected_key == "orikaeshi_kensu":
 
     st.stop()
 
-# スキルツリーボード(準備中・サンプル描画 / SVG手描き)
+# スキルツリーボード(SVG手描き / Sheetsから動的読込)
 if selected_key == "skill_tree":
-    st.caption("※ サンプル表示。スキル定義・習得管理は今後追加予定。")
+    from skill_tree_store import get_skill_tree
+    try:
+        _skt_data = get_skill_tree()
+    except Exception as _e:
+        st.error(f"スキルツリーデータの読み込みに失敗: {_e}")
+        st.stop()
 
-    _SVG_W = 1100
+    _start_label = (_skt_data.get("start_label") or "新人入社").strip() or "新人入社"
+    _branches_src = [
+        b for b in _skt_data.get("branches", [])
+        if (b.get("label") or "").strip() and (b.get("stages") or [])
+    ]
+    if not _branches_src:
+        st.info("スキルツリーが未定義です。マスタ画面で分岐とステージを作成してください。")
+        st.stop()
+
+    _branches = [
+        ((b.get("label") or "").strip(),
+         (b.get("color") or "#888888").strip() or "#888888",
+         [s.strip() for s in (b.get("stages") or []) if s.strip()])
+        for b in _branches_src
+    ]
+
     _PILL_W = 180
     _PILL_H = 44
     _START_Y = 20
     _HEADER_Y = 130
     _GAP = 78
-    _COLS_X = [137, 412, 687, 962]
-    _branches = [
-        ("受信", "#22c55e", ["受信基礎", "受信応用", "受信マスター"]),
-        ("発信", "#eab308", ["発信基礎", "発信応用", "発信マスター"]),
-        ("事務", "#ef4444", ["事務基礎", "事務応用", "事務マスター"]),
-        ("育成", "#3b82f6", ["育成基礎", "育成応用", "育成マスター"]),
-    ]
-    _SVG_H = _HEADER_Y + 3 * _GAP + _PILL_H + 24
+    _COL_W = 275  # カラム間の中心距離
+    _LEFT_PAD = 137
+    _n_cols = len(_branches)
+    _SVG_W = max(_LEFT_PAD * 2, _LEFT_PAD * 2 + (_n_cols - 1) * _COL_W)
+    _COLS_X = [_LEFT_PAD + _i * _COL_W for _i in range(_n_cols)]
+    _max_stages = max(len(s) for _, _, s in _branches)
+    _SVG_H = _HEADER_Y + _max_stages * _GAP + _PILL_H + 24
 
+    import html as _skt_html
     _parts = [
         f'<svg viewBox="0 0 {_SVG_W} {_SVG_H}" xmlns="http://www.w3.org/2000/svg" '
         f'style="width:100%;max-width:1100px;height:auto;display:block;margin:0 auto;">'
@@ -3612,9 +3745,9 @@ if selected_key == "skill_tree":
         '<filter id="sk_shadow" x="-50%" y="-50%" width="200%" height="200%">'
         '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.35"/></filter>'
     )
-    for _label, _color, _ in _branches:
+    for _gi, (_label, _color, _) in enumerate(_branches):
         _parts.append(
-            f'<linearGradient id="sk_g_{_label}" x1="0" y1="0" x2="0" y2="1">'
+            f'<linearGradient id="sk_g_{_gi}" x1="0" y1="0" x2="0" y2="1">'
             f'<stop offset="0" stop-color="{_color}"/>'
             f'<stop offset="1" stop-color="{_color}" stop-opacity="0.78"/>'
             f'</linearGradient>'
@@ -3629,15 +3762,16 @@ if selected_key == "skill_tree":
     _mid_x = _SVG_W / 2
     _fan_y = _HEADER_Y - 18
 
-    # 起点 → 4分岐 への接続線
+    # 起点 → 分岐 への接続線
     _parts.append(
         f'<line x1="{_mid_x}" y1="{_START_Y + _PILL_H}" x2="{_mid_x}" y2="{_fan_y}" '
         f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
     )
-    _parts.append(
-        f'<line x1="{_COLS_X[0]}" y1="{_fan_y}" x2="{_COLS_X[-1]}" y2="{_fan_y}" '
-        f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
-    )
+    if len(_COLS_X) >= 2:
+        _parts.append(
+            f'<line x1="{_COLS_X[0]}" y1="{_fan_y}" x2="{_COLS_X[-1]}" y2="{_fan_y}" '
+            f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
+        )
     for _cx in _COLS_X:
         _parts.append(
             f'<line x1="{_cx}" y1="{_fan_y}" x2="{_cx}" y2="{_HEADER_Y}" '
@@ -3653,23 +3787,23 @@ if selected_key == "skill_tree":
     _parts.append(
         f'<text x="{_mid_x}" y="{_START_Y + _PILL_H / 2 + 5}" text-anchor="middle" '
         f'fill="#fff" font-weight="700" font-size="14" font-family="Meiryo, sans-serif">'
-        f'新人入社</text>'
+        f'{_skt_html.escape(_start_label)}</text>'
     )
 
-    # 4分岐
+    # 各分岐
     for _col_idx, (_label, _color, _stages) in enumerate(_branches):
         _cx = _COLS_X[_col_idx]
         _y = _HEADER_Y
         # 分岐ヘッダー
         _parts.append(
             f'<rect x="{_cx - _PILL_W / 2}" y="{_y}" width="{_PILL_W}" height="{_PILL_H}" '
-            f'rx="22" ry="22" fill="url(#sk_g_{_label})" stroke="{_color}" stroke-width="0" '
+            f'rx="22" ry="22" fill="url(#sk_g_{_col_idx})" stroke="{_color}" stroke-width="0" '
             f'filter="url(#sk_shadow)"/>'
         )
         _parts.append(
             f'<text x="{_cx}" y="{_y + _PILL_H / 2 + 5}" text-anchor="middle" '
             f'fill="#fff" font-weight="800" font-size="15" font-family="Meiryo, sans-serif" '
-            f'letter-spacing="0.06em">{_label}</text>'
+            f'letter-spacing="0.06em">{_skt_html.escape(_label)}</text>'
         )
         # 各ステージ
         for _i, _stage in enumerate(_stages):
@@ -3681,13 +3815,13 @@ if selected_key == "skill_tree":
             )
             _parts.append(
                 f'<rect x="{_cx - _PILL_W / 2}" y="{_y}" width="{_PILL_W}" height="{_PILL_H}" '
-                f'rx="22" ry="22" fill="url(#sk_g_{_label})" stroke="none" '
+                f'rx="22" ry="22" fill="url(#sk_g_{_col_idx})" stroke="none" '
                 f'filter="url(#sk_shadow)"/>'
             )
             _parts.append(
                 f'<text x="{_cx}" y="{_y + _PILL_H / 2 + 5}" text-anchor="middle" '
                 f'fill="#fff" font-weight="600" font-size="13" font-family="Meiryo, sans-serif">'
-                f'{_stage}</text>'
+                f'{_skt_html.escape(_stage)}</text>'
             )
 
     _parts.append('</svg>')

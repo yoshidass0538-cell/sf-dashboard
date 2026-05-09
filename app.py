@@ -3699,24 +3699,71 @@ if selected_key == "skill_tree":
                 return
 
     def _skt_cb_move_node(_bid, _nid, _dir):
+        """兄弟間でサブツリーごと位置入れ替え。"""
         _skt0 = st.session_state.get("skt_edit")
         if not _skt0:
             return
         for _b in _skt0.get("branches", []):
-            if _b.get("id") == _bid:
-                _ns = _b.get("nodes", []) or []
-                _idx_m = None
-                for _i, _n in enumerate(_ns):
-                    if _n.get("id") == _nid:
-                        _idx_m = _i
-                        break
-                if _idx_m is None:
-                    return
-                if _dir == "up" and _idx_m > 0:
-                    _ns[_idx_m - 1], _ns[_idx_m] = _ns[_idx_m], _ns[_idx_m - 1]
-                elif _dir == "down" and _idx_m < len(_ns) - 1:
-                    _ns[_idx_m], _ns[_idx_m + 1] = _ns[_idx_m + 1], _ns[_idx_m]
+            if _b.get("id") != _bid:
+                continue
+            _ns = _b.get("nodes", []) or []
+            # 対象ノード
+            _t_idx = None
+            _t_parent = None
+            for _i, _n in enumerate(_ns):
+                if _n.get("id") == _nid:
+                    _t_idx = _i
+                    _t_parent = _n.get("parent")
+                    break
+            if _t_idx is None:
                 return
+            # 同一親の兄弟インデックス
+            _sib_idxs = [_i for _i, _n in enumerate(_ns) if _n.get("parent") == _t_parent]
+            try:
+                _pos = _sib_idxs.index(_t_idx)
+            except ValueError:
+                return
+            _other_idx = None
+            if _dir == "up" and _pos > 0:
+                _other_idx = _sib_idxs[_pos - 1]
+            elif _dir == "down" and _pos < len(_sib_idxs) - 1:
+                _other_idx = _sib_idxs[_pos + 1]
+            if _other_idx is None:
+                return
+            # サブツリー(子孫)IDを収集
+            def _subtree_ids(_start_id):
+                _ids = {_start_id}
+                _stack = [_start_id]
+                while _stack:
+                    _cur = _stack.pop()
+                    for _n in _ns:
+                        if _n.get("parent") == _cur and _n["id"] not in _ids:
+                            _ids.add(_n["id"])
+                            _stack.append(_n["id"])
+                return _ids
+            _t_id = _ns[_t_idx]["id"]
+            _o_id = _ns[_other_idx]["id"]
+            _t_set = _subtree_ids(_t_id)
+            _o_set = _subtree_ids(_o_id)
+            # 各サブツリーをリスト順に抽出
+            _t_block = [_n for _n in _ns if _n["id"] in _t_set]
+            _o_block = [_n for _n in _ns if _n["id"] in _o_set]
+            _remaining = [_n for _n in _ns if _n["id"] not in _t_set and _n["id"] not in _o_set]
+            # 挿入位置: 元の最初のサブツリー先頭の手前にあった「remaining」要素数
+            _first_pos = min(_t_idx, _other_idx)
+            _insert_pos = sum(
+                1 for _i, _n in enumerate(_ns)
+                if _i < _first_pos and _n["id"] not in _t_set and _n["id"] not in _o_set
+            )
+            # 並び順決定
+            if _dir == "up":
+                _new_block = _t_block + _o_block
+            else:
+                _new_block = _o_block + _t_block
+            _new_list = _remaining[:_insert_pos] + _new_block + _remaining[_insert_pos:]
+            _ns.clear()
+            _ns.extend(_new_list)
+            return
 
     # ----- 編集UI(画面上で直接編集) -----
     with st.expander("✏ 編集する", expanded=False):
@@ -3777,6 +3824,11 @@ if selected_key == "skill_tree":
                         _node_ids = [n["id"] for n in _nodes]
                         _label_by_id = {n["id"]: n.get("label", "") for n in _nodes}
 
+                        # 親→兄弟ID列(リスト順) を作成して、兄弟内位置を判定
+                        _parent_to_sibs = {}
+                        for _nx in _nodes:
+                            _parent_to_sibs.setdefault(_nx.get("parent"), []).append(_nx["id"])
+
                         for _ni, _node in enumerate(_nodes):
                             _nid = _node["id"]
                             _nc1, _nc2, _ncu, _ncd, _nc3, _nc4 = st.columns(
@@ -3811,20 +3863,28 @@ if selected_key == "skill_tree":
                                 label_visibility="collapsed",
                             )
                             _node["parent"] = _opt_ids[_new_p_idx]
-                            if _ni > 0:
+                            # 同一親の兄弟内での位置を判定
+                            _sib_ids = _parent_to_sibs.get(_node.get("parent"), [])
+                            try:
+                                _sib_pos = _sib_ids.index(_nid)
+                            except ValueError:
+                                _sib_pos = 0
+                            _has_prev_sib = _sib_pos > 0
+                            _has_next_sib = _sib_pos < len(_sib_ids) - 1
+                            if _has_prev_sib:
                                 _ncu.button(
                                     "⬆",
                                     key=f"skt_b{_bid}_n{_nid}_up",
-                                    help="上へ",
+                                    help="兄弟内で上へ(サブツリーごと)",
                                     use_container_width=True,
                                     on_click=_skt_cb_move_node,
                                     args=(_bid, _nid, "up"),
                                 )
-                            if _ni < len(_nodes) - 1:
+                            if _has_next_sib:
                                 _ncd.button(
                                     "⬇",
                                     key=f"skt_b{_bid}_n{_nid}_down",
-                                    help="下へ",
+                                    help="兄弟内で下へ(サブツリーごと)",
                                     use_container_width=True,
                                     on_click=_skt_cb_move_node,
                                     args=(_bid, _nid, "down"),

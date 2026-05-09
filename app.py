@@ -3592,27 +3592,27 @@ if selected_key == "skill_tree":
 
     _g = _st_gv.Digraph(graph_attr={
         "rankdir": "LR",
-        "bgcolor": "#0a0a14",
+        "bgcolor": "transparent",
         "splines": "ortho",
         "nodesep": "0.35",
         "ranksep": "0.8",
     })
     _g.attr("node", shape="box", style="rounded,filled,bold",
             fontname="Meiryo", fontsize="12",
-            fontcolor="#0a0a14",
+            fontcolor="#FFFFFF",
             margin="0.2,0.1", height="0.5", width="2.0",
             penwidth="2")
 
     # --- 起点 ---
     _g.node("start", "新人入社",
-            fillcolor="#F5F5F5", fontcolor="#0a0a14", color="#FFFFFF", penwidth="3")
+            fillcolor="#404040", fontcolor="#FFFFFF", color="#666666")
 
-    # --- 4分岐(枝ごとにネオンカラーを統一) ---
+    # --- 4分岐(画像に寄せた配色: 緑/金/赤/青) ---
     _branches = [
-        ("受信", "#00E5FF", ["受信基礎", "受信応用", "受信マスター"]),  # ネオンシアン
-        ("発信", "#39FF14", ["発信基礎", "発信応用", "発信マスター"]),  # ネオングリーン
-        ("事務", "#FFD300", ["事務基礎", "事務応用", "事務マスター"]),  # ネオンイエロー
-        ("育成", "#FF10F0", ["育成基礎", "育成応用", "育成マスター"]),  # ネオンマゼンタ
+        ("受信", "#22c55e", ["受信基礎", "受信応用", "受信マスター"]),  # 緑
+        ("発信", "#eab308", ["発信基礎", "発信応用", "発信マスター"]),  # 金
+        ("事務", "#ef4444", ["事務基礎", "事務応用", "事務マスター"]),  # 赤
+        ("育成", "#3b82f6", ["育成基礎", "育成応用", "育成マスター"]),  # 青
     ]
 
     for _b_key, _color, _stages in _branches:
@@ -3620,8 +3620,8 @@ if selected_key == "skill_tree":
         for _i, _label in enumerate(_stages):
             _nid = f"{_b_key}_{_i}"
             _g.node(_nid, _label,
-                    fillcolor=_color, color=_color, fontcolor="#0a0a14")
-            _g.edge(_prev, _nid, color=_color, penwidth="3")
+                    fillcolor=_color, color=_color, fontcolor="#FFFFFF")
+            _g.edge(_prev, _nid, color=_color, penwidth="2.5")
             _prev = _nid
 
     st.graphviz_chart(_g, use_container_width=True)

@@ -3944,15 +3944,6 @@ if selected_key == "skill_tree":
                                 on_click=_skt_cb_del_node,
                                 args=(_bid, _nid),
                             )
-                            # メモ(任意・常時表示・コンパクト)
-                            _node["memo"] = st.text_area(
-                                f"メモ_{_nid}",
-                                value=_node.get("memo", ""),
-                                key=f"skt_in_b{_bid}_n{_nid}_memo",
-                                label_visibility="collapsed",
-                                height=68,
-                                placeholder="📝 このノードのメモ（任意・SVGホバー＆詳細パネルで参照）",
-                            )
 
                     # ノード追加(ルート/子の選択可)
                     _add_c1, _add_c2, _add_c3 = st.columns([4, 1, 1])
@@ -4314,9 +4305,14 @@ if selected_key == "skill_tree":
             _nid = _n["id"]
             _x_n, _d_n = _bl["positions"][_nid]
             _y_n = _depth_to_y(_d_n)
-            # ノードグループ(<title>でホバー時のメモ表示)
+            # ノードグループ(<title>でホバー時のメモ表示・1行サマリ)
             _memo_n = (_n.get("memo") or "").strip()
-            _tip_text = _n.get("label", "") + (("\n\n" + _memo_n) if _memo_n else "")
+            _memo_first = _memo_n.splitlines()[0] if _memo_n else ""
+            _tip_text = _n.get("label", "")
+            if _memo_first:
+                _tip_text += " — " + _memo_first[:80]
+                if len(_memo_n) > len(_memo_first) or len(_memo_first) > 80:
+                    _tip_text += "…"
             _parts.append('<g>')
             _parts.append(f'<title>{_skt_html.escape(_tip_text)}</title>')
             _parts.append(
@@ -4356,8 +4352,8 @@ if selected_key == "skill_tree":
     _parts.append('</div>')
     st.markdown("".join(_parts), unsafe_allow_html=True)
 
-    # ----- ノード詳細パネル (selectbox + メモ表示) -----
-    with st.expander("🔍 ノードの詳細を見る", expanded=False):
+    # ----- ノード詳細パネル (selectbox + メモ編集・保存) -----
+    with st.expander("🔍 ノードの詳細・メモを編集", expanded=False):
         _all_node_options = []
         for _bid_d, _lab_d, _col_d, _ns_d in _branches_src:
             for _nd in _ns_d:
@@ -4372,25 +4368,47 @@ if selected_key == "skill_tree":
             _sel = _all_node_options[_sel_idx]
             _sel_bid, _sel_nid, _sel_blabel, _sel_color, _sel_node = _sel
             _sel_state = "✅ 習得済み" if _sel_node.get("checked") else "⬜ 未習得"
-            _sel_memo = (_sel_node.get("memo") or "").strip()
+            _sel_memo = (_sel_node.get("memo") or "")
             st.markdown(
                 f"<div style='border-left:6px solid {_sel_color};padding:8px 12px;"
                 f"margin-top:6px;background:rgba(0,0,0,0.02);border-radius:4px;'>"
                 f"<div style='font-size:13px;color:#666;'>{_skt_html.escape(_sel_blabel)}</div>"
                 f"<div style='font-size:18px;font-weight:700;margin:2px 0;'>"
                 f"{_skt_html.escape(_sel_node.get('label', ''))}</div>"
-                f"<div style='font-size:13px;color:#444;margin-bottom:6px;'>{_sel_state}</div>"
-                + (
-                    f"<div style='font-size:13px;line-height:1.55;white-space:pre-wrap;"
-                    f"background:#fff;padding:8px 10px;border-radius:4px;"
-                    f"border:1px solid #e5e5e5;'>"
-                    f"{_skt_html.escape(_sel_memo)}</div>"
-                    if _sel_memo else
-                    "<div style='font-size:13px;color:#999;'>メモなし（編集タブから追加できます）</div>"
-                )
-                + "</div>",
+                f"<div style='font-size:13px;color:#444;'>{_sel_state}</div>"
+                f"</div>",
                 unsafe_allow_html=True,
             )
+            # メモ編集 (ノードごとに独立した key で保持)
+            _memo_widget_key = f"skt_dmemo_b{_sel_bid}_n{_sel_nid}"
+            if _memo_widget_key not in st.session_state:
+                st.session_state[_memo_widget_key] = _sel_memo
+            st.text_area(
+                "📝 メモ",
+                key=_memo_widget_key,
+                height=120,
+                placeholder="このノードのメモ（自由記入）",
+            )
+            _save_memo_clicked = st.button(
+                "💾 メモを保存", key=f"skt_dmemo_save_{_sel_bid}_{_sel_nid}",
+                type="primary",
+            )
+            if _save_memo_clicked:
+                try:
+                    _new_memo_val = st.session_state.get(_memo_widget_key, "")
+                    _data_m = get_skill_tree()
+                    for _b_m in _data_m.get("branches", []):
+                        if int(_b_m.get("id", 0)) == _sel_bid:
+                            for _n_m in _b_m.get("nodes", []):
+                                if int(_n_m.get("id", 0)) == _sel_nid:
+                                    _n_m["memo"] = _new_memo_val
+                                    break
+                            break
+                    save_skill_tree(_data_m)
+                    st.toast("メモを保存しました", icon="✅")
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"保存失敗: {_e}")
 
     # ----- 習得チェック (折りたたみ・タブ＋親別エキスパンダ・自動保存) -----
     with st.expander("✅ 習得チェック", expanded=False):

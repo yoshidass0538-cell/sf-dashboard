@@ -3969,6 +3969,19 @@ if selected_key == "skill_tree":
             if _sc1.button("💾 保存", key="skt_save", type="primary",
                            use_container_width=True):
                 try:
+                    # 構造保存時に最新の習得チェック状態を保持(クリック保存と競合させない)
+                    _latest_checks = get_skill_tree()
+                    _check_map = {
+                        (int(_b.get("id", 0)), int(_n.get("id", 0))): bool(_n.get("checked", False))
+                        for _b in _latest_checks.get("branches", [])
+                        for _n in _b.get("nodes", [])
+                    }
+                    for _b in _skt.get("branches", []):
+                        _bid_s = int(_b.get("id", 0))
+                        for _n in _b.get("nodes", []):
+                            _kc = (_bid_s, int(_n.get("id", 0)))
+                            if _kc in _check_map:
+                                _n["checked"] = _check_map[_kc]
                     ok, msg = save_skill_tree(_skt)
                     st.toast(msg, icon="✅" if ok else "⚠️")
                     for _k in list(st.session_state.keys()):

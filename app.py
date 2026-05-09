@@ -4351,14 +4351,21 @@ if selected_key == "skill_tree":
                     f'rx="3" ry="3" fill="rgba(255,255,255,0.18)" stroke="#ffffff" '
                     f'stroke-width="1.5"/>'
                 )
-            # メモあり目印(鉛筆) — チェックボックス右隣
+            # メモあり目印(鉛筆) — チェックボックス右隣に黄色いバッジ
             if _memo_n:
-                _pencil_x = _box_x + _box_size + 3
+                _badge_cx = _box_x + _box_size + 12
+                _badge_cy = _y_n + _PILL_H / 2
+                _badge_r = 10
                 _parts.append(
-                    f'<text x="{_pencil_x}" y="{_y_n + _PILL_H / 2 + 4}" '
-                    f'fill="#ffe082" font-size="12" font-family="Meiryo, sans-serif">✏</text>'
+                    f'<circle cx="{_badge_cx}" cy="{_badge_cy}" r="{_badge_r}" '
+                    f'fill="#fde047" stroke="#ffffff" stroke-width="2"/>'
                 )
-                _label_extra_shift = 8
+                _parts.append(
+                    f'<text x="{_badge_cx}" y="{_badge_cy + 5}" text-anchor="middle" '
+                    f'fill="#1f2937" font-size="14" font-family="Meiryo, sans-serif" '
+                    f'font-weight="700">✏</text>'
+                )
+                _label_extra_shift = 22
             else:
                 _label_extra_shift = 0
             # ラベル(チェックボックス＋鉛筆分だけ右にシフト)

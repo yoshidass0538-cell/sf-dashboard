@@ -3873,8 +3873,10 @@ if selected_key == "skill_tree":
 
     import html as _skt_html
     _parts = [
+        '<div style="overflow-x:auto;overflow-y:hidden;padding-bottom:8px;">',
         f'<svg viewBox="0 0 {_SVG_W} {_SVG_H}" xmlns="http://www.w3.org/2000/svg" '
-        f'style="width:100%;max-width:1100px;height:auto;display:block;margin:0 auto;">'
+        f'width="{_SVG_W}" height="{_SVG_H}" '
+        f'style="display:block;font-size:13px;">'
     ]
     _parts.append('<defs>')
     _parts.append(
@@ -4029,6 +4031,7 @@ if selected_key == "skill_tree":
             )
 
     _parts.append('</svg>')
+    _parts.append('</div>')
     st.markdown("".join(_parts), unsafe_allow_html=True)
     st.stop()
 

@@ -3807,7 +3807,7 @@ if selected_key == "timee_management":
             _banner_lines.append(
                 f"{_date_str}　{_name}　平均Good率　80％未満のためマッチングをキャンセルしてください"
             )
-        if _cancel_int is not None and _cancel_int >= 10:
+        if _cancel_int is not None and _cancel_int > 10:
             _banner_lines.append(
                 f"{_date_str}　{_name}　直前キャンセル率　10％以上のためマッチングをキャンセルしてください"
             )
@@ -3969,7 +3969,7 @@ if selected_key == "timee_management":
                 "チェック日": w.get("チェック日"),
                 "キャンセル数": len(w.get("キャンセル履歴", [])),
                 "_good_alert": bool(_is_ft and _g_int is not None and _g_int < 80),
-                "_cancel_alert": bool(_is_ft and _c_int is not None and _c_int >= 10),
+                "_cancel_alert": bool(_is_ft and _c_int is not None and _c_int > 10),
             })
         _wdf = pd.DataFrame(_rows)
         if _wdf.empty:

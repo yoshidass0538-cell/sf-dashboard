@@ -3590,6 +3590,30 @@ if selected_key == "skill_tree":
         get_skill_tree, save_skill_tree, clear_skill_tree_cache, next_branch_id,
     )
 
+    # クエリパラメータ経由のチェック切替（SVG内のリンククリック時）
+    _toggle_val = st.query_params.get("skt_toggle")
+    if _toggle_val:
+        try:
+            _bid_str, _nid_str = str(_toggle_val).split("-", 1)
+            _target_bid = int(_bid_str)
+            _target_nid = int(_nid_str)
+            _data_t = get_skill_tree()
+            for _b in _data_t.get("branches", []):
+                if int(_b.get("id", 0)) == _target_bid:
+                    for _n in _b.get("nodes", []):
+                        if int(_n.get("id", 0)) == _target_nid:
+                            _n["checked"] = not bool(_n.get("checked", False))
+                            break
+                    break
+            save_skill_tree(_data_t)
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("skt_chk_") or _k == "skt_check":
+                    del st.session_state[_k]
+        except Exception:
+            pass
+        st.query_params.pop("skt_toggle", None)
+        st.rerun()
+
     # ----- 編集UI(画面上で直接編集) -----
     with st.expander("✏ 編集する", expanded=False):
         st.caption(
@@ -3846,6 +3870,7 @@ if selected_key == "skill_tree":
     ] or ["新人入社"]
 
     def _skt_clean_branch(_b):
+        _bid = _b.get("id")
         _lab = (_b.get("label") or "").strip()
         _col = (_b.get("color") or "#888888").strip() or "#888888"
         _ns_raw = _b.get("nodes") or []
@@ -3864,18 +3889,18 @@ if selected_key == "skill_tree":
                 "parent": _p,
                 "checked": bool(_n.get("checked", False)),
             })
-        return _lab, _col, _ns
+        return _bid, _lab, _col, _ns
 
     _branches_src = [_skt_clean_branch(b) for b in _skt_data.get("branches", [])]
-    _branches_src = [(l, c, n) for (l, c, n) in _branches_src if l and n]
+    _branches_src = [(bid, l, c, n) for (bid, l, c, n) in _branches_src if l and n]
     if not _branches_src:
         st.info("スキルツリーが未定義です。「✏ 編集する」から分岐とノードを作成してください。")
         st.stop()
 
     # 習得率(チェックされたノード / 全ノード)
-    _total_nodes = sum(len(_n) for (_l, _c, _n) in _branches_src)
+    _total_nodes = sum(len(_n) for (_bid, _l, _c, _n) in _branches_src)
     _checked_nodes = sum(
-        1 for (_l, _c, _n) in _branches_src for _nd in _n if _nd.get("checked")
+        1 for (_bid, _l, _c, _n) in _branches_src for _nd in _n if _nd.get("checked")
     )
     _pct = (_checked_nodes / _total_nodes * 100) if _total_nodes else 0.0
     st.markdown(
@@ -3934,9 +3959,10 @@ if selected_key == "skill_tree":
 
     _branch_layouts = []
     _x_cursor = _LEFT_PAD
-    for _label, _color, _nodes in _branches_src:
+    for _bid, _label, _color, _nodes in _branches_src:
         _pos, _max_d, _w, _roots = _layout_tree(_nodes, _x_cursor)
         _branch_layouts.append({
+            "id": _bid,
             "label": _label, "color": _color, "nodes": _nodes,
             "positions": _pos, "max_depth": _max_d,
             "width": _w, "roots": _roots,
@@ -4103,10 +4129,15 @@ if selected_key == "skill_tree":
                 f'rx="22" ry="22" fill="url(#sk_g_{_bi})" stroke="none" '
                 f'filter="url(#sk_shadow)"/>'
             )
-            # チェックボックス(ピル左端)
-            _box_size = 16
-            _box_x = _x_n - _PILL_W / 2 + 10
+            # チェックボックス(ピル左端) -- クリックで toggle (URLパラメータ経由)
+            _box_size = 18
+            _box_x = _x_n - _PILL_W / 2 + 8
             _box_y = _y_n + (_PILL_H - _box_size) / 2
+            _toggle_href = f"?skt_toggle={_bl['id']}-{_nid}"
+            _parts.append(
+                f'<a href="{_toggle_href}" target="_self" '
+                f'style="cursor:pointer;text-decoration:none;">'
+            )
             if _n.get("checked"):
                 _parts.append(
                     f'<rect x="{_box_x}" y="{_box_y}" width="{_box_size}" height="{_box_size}" '
@@ -4114,16 +4145,23 @@ if selected_key == "skill_tree":
                 )
                 # チェックマーク (✓)
                 _parts.append(
-                    f'<path d="M {_box_x + 3} {_box_y + 8} L {_box_x + 7} {_box_y + 12} '
-                    f'L {_box_x + 13} {_box_y + 4}" stroke="#16a34a" stroke-width="2.5" '
+                    f'<path d="M {_box_x + 3} {_box_y + 9} L {_box_x + 7.5} {_box_y + 13.5} '
+                    f'L {_box_x + 15} {_box_y + 4.5}" stroke="#16a34a" stroke-width="2.8" '
                     f'fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
                 )
             else:
                 _parts.append(
                     f'<rect x="{_box_x}" y="{_box_y}" width="{_box_size}" height="{_box_size}" '
-                    f'rx="3" ry="3" fill="rgba(255,255,255,0.18)" stroke="#ffffff" '
+                    f'rx="3" ry="3" fill="rgba(255,255,255,0.22)" stroke="#ffffff" '
                     f'stroke-width="1.5"/>'
                 )
+            # 透明な拡大クリック領域(押しやすく)
+            _parts.append(
+                f'<rect x="{_box_x - 4}" y="{_box_y - 4}" '
+                f'width="{_box_size + 8}" height="{_box_size + 8}" '
+                f'fill="transparent"/>'
+            )
+            _parts.append('</a>')
             # ラベル(チェックボックス分だけ右にシフト)
             _parts.append(
                 f'<text x="{_x_n + _box_size / 2 + 4}" y="{_y_n + _PILL_H / 2 + 5}" text-anchor="middle" '

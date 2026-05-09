@@ -4101,6 +4101,7 @@ if selected_key == "skill_tree":
     _START_Y = 20
     _START_GAP = 60     # 起点ピル top-to-top
     _LEFT_PAD = 60
+    _BANNER_TOP_RESERVE = 220  # 上端ノードのホバーバナー描画スペース
     _n_starts = len(_start_labels)
     _last_start_top = _START_Y + (_n_starts - 1) * _START_GAP
     _last_start_bottom = _last_start_top + _PILL_H
@@ -4158,11 +4159,14 @@ if selected_key == "skill_tree":
     _SVG_H = _HEADER_Y + (_max_depth_all + 1) * _NODE_Y_GAP + _PILL_H + 24
 
     import html as _skt_html
+    _SVG_VIEW_Y = -_BANNER_TOP_RESERVE
+    _SVG_VIEW_H = _SVG_H + _BANNER_TOP_RESERVE
     _parts = [
-        '<div style="overflow-x:auto;overflow-y:hidden;padding-bottom:8px;">',
-        f'<svg viewBox="0 0 {_SVG_W} {_SVG_H}" xmlns="http://www.w3.org/2000/svg" '
-        f'width="{_SVG_W}" height="{_SVG_H}" '
-        f'style="display:block;font-size:13px;">'
+        '<div style="overflow-x:auto;overflow-y:visible;padding-bottom:8px;">',
+        f'<svg viewBox="0 {_SVG_VIEW_Y} {_SVG_W} {_SVG_VIEW_H}" '
+        f'xmlns="http://www.w3.org/2000/svg" '
+        f'width="{_SVG_W}" height="{_SVG_VIEW_H}" '
+        f'style="display:block;font-size:13px;overflow:visible;">'
     ]
     _parts.append(
         '<style>'
@@ -4347,52 +4351,49 @@ if selected_key == "skill_tree":
                     f'rx="3" ry="3" fill="rgba(255,255,255,0.18)" stroke="#ffffff" '
                     f'stroke-width="1.5"/>'
                 )
-            # ラベル(チェックボックス分だけ右にシフト)
+            # メモあり目印(鉛筆) — チェックボックス右隣
+            if _memo_n:
+                _pencil_x = _box_x + _box_size + 3
+                _parts.append(
+                    f'<text x="{_pencil_x}" y="{_y_n + _PILL_H / 2 + 4}" '
+                    f'fill="#ffe082" font-size="12" font-family="Meiryo, sans-serif">✏</text>'
+                )
+                _label_extra_shift = 8
+            else:
+                _label_extra_shift = 0
+            # ラベル(チェックボックス＋鉛筆分だけ右にシフト)
             _parts.append(
-                f'<text x="{_x_n + _box_size / 2 + 4}" y="{_y_n + _PILL_H / 2 + 5}" text-anchor="middle" '
+                f'<text x="{_x_n + _box_size / 2 + 4 + _label_extra_shift}" y="{_y_n + _PILL_H / 2 + 5}" text-anchor="middle" '
                 f'fill="#fff" font-weight="600" font-size="13" font-family="Meiryo, sans-serif">'
                 f'{_skt_html.escape(_n.get("label", ""))}</text>'
             )
-            # ホバー時のカスタムバナー(メモがあれば表示)
+            # ホバー時のカスタムバナー(メモがあれば表示・foreignObjectでHTMLによる自動改行)
             if _memo_n:
-                _max_chars = 30
-                _max_lines = 5
-                _lines_b = []
-                for _src_line in _memo_n.splitlines():
-                    if not _src_line.strip():
-                        continue
-                    while len(_src_line) > _max_chars and len(_lines_b) < _max_lines:
-                        _lines_b.append(_src_line[:_max_chars])
-                        _src_line = _src_line[_max_chars:]
-                    if _src_line and len(_lines_b) < _max_lines:
-                        _lines_b.append(_src_line)
-                    if len(_lines_b) >= _max_lines:
-                        break
-                if not _lines_b:
-                    _lines_b = [_memo_n[:_max_chars]]
-                _bw = 260
-                _line_h = 18
-                _bh = _line_h * len(_lines_b) + 16
+                # 大きめサイズ + 内容に応じて高さ可変
+                _bw = 380
+                _chars = len(_memo_n)
+                _explicit_breaks = _memo_n.count('\n')
+                _est_lines = max(_explicit_breaks + 1, (_chars + 24) // 25)
+                _est_lines = max(2, min(_est_lines, 10))
+                _bh = _est_lines * 26 + 24
                 _bx = _x_n - _bw / 2
-                _by = _y_n - _bh - 10
+                _by = _y_n - _bh - 12
                 _parts.append('<g class="skt-banner">')
                 _parts.append(
-                    f'<rect x="{_bx}" y="{_by}" width="{_bw}" height="{_bh}" '
-                    f'rx="6" ry="6" fill="#1f2937" stroke="rgba(255,255,255,0.5)" '
-                    f'stroke-width="1" filter="url(#sk_shadow)"/>'
+                    f'<foreignObject x="{_bx}" y="{_by}" width="{_bw}" height="{_bh}">'
+                    f'<div xmlns="http://www.w3.org/1999/xhtml" '
+                    f'style="background:#1f2937;color:#fff;'
+                    f'padding:12px 16px;border-radius:8px;'
+                    f'font-size:14px;line-height:1.6;'
+                    f'font-family:Meiryo,sans-serif;'
+                    f'word-break:break-word;overflow-wrap:anywhere;'
+                    f'white-space:pre-wrap;'
+                    f'border:1px solid rgba(255,255,255,0.55);'
+                    f'box-shadow:0 4px 12px rgba(0,0,0,0.45);'
+                    f'box-sizing:border-box;height:100%;overflow:hidden;'
+                    f'">{_skt_html.escape(_memo_n)}</div>'
+                    f'</foreignObject>'
                 )
-                _parts.append(
-                    f'<text x="{_bx + 12}" y="{_by + 16}" fill="#ffffff" '
-                    f'font-size="11" font-family="Meiryo, sans-serif">'
-                )
-                for _li, _ln in enumerate(_lines_b):
-                    if _li == 0:
-                        _parts.append(f'<tspan>{_skt_html.escape(_ln)}</tspan>')
-                    else:
-                        _parts.append(
-                            f'<tspan x="{_bx + 12}" dy="{_line_h}">{_skt_html.escape(_ln)}</tspan>'
-                        )
-                _parts.append('</text>')
                 _parts.append('</g>')
             _parts.append('</g>')
 

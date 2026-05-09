@@ -3829,10 +3829,49 @@ if selected_key == "skill_tree":
                         for _nx in _nodes:
                             _parent_to_sibs.setdefault(_nx.get("parent"), []).append(_nx["id"])
 
-                        for _ni, _node in enumerate(_nodes):
+                        # DFS順序＆深さ計算(表示用)
+                        _kids_of = {}
+                        for _nx in _nodes:
+                            _p_x = _nx.get("parent")
+                            _kids_of.setdefault(_p_x, []).append(_nx["id"])
+                        _node_by_id = {_nx["id"]: _nx for _nx in _nodes}
+                        _ordered = []  # [(node, depth), ...]
+                        def _dfs_order(_pid, _depth):
+                            for _cid in _kids_of.get(_pid, []):
+                                if _cid in _node_by_id:
+                                    _ordered.append((_node_by_id[_cid], _depth))
+                                    _dfs_order(_cid, _depth + 1)
+                        _dfs_order(None, 0)
+                        # 万一フラット内に到達できないノードがあれば末尾に追加
+                        _seen_ids = {n["id"] for (n, _) in _ordered}
+                        for _nx in _nodes:
+                            if _nx["id"] not in _seen_ids:
+                                _ordered.append((_nx, 0))
+
+                        _branch_color_e = (_branch.get("color") or "#888888").strip() or "#888888"
+
+                        for _ni, (_node, _depth) in enumerate(_ordered):
                             _nid = _node["id"]
-                            _nc1, _nc2, _ncu, _ncd, _nc3, _nc4 = st.columns(
-                                [3, 2.2, 0.6, 0.6, 1.2, 1]
+                            _ncl, _nc1, _nc2, _ncu, _ncd, _nc3, _nc4 = st.columns(
+                                [0.7, 3, 2.2, 0.6, 0.6, 1.2, 1]
+                            )
+                            # 深さインジケーター(色付きツリーマーク)
+                            if _depth == 0:
+                                _prefix_html = (
+                                    f"<span style='color:{_branch_color_e};"
+                                    f"font-weight:800;font-size:18px;'>●</span>"
+                                )
+                            else:
+                                _opacity = max(0.35, 1 - _depth * 0.15)
+                                _prefix_html = (
+                                    f"<span style='color:{_branch_color_e};"
+                                    f"opacity:{_opacity};font-weight:600;'>"
+                                    f"{'　' * _depth}└─</span>"
+                                )
+                            _ncl.markdown(
+                                f"<div style='padding-top:6px;font-size:14px;"
+                                f"white-space:nowrap;'>{_prefix_html}</div>",
+                                unsafe_allow_html=True,
                             )
                             _node["label"] = _nc1.text_input(
                                 f"ノード {_ni + 1}",

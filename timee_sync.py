@@ -83,9 +83,14 @@ def _parse_pct(s) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _send_cancel_alert(records: list[dict], worker: dict, reasons: list[str]) -> None:
+def _send_cancel_alert(records: list[dict], worker: dict) -> None:
     """初回マッチワーカーが基準未達の場合のキャンセル推奨アラート。"""
     rec0 = records[0]
+    good = _parse_pct(worker.get("good_rate"))
+    cancel = _parse_pct(worker.get("cancel_rate"))
+    good_str = f"{good}％" if good is not None else "-％"
+    cancel_str = f"{cancel}％" if cancel is not None else "-％"
+
     lines = ["[info][title]⚠️ 初回マッチング・基準未達(キャンセル推奨)[/title]"]
     lines.append(f"ID: {rec0['id']}")
     lines.append(f"{worker.get('氏名', '')}（{worker.get('カナ', '')}）"
@@ -96,12 +101,15 @@ def _send_cancel_alert(records: list[dict], worker: dict, reasons: list[str]) ->
         lines.append("就業日:")
         for r in sorted(records, key=lambda x: x.get("就業日", "")):
             lines.append(_format_shift(r))
-    lines.append(f"平均Good率: {worker.get('good_rate') or '—'}")
-    lines.append(f"直前キャンセル率: {worker.get('cancel_rate') or '—'}")
-    for r in reasons:
-        lines.append(f"・{r}")
+    lines.append(f"平均Good率　{good_str}")
+    lines.append(f"直前キャンセル率　{cancel_str}")
     lines.append("")
-    lines.append("→ 求人の募集要項を満たしていないため、マッチングのキャンセルを推奨します。")
+    lines.append("⚠️求人の募集要項を満たしていないため、マッチングのキャンセルを推奨します⚠️")
+    lines.append("")
+    lines.append("募集要項は")
+    lines.append("・平均Good率 80%以上")
+    lines.append("・直前キャンセル率 10％以下")
+    lines.append("上記条件を満たしているワーカーのみです。")
     lines.append("[/info]")
     _chatwork_send("\n".join(lines), room_id=CHATWORK_ALERT_ROOM_ID)
 
@@ -129,7 +137,7 @@ def _check_and_alert_first_matches(new_matches: list[dict], workers: dict) -> in
         if cancel is not None and cancel > ALERT_CANCEL_RATE_MIN:
             reasons.append(f"直前キャンセル率 {cancel}% > {ALERT_CANCEL_RATE_MIN}%")
         if reasons:
-            _send_cancel_alert(records, w, reasons)
+            _send_cancel_alert(records, w)
             sent += 1
     return sent
 

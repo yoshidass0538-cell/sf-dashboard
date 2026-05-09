@@ -4071,7 +4071,15 @@ if selected_key == "timee_management":
                 ".ag-row-selected": {"background-color": "#fce4ec !important"},
                 ".ag-cell": {"display": "flex !important",
                              "align-items": "center !important",
-                             "justify-content": "center !important"},
+                             "justify-content": "center !important",
+                             "text-align": "center !important"},
+                ".ag-cell-wrapper": {"width": "100% !important",
+                                     "height": "100% !important",
+                                     "display": "flex !important",
+                                     "align-items": "center !important",
+                                     "justify-content": "center !important"},
+                ".ag-cell-value": {"width": "100%",
+                                   "text-align": "center !important"},
             }
 
             # 解除等で grid を再マウントするためのキーカウンタ

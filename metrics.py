@@ -2340,6 +2340,13 @@ METRICS: list[Metric] = [
         category="責任者用",
     ),
     Metric(
+        key="skill_tree",
+        label="スキルツリー",
+        description="スキルツリー（準備中）",
+        fetch=lambda sf: pd.DataFrame(),
+        category="責任者用",
+    ),
+    Metric(
         key="call_history",
         label="通話履歴",
         description="本日のCS促進メンバーの架電履歴（留守以外）。リアルタイム取得",

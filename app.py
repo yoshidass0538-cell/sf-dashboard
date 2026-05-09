@@ -3776,6 +3776,7 @@ if selected_key == "timee_management":
     # スナップショットから「ワーカー別の業務(グループ)集合」を構築
     # 初回ワーカー判定 = 各レコードの「グループが空欄」かどうか（タイミー初稼働=履歴なしのため空）
     _worker_groups: dict[str, set[str]] = {}
+    _first_time_wids: set[str] = set()  # 出勤回数=0 のレコードを持つワーカー
     for _r in _snapshot:
         _wid = _r.get("id")
         if not _wid:
@@ -3784,6 +3785,8 @@ if selected_key == "timee_management":
             _g = _g.strip()
             if _g:
                 _worker_groups.setdefault(_wid, set()).add(_g)
+        if int(_r.get("出勤回数", 0) or 0) == 0:
+            _first_time_wids.add(_wid)
     _all_group_tags = sorted({g for s in _worker_groups.values() for g in s})
 
     # ----- ワーカー一覧（編集可） -----
@@ -3813,6 +3816,12 @@ if selected_key == "timee_management":
 
         # 1段目: 自由検索
         _q = st.text_input("検索（氏名 / カナ / ID 部分一致）", key="tm_worker_search").strip()
+
+        # 初回ワーカー(稼働実績なし)のみ表示
+        _only_first_time = st.checkbox(
+            "初回ワーカー（稼働実績なし）のみ表示",
+            key="tm_worker_only_first",
+        )
 
         # 2段目: 列値フィルタ（空＝全件）
         _f1, _f2, _f3, _f4 = st.columns(4)
@@ -3848,6 +3857,8 @@ if selected_key == "timee_management":
             if _sel_tags:
                 if not _row_tag_set(w).intersection(_sel_tags):
                     continue
+            if _only_first_time and wid not in _first_time_wids:
+                continue
             _filtered.append((wid, w))
         _filtered.sort(key=lambda kv: kv[1].get("初回登録日", ""), reverse=True)
 

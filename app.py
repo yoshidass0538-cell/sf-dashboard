@@ -3767,6 +3767,64 @@ if selected_key == "timee_management":
         st.session_state.pop("tm_post_type", None)
         _tm_post_job_dialog()
 
+    # ----- キャンセル推奨バナー（初回ワーカー × 基準未達） -----
+    import re as _re_banner
+    import html as _html_banner
+
+    def _parse_pct_int(v):
+        s = str(v or "").strip()
+        m = _re_banner.search(r"(\d+)\s*%", s)
+        return int(m.group(1)) if m else None
+
+    # 出勤回数=0 かつ 未来日に就業予定があるワーカーの最早就業日
+    _bn_next_shift: dict[str, str] = {}
+    _bn_first_time: set[str] = set()
+    for _r in _snapshot:
+        _wid = _r.get("id")
+        _ds = str(_r.get("就業日") or "")
+        if not _wid or _ds < _today_iso:
+            continue
+        if int(_r.get("出勤回数", 0) or 0) != 0:
+            continue
+        _bn_first_time.add(_wid)
+        _prev = _bn_next_shift.get(_wid)
+        if not _prev or _ds < _prev:
+            _bn_next_shift[_wid] = _ds
+
+    _banner_lines: list[str] = []
+    for _wid in _bn_first_time:
+        _w = _workers.get(_wid, {})
+        _good_int = _parse_pct_int(_w.get("good_rate"))
+        _cancel_int = _parse_pct_int(_w.get("cancel_rate"))
+        _name = _w.get("氏名") or "(氏名未登録)"
+        _ds = _bn_next_shift[_wid]
+        try:
+            _d = _tm_date.fromisoformat(_ds)
+            _date_str = f"{_d.month}/{_d.day}"
+        except Exception:
+            _date_str = _ds
+        if _good_int is not None and _good_int < 80:
+            _banner_lines.append(
+                f"{_date_str}　{_name}　平均Good率　80％未満のためマッチングをキャンセルしてください"
+            )
+        if _cancel_int is not None and _cancel_int >= 10:
+            _banner_lines.append(
+                f"{_date_str}　{_name}　直前キャンセル率　10％以上のためマッチングをキャンセルしてください"
+            )
+
+    if _banner_lines:
+        _banner_html = "<br>".join(_html_banner.escape(l) for l in _banner_lines)
+        st.markdown(
+            f"""
+            <div style='background:#fff3cd; border:2px solid #ffc107;
+                        border-radius:6px; padding:12px 16px; margin:8px 0;
+                        color:#856404; font-weight:600; font-size:14px; line-height:1.7;'>
+              ⚠️ <b>キャンセル推奨ワーカー</b><br>{_banner_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     st.divider()
 
     _tab_workers, _tab_calendar, _tab_schedule = st.tabs(
@@ -3889,6 +3947,9 @@ if selected_key == "timee_management":
         # data_editor 用 DataFrame
         _rows = []
         for wid, w in _filtered:
+            _g_int = _parse_pct_int(w.get("good_rate"))
+            _c_int = _parse_pct_int(w.get("cancel_rate"))
+            _is_ft = wid in _first_time_wids
             _rows.append({
                 "印": "🔴" if w.get("直雇勧誘済") else "",
                 "ID": wid,
@@ -3907,6 +3968,8 @@ if selected_key == "timee_management":
                 "直雇勧誘済": bool(w.get("直雇勧誘済", False)),
                 "チェック日": w.get("チェック日"),
                 "キャンセル数": len(w.get("キャンセル履歴", [])),
+                "_good_alert": bool(_is_ft and _g_int is not None and _g_int < 80),
+                "_cancel_alert": bool(_is_ft and _c_int is not None and _c_int >= 10),
             })
         _wdf = pd.DataFrame(_rows)
         if _wdf.empty:
@@ -3953,8 +4016,34 @@ if selected_key == "timee_management":
                            "fontSize": "12px", "display": "flex", "alignItems": "center",
                            "justifyContent": "center", "textAlign": "center"})
             _gb.configure_column("初回登録日", width=100, suppressSizeToFit=True)
-            _gb.configure_column("Good率", width=80, suppressSizeToFit=True)
-            _gb.configure_column("直前キャンセル率", width=110, suppressSizeToFit=True)
+            _alert_good_style = JsCode("""
+                function(params) {
+                    if (params.data && params.data._good_alert) {
+                        return {'backgroundColor': '#ffcdd2', 'color': '#b71c1c',
+                                'fontWeight': 'bold', 'display': 'flex',
+                                'alignItems': 'center', 'justifyContent': 'center',
+                                'textAlign': 'center'};
+                    }
+                    return null;
+                }
+            """)
+            _alert_cancel_style = JsCode("""
+                function(params) {
+                    if (params.data && params.data._cancel_alert) {
+                        return {'backgroundColor': '#ffcdd2', 'color': '#b71c1c',
+                                'fontWeight': 'bold', 'display': 'flex',
+                                'alignItems': 'center', 'justifyContent': 'center',
+                                'textAlign': 'center'};
+                    }
+                    return null;
+                }
+            """)
+            _gb.configure_column("Good率", width=80, suppressSizeToFit=True,
+                                 cellStyle=_alert_good_style)
+            _gb.configure_column("直前キャンセル率", width=110, suppressSizeToFit=True,
+                                 cellStyle=_alert_cancel_style)
+            _gb.configure_column("_good_alert", hide=True)
+            _gb.configure_column("_cancel_alert", hide=True)
             _gb.configure_column("タイミーメモ", flex=2, minWidth=160,
                 cellStyle={"whiteSpace": "pre-wrap", "lineHeight": "1.4",
                            "fontSize": "12px", "background": "#f0f4f8",

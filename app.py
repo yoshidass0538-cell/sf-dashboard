@@ -4020,24 +4020,28 @@ if selected_key == "timee_management":
             _gb.configure_column("初回登録日", width=100, suppressSizeToFit=True)
             _alert_good_style = JsCode("""
                 function(params) {
+                    var base = {'display': 'flex', 'alignItems': 'center',
+                                'justifyContent': 'center', 'textAlign': 'center',
+                                'whiteSpace': 'pre-wrap', 'lineHeight': '1.4'};
                     if (params.data && params.data._good_alert) {
-                        return {'backgroundColor': '#ffcdd2', 'color': '#b71c1c',
-                                'fontWeight': 'bold', 'display': 'flex',
-                                'alignItems': 'center', 'justifyContent': 'center',
-                                'textAlign': 'center'};
+                        base['backgroundColor'] = '#ffcdd2';
+                        base['color'] = '#b71c1c';
+                        base['fontWeight'] = 'bold';
                     }
-                    return null;
+                    return base;
                 }
             """)
             _alert_cancel_style = JsCode("""
                 function(params) {
+                    var base = {'display': 'flex', 'alignItems': 'center',
+                                'justifyContent': 'center', 'textAlign': 'center',
+                                'whiteSpace': 'pre-wrap', 'lineHeight': '1.4'};
                     if (params.data && params.data._cancel_alert) {
-                        return {'backgroundColor': '#ffcdd2', 'color': '#b71c1c',
-                                'fontWeight': 'bold', 'display': 'flex',
-                                'alignItems': 'center', 'justifyContent': 'center',
-                                'textAlign': 'center'};
+                        base['backgroundColor'] = '#ffcdd2';
+                        base['color'] = '#b71c1c';
+                        base['fontWeight'] = 'bold';
                     }
-                    return null;
+                    return base;
                 }
             """)
             _gb.configure_column("Good率", width=80, suppressSizeToFit=True,
@@ -4069,18 +4073,6 @@ if selected_key == "timee_management":
                 ".ag-row-odd": {"background-color": "#ffffff"},
                 ".ag-row-even": {"background-color": "#fef0f4"},
                 ".ag-row-selected": {"background-color": "#fce4ec !important"},
-                ".ag-cell": {"display": "grid !important",
-                             "place-items": "center !important",
-                             "place-content": "center !important",
-                             "text-align": "center !important",
-                             "line-height": "1.5 !important"},
-                ".ag-cell-wrapper": {"display": "grid !important",
-                                     "place-items": "center !important",
-                                     "place-content": "center !important",
-                                     "width": "100%",
-                                     "text-align": "center !important"},
-                ".ag-cell-value": {"width": "100%",
-                                   "text-align": "center !important"},
             }
 
             # 解除等で grid を再マウントするためのキーカウンタ

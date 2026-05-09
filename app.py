@@ -4164,6 +4164,13 @@ if selected_key == "skill_tree":
         f'width="{_SVG_W}" height="{_SVG_H}" '
         f'style="display:block;font-size:13px;">'
     ]
+    _parts.append(
+        '<style>'
+        '.skt-node .skt-banner { opacity: 0; pointer-events: none; '
+        'transition: opacity 0.12s ease-in-out; } '
+        '.skt-node:hover .skt-banner { opacity: 1; }'
+        '</style>'
+    )
     _parts.append('<defs>')
     _parts.append(
         '<filter id="sk_shadow" x="-50%" y="-50%" width="200%" height="200%">'
@@ -4305,7 +4312,7 @@ if selected_key == "skill_tree":
             _nid = _n["id"]
             _x_n, _d_n = _bl["positions"][_nid]
             _y_n = _depth_to_y(_d_n)
-            # ノードグループ(<title>でホバー時のメモ表示・1行サマリ)
+            # ノードグループ(<title>=ブラウザ標準ツールチップ＋hover時カスタムバナー)
             _memo_n = (_n.get("memo") or "").strip()
             _memo_first = _memo_n.splitlines()[0] if _memo_n else ""
             _tip_text = _n.get("label", "")
@@ -4313,7 +4320,7 @@ if selected_key == "skill_tree":
                 _tip_text += " — " + _memo_first[:80]
                 if len(_memo_n) > len(_memo_first) or len(_memo_first) > 80:
                     _tip_text += "…"
-            _parts.append('<g>')
+            _parts.append('<g class="skt-node">')
             _parts.append(f'<title>{_skt_html.escape(_tip_text)}</title>')
             _parts.append(
                 f'<rect x="{_x_n - _PILL_W / 2}" y="{_y_n}" width="{_PILL_W}" height="{_PILL_H}" '
@@ -4346,6 +4353,47 @@ if selected_key == "skill_tree":
                 f'fill="#fff" font-weight="600" font-size="13" font-family="Meiryo, sans-serif">'
                 f'{_skt_html.escape(_n.get("label", ""))}</text>'
             )
+            # ホバー時のカスタムバナー(メモがあれば表示)
+            if _memo_n:
+                _max_chars = 30
+                _max_lines = 5
+                _lines_b = []
+                for _src_line in _memo_n.splitlines():
+                    if not _src_line.strip():
+                        continue
+                    while len(_src_line) > _max_chars and len(_lines_b) < _max_lines:
+                        _lines_b.append(_src_line[:_max_chars])
+                        _src_line = _src_line[_max_chars:]
+                    if _src_line and len(_lines_b) < _max_lines:
+                        _lines_b.append(_src_line)
+                    if len(_lines_b) >= _max_lines:
+                        break
+                if not _lines_b:
+                    _lines_b = [_memo_n[:_max_chars]]
+                _bw = 260
+                _line_h = 18
+                _bh = _line_h * len(_lines_b) + 16
+                _bx = _x_n - _bw / 2
+                _by = _y_n - _bh - 10
+                _parts.append('<g class="skt-banner">')
+                _parts.append(
+                    f'<rect x="{_bx}" y="{_by}" width="{_bw}" height="{_bh}" '
+                    f'rx="6" ry="6" fill="#1f2937" stroke="rgba(255,255,255,0.5)" '
+                    f'stroke-width="1" filter="url(#sk_shadow)"/>'
+                )
+                _parts.append(
+                    f'<text x="{_bx + 12}" y="{_by + 16}" fill="#ffffff" '
+                    f'font-size="11" font-family="Meiryo, sans-serif">'
+                )
+                for _li, _ln in enumerate(_lines_b):
+                    if _li == 0:
+                        _parts.append(f'<tspan>{_skt_html.escape(_ln)}</tspan>')
+                    else:
+                        _parts.append(
+                            f'<tspan x="{_bx + 12}" dy="{_line_h}">{_skt_html.escape(_ln)}</tspan>'
+                        )
+                _parts.append('</text>')
+                _parts.append('</g>')
             _parts.append('</g>')
 
     _parts.append('</svg>')
@@ -4369,6 +4417,16 @@ if selected_key == "skill_tree":
             _sel_bid, _sel_nid, _sel_blabel, _sel_color, _sel_node = _sel
             _sel_state = "✅ 習得済み" if _sel_node.get("checked") else "⬜ 未習得"
             _sel_memo = (_sel_node.get("memo") or "")
+            # 選択ノードが変わったら memo widget の session_state を保存済みの値で
+            # 強制リフレッシュ(タブ切替後の表示ズレ防止)
+            _last_sel_k = "skt_detail_last_sel"
+            _current_sel = (_sel_bid, _sel_nid)
+            _memo_widget_key = f"skt_dmemo_b{_sel_bid}_n{_sel_nid}"
+            if st.session_state.get(_last_sel_k) != _current_sel:
+                st.session_state[_last_sel_k] = _current_sel
+                st.session_state[_memo_widget_key] = _sel_memo
+            elif _memo_widget_key not in st.session_state:
+                st.session_state[_memo_widget_key] = _sel_memo
             st.markdown(
                 f"<div style='border-left:6px solid {_sel_color};padding:8px 12px;"
                 f"margin-top:6px;background:rgba(0,0,0,0.02);border-radius:4px;'>"
@@ -4379,10 +4437,6 @@ if selected_key == "skill_tree":
                 f"</div>",
                 unsafe_allow_html=True,
             )
-            # メモ編集 (ノードごとに独立した key で保持)
-            _memo_widget_key = f"skt_dmemo_b{_sel_bid}_n{_sel_nid}"
-            if _memo_widget_key not in st.session_state:
-                st.session_state[_memo_widget_key] = _sel_memo
             st.text_area(
                 "📝 メモ",
                 key=_memo_widget_key,

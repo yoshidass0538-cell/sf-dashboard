@@ -2760,6 +2760,9 @@ elif selected_key == "timee_management":
 elif selected_key == "cs_shift_calendar":
     # シフト表(CS促進全員、月カレンダー) — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "skill_tree":
+    # スキルツリー — 後の専用ブロックで表示
+    fetched = None
 else:
     try:
         fetched = _load(selected_key)
@@ -3580,6 +3583,53 @@ if selected_key == "orikaeshi_kensu":
             st.error(f"⚠️ チェック状態の保存に失敗しました: {msg}")
 
     st.stop()
+
+# スキルツリーボード(準備中・サンプル描画)
+if selected_key == "skill_tree":
+    import graphviz as _st_gv
+
+    st.caption("※ サンプル表示。スキル定義・習得管理は今後追加予定。")
+
+    _g = _st_gv.Digraph(graph_attr={
+        "rankdir": "LR",
+        "bgcolor": "transparent",
+        "splines": "ortho",
+        "nodesep": "0.4",
+        "ranksep": "0.7",
+    })
+    _g.attr("node", shape="box", style="rounded,filled",
+            fontname="Meiryo", fontsize="12",
+            fillcolor="#4A6FA5", fontcolor="white",
+            margin="0.2,0.1", height="0.5", width="2.0")
+    _g.attr("edge", color="#888", arrowsize="0.7")
+
+    # --- サンプルノード ---
+    _g.node("start", "新人入社")
+    _g.node("ph_call", "電話応対基礎")
+    _g.node("ph_sys", "システム操作基礎")
+    _g.node("inbound", "受信対応")
+    _g.node("outbound", "発信業務")
+    _g.node("claim", "クレーム対応", fillcolor="#D4850A")
+    _g.node("apply", "応用対応", fillcolor="#2E8B57")
+    _g.node("teach", "後輩指導", fillcolor="#2E8B57")
+    _g.node("master", "マスター", fillcolor="#C0392B")
+
+    # --- サンプル接続 ---
+    _g.edge("start", "ph_call")
+    _g.edge("start", "ph_sys")
+    _g.edge("ph_call", "inbound")
+    _g.edge("ph_call", "outbound")
+    _g.edge("ph_sys", "inbound")
+    _g.edge("ph_sys", "outbound")
+    _g.edge("inbound", "claim")
+    _g.edge("outbound", "claim")
+    _g.edge("claim", "apply")
+    _g.edge("apply", "teach")
+    _g.edge("teach", "master")
+
+    st.graphviz_chart(_g, use_container_width=True)
+    st.stop()
+
 
 # シフト表ボード（CS促進全員 / 月カレンダー）
 if selected_key == "cs_shift_calendar":

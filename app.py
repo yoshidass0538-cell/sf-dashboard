@@ -508,119 +508,6 @@ if selected_key == "_master":
 
     st.divider()
 
-    # --- 🌳 スキルツリー編集 ---
-    with st.expander("🌳 スキルツリー編集", expanded=False):
-        from skill_tree_store import (
-            get_skill_tree, save_skill_tree, clear_skill_tree_cache, next_branch_id,
-        )
-
-        st.caption(
-            "起点ラベル・各分岐の名前/色/ステージを編集できます。"
-            "「💾 保存」を押すと全ユーザーに反映されます。"
-        )
-
-        # 編集状態(マスタ画面を開いた時にSheetsから初期化)
-        if "skt_edit" not in st.session_state:
-            try:
-                st.session_state["skt_edit"] = get_skill_tree()
-            except Exception as _e:
-                st.error(f"読み込みに失敗: {_e}")
-                st.session_state["skt_edit"] = None
-
-        if st.session_state.get("skt_edit") is not None:
-            _skt = st.session_state["skt_edit"]
-
-            _skt["start_label"] = st.text_input(
-                "起点ラベル", value=_skt.get("start_label", "新人入社"),
-                key="skt_in_start",
-            )
-
-            st.markdown("**分岐**")
-
-            _del_idx = None
-            _move_op = None  # (idx, "up" | "down")
-
-            for _idx, _branch in enumerate(_skt.get("branches", [])):
-                _bid = _branch.get("id", _idx)
-                with st.container(border=True):
-                    _c1, _c2, _c3, _c4, _c5 = st.columns([4, 1.4, 0.6, 0.6, 0.6])
-                    _branch["label"] = _c1.text_input(
-                        "分岐名", value=_branch.get("label", ""),
-                        key=f"skt_in_b{_bid}_label",
-                    )
-                    _branch["color"] = _c2.color_picker(
-                        "色", value=_branch.get("color", "#888888"),
-                        key=f"skt_in_b{_bid}_color",
-                    )
-                    if _idx > 0:
-                        if _c3.button("⬆", key=f"skt_b{_bid}_up", help="上へ"):
-                            _move_op = (_idx, "up")
-                    if _idx < len(_skt["branches"]) - 1:
-                        if _c4.button("⬇", key=f"skt_b{_bid}_down", help="下へ"):
-                            _move_op = (_idx, "down")
-                    if _c5.button("🗑", key=f"skt_b{_bid}_del", help="削除"):
-                        _del_idx = _idx
-
-                    _stages_text = "\n".join(_branch.get("stages", []))
-                    _new_stages = st.text_area(
-                        "ステージ（1行=1ノード、上から下へ並ぶ順）",
-                        value=_stages_text,
-                        key=f"skt_in_b{_bid}_stages",
-                        height=120,
-                    )
-                    _branch["stages"] = [s.strip() for s in _new_stages.split("\n") if s.strip()]
-
-            # 並び替え操作
-            if _move_op is not None:
-                _i, _dir = _move_op
-                if _dir == "up" and _i > 0:
-                    _skt["branches"][_i - 1], _skt["branches"][_i] = (
-                        _skt["branches"][_i], _skt["branches"][_i - 1]
-                    )
-                elif _dir == "down" and _i < len(_skt["branches"]) - 1:
-                    _skt["branches"][_i], _skt["branches"][_i + 1] = (
-                        _skt["branches"][_i + 1], _skt["branches"][_i]
-                    )
-                st.rerun()
-
-            if _del_idx is not None:
-                _skt["branches"].pop(_del_idx)
-                st.rerun()
-
-            if st.button("➕ 分岐を追加", key="skt_add_branch"):
-                _skt["branches"].append({
-                    "id": next_branch_id(_skt["branches"]),
-                    "label": "新規分岐",
-                    "color": "#888888",
-                    "stages": ["ステージ1"],
-                })
-                st.rerun()
-
-            st.markdown("---")
-            _sc1, _sc2 = st.columns([1, 1])
-            if _sc1.button("💾 スキルツリーを保存", key="skt_save", type="primary",
-                           use_container_width=True):
-                try:
-                    ok, msg = save_skill_tree(_skt)
-                    st.toast(msg, icon="✅" if ok else "⚠️")
-                    # 保存後、編集状態と入力ウィジェットの状態をクリアして再読込
-                    for _k in list(st.session_state.keys()):
-                        if _k.startswith("skt_in_") or _k == "skt_edit":
-                            del st.session_state[_k]
-                    st.rerun()
-                except Exception as _e:
-                    st.error(f"保存に失敗: {_e}")
-
-            if _sc2.button("🔄 リセット(Sheetsから再読込)", key="skt_reset",
-                           use_container_width=True):
-                clear_skill_tree_cache()
-                for _k in list(st.session_state.keys()):
-                    if _k.startswith("skt_in_") or _k == "skt_edit":
-                        del st.session_state[_k]
-                st.rerun()
-
-    st.divider()
-
     # --- 📝 トーク種類管理 ---
     with st.expander("📝 トーク種類管理", expanded=False):
         from tool_members_store import (
@@ -3699,7 +3586,115 @@ if selected_key == "orikaeshi_kensu":
 
 # スキルツリーボード(SVG手描き / Sheetsから動的読込)
 if selected_key == "skill_tree":
-    from skill_tree_store import get_skill_tree
+    from skill_tree_store import (
+        get_skill_tree, save_skill_tree, clear_skill_tree_cache, next_branch_id,
+    )
+
+    # ----- 編集UI(画面上で直接編集) -----
+    with st.expander("✏ 編集する", expanded=False):
+        st.caption(
+            "起点ラベル・分岐の名前/色/ステージを編集できます。"
+            "「💾 保存」を押すと全ユーザーに反映されます。"
+        )
+
+        if "skt_edit" not in st.session_state:
+            try:
+                st.session_state["skt_edit"] = get_skill_tree()
+            except Exception as _e:
+                st.error(f"読み込みに失敗: {_e}")
+                st.session_state["skt_edit"] = None
+
+        if st.session_state.get("skt_edit") is not None:
+            _skt = st.session_state["skt_edit"]
+
+            _skt["start_label"] = st.text_input(
+                "起点ラベル", value=_skt.get("start_label", "新人入社"),
+                key="skt_in_start",
+            )
+
+            st.markdown("**分岐**")
+
+            _del_idx = None
+            _move_op = None
+
+            for _idx, _branch in enumerate(_skt.get("branches", [])):
+                _bid = _branch.get("id", _idx)
+                with st.container(border=True):
+                    _c1, _c2, _c3, _c4, _c5 = st.columns([4, 1.4, 0.6, 0.6, 0.6])
+                    _branch["label"] = _c1.text_input(
+                        "分岐名", value=_branch.get("label", ""),
+                        key=f"skt_in_b{_bid}_label",
+                    )
+                    _branch["color"] = _c2.color_picker(
+                        "色", value=_branch.get("color", "#888888"),
+                        key=f"skt_in_b{_bid}_color",
+                    )
+                    if _idx > 0:
+                        if _c3.button("⬆", key=f"skt_b{_bid}_up", help="上へ"):
+                            _move_op = (_idx, "up")
+                    if _idx < len(_skt["branches"]) - 1:
+                        if _c4.button("⬇", key=f"skt_b{_bid}_down", help="下へ"):
+                            _move_op = (_idx, "down")
+                    if _c5.button("🗑", key=f"skt_b{_bid}_del", help="削除"):
+                        _del_idx = _idx
+
+                    _stages_text = "\n".join(_branch.get("stages", []))
+                    _new_stages = st.text_area(
+                        "ステージ（1行=1ノード、上から下へ並ぶ順）",
+                        value=_stages_text,
+                        key=f"skt_in_b{_bid}_stages",
+                        height=120,
+                    )
+                    _branch["stages"] = [s.strip() for s in _new_stages.split("\n") if s.strip()]
+
+            if _move_op is not None:
+                _i, _dir = _move_op
+                if _dir == "up" and _i > 0:
+                    _skt["branches"][_i - 1], _skt["branches"][_i] = (
+                        _skt["branches"][_i], _skt["branches"][_i - 1]
+                    )
+                elif _dir == "down" and _i < len(_skt["branches"]) - 1:
+                    _skt["branches"][_i], _skt["branches"][_i + 1] = (
+                        _skt["branches"][_i + 1], _skt["branches"][_i]
+                    )
+                st.rerun()
+
+            if _del_idx is not None:
+                _skt["branches"].pop(_del_idx)
+                st.rerun()
+
+            if st.button("➕ 分岐を追加", key="skt_add_branch"):
+                _skt["branches"].append({
+                    "id": next_branch_id(_skt["branches"]),
+                    "label": "新規分岐",
+                    "color": "#888888",
+                    "stages": ["ステージ1"],
+                })
+                st.rerun()
+
+            st.markdown("---")
+            _sc1, _sc2 = st.columns([1, 1])
+            if _sc1.button("💾 保存", key="skt_save", type="primary",
+                           use_container_width=True):
+                try:
+                    ok, msg = save_skill_tree(_skt)
+                    st.toast(msg, icon="✅" if ok else "⚠️")
+                    for _k in list(st.session_state.keys()):
+                        if _k.startswith("skt_in_") or _k == "skt_edit":
+                            del st.session_state[_k]
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"保存に失敗: {_e}")
+
+            if _sc2.button("🔄 リセット(Sheetsから再読込)", key="skt_reset",
+                           use_container_width=True):
+                clear_skill_tree_cache()
+                for _k in list(st.session_state.keys()):
+                    if _k.startswith("skt_in_") or _k == "skt_edit":
+                        del st.session_state[_k]
+                st.rerun()
+
+    # ----- 表示(Sheetsの確定版を読込) -----
     try:
         _skt_data = get_skill_tree()
     except Exception as _e:

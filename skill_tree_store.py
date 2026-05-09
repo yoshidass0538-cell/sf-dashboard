@@ -100,10 +100,12 @@ def get_skill_tree() -> dict:
         if "nodes" not in b:
             stages = b.pop("stages", []) or []
             b["nodes"] = _linear_nodes([str(s) for s in stages if str(s).strip()])
-        # checked フィールドのデフォルト
+        # checked / memo フィールドのデフォルト
         for n in b.get("nodes", []):
             if "checked" not in n:
                 n["checked"] = False
+            if "memo" not in n:
+                n["memo"] = ""
     return data
 
 

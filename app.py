@@ -3944,6 +3944,15 @@ if selected_key == "skill_tree":
                                 on_click=_skt_cb_del_node,
                                 args=(_bid, _nid),
                             )
+                            # メモ(任意・常時表示・コンパクト)
+                            _node["memo"] = st.text_area(
+                                f"メモ_{_nid}",
+                                value=_node.get("memo", ""),
+                                key=f"skt_in_b{_bid}_n{_nid}_memo",
+                                label_visibility="collapsed",
+                                height=68,
+                                placeholder="📝 このノードのメモ（任意・SVGホバー＆詳細パネルで参照）",
+                            )
 
                     # ノード追加(ルート/子の選択可)
                     _add_c1, _add_c2, _add_c3 = st.columns([4, 1, 1])
@@ -4068,6 +4077,7 @@ if selected_key == "skill_tree":
                 "label": _n["label"].strip(),
                 "parent": _p,
                 "checked": bool(_n.get("checked", False)),
+                "memo": (_n.get("memo") or "").strip(),
             })
         return _bid, _lab, _col, _ns
 
@@ -4304,6 +4314,11 @@ if selected_key == "skill_tree":
             _nid = _n["id"]
             _x_n, _d_n = _bl["positions"][_nid]
             _y_n = _depth_to_y(_d_n)
+            # ノードグループ(<title>でホバー時のメモ表示)
+            _memo_n = (_n.get("memo") or "").strip()
+            _tip_text = _n.get("label", "") + (("\n\n" + _memo_n) if _memo_n else "")
+            _parts.append('<g>')
+            _parts.append(f'<title>{_skt_html.escape(_tip_text)}</title>')
             _parts.append(
                 f'<rect x="{_x_n - _PILL_W / 2}" y="{_y_n}" width="{_PILL_W}" height="{_PILL_H}" '
                 f'rx="22" ry="22" fill="url(#sk_g_{_bi})" stroke="none" '
@@ -4335,10 +4350,47 @@ if selected_key == "skill_tree":
                 f'fill="#fff" font-weight="600" font-size="13" font-family="Meiryo, sans-serif">'
                 f'{_skt_html.escape(_n.get("label", ""))}</text>'
             )
+            _parts.append('</g>')
 
     _parts.append('</svg>')
     _parts.append('</div>')
     st.markdown("".join(_parts), unsafe_allow_html=True)
+
+    # ----- ノード詳細パネル (selectbox + メモ表示) -----
+    with st.expander("🔍 ノードの詳細を見る", expanded=False):
+        _all_node_options = []
+        for _bid_d, _lab_d, _col_d, _ns_d in _branches_src:
+            for _nd in _ns_d:
+                _all_node_options.append((_bid_d, _nd["id"], _lab_d, _col_d, _nd))
+        if _all_node_options:
+            _sel_idx = st.selectbox(
+                "ノードを選択",
+                options=list(range(len(_all_node_options))),
+                format_func=lambda i: f"[{_all_node_options[i][2]}] {_all_node_options[i][4].get('label', '')}",
+                key="skt_detail_select",
+            )
+            _sel = _all_node_options[_sel_idx]
+            _sel_bid, _sel_nid, _sel_blabel, _sel_color, _sel_node = _sel
+            _sel_state = "✅ 習得済み" if _sel_node.get("checked") else "⬜ 未習得"
+            _sel_memo = (_sel_node.get("memo") or "").strip()
+            st.markdown(
+                f"<div style='border-left:6px solid {_sel_color};padding:8px 12px;"
+                f"margin-top:6px;background:rgba(0,0,0,0.02);border-radius:4px;'>"
+                f"<div style='font-size:13px;color:#666;'>{_skt_html.escape(_sel_blabel)}</div>"
+                f"<div style='font-size:18px;font-weight:700;margin:2px 0;'>"
+                f"{_skt_html.escape(_sel_node.get('label', ''))}</div>"
+                f"<div style='font-size:13px;color:#444;margin-bottom:6px;'>{_sel_state}</div>"
+                + (
+                    f"<div style='font-size:13px;line-height:1.55;white-space:pre-wrap;"
+                    f"background:#fff;padding:8px 10px;border-radius:4px;"
+                    f"border:1px solid #e5e5e5;'>"
+                    f"{_skt_html.escape(_sel_memo)}</div>"
+                    if _sel_memo else
+                    "<div style='font-size:13px;color:#999;'>メモなし（編集タブから追加できます）</div>"
+                )
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
     # ----- 習得チェック (折りたたみ・タブ＋親別エキスパンダ・自動保存) -----
     with st.expander("✅ 習得チェック", expanded=False):

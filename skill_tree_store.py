@@ -28,17 +28,27 @@ from talk_template_store import (
 WORKSHEET_NAME = "skill_tree_data"
 CELL = "A1"
 
+def _linear_nodes(labels: list[str]) -> list[dict]:
+    nodes = []
+    parent = None
+    for i, lab in enumerate(labels):
+        nid = i + 1
+        nodes.append({"id": nid, "label": lab, "parent": parent})
+        parent = nid
+    return nodes
+
+
 _DEFAULT_DATA = {
     "start_labels": ["新人入社"],
     "branches": [
         {"id": 1, "label": "受信", "color": "#22c55e",
-         "stages": ["受信基礎", "受信応用", "受信マスター"]},
+         "nodes": _linear_nodes(["受信基礎", "受信応用", "受信マスター"])},
         {"id": 2, "label": "発信", "color": "#eab308",
-         "stages": ["発信基礎", "発信応用", "発信マスター"]},
+         "nodes": _linear_nodes(["発信基礎", "発信応用", "発信マスター"])},
         {"id": 3, "label": "事務", "color": "#ef4444",
-         "stages": ["事務基礎", "事務応用", "事務マスター"]},
+         "nodes": _linear_nodes(["事務基礎", "事務応用", "事務マスター"])},
         {"id": 4, "label": "育成", "color": "#3b82f6",
-         "stages": ["育成基礎", "育成応用", "育成マスター"]},
+         "nodes": _linear_nodes(["育成基礎", "育成応用", "育成マスター"])},
     ],
 }
 
@@ -85,6 +95,11 @@ def get_skill_tree() -> dict:
         data["start_labels"] = [old]
     if not isinstance(data.get("start_labels"), list):
         data["start_labels"] = [str(data.get("start_labels") or "新人入社")]
+    # 後方互換: 旧 stages(list[str]) → nodes(list[{id,label,parent}]) 直線ツリー
+    for b in data.get("branches", []):
+        if "nodes" not in b:
+            stages = b.pop("stages", []) or []
+            b["nodes"] = _linear_nodes([str(s) for s in stages if str(s).strip()])
     return data
 
 

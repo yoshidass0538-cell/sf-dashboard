@@ -3643,14 +3643,82 @@ if selected_key == "skill_tree":
                     if _c5.button("🗑", key=f"skt_b{_bid}_del", help="削除"):
                         _del_idx = _idx
 
-                    _stages_text = "\n".join(_branch.get("stages", []))
-                    _new_stages = st.text_area(
-                        "ステージ（1行=1ノード、上から下へ並ぶ順）",
-                        value=_stages_text,
-                        key=f"skt_in_b{_bid}_stages",
-                        height=120,
+                    # ノード(ツリー構造) ----
+                    _nodes = _branch.setdefault("nodes", [])
+                    if _nodes:
+                        _node_ids = [n["id"] for n in _nodes]
+                        _label_by_id = {n["id"]: n.get("label", "") for n in _nodes}
+
+                        _node_del = None
+                        for _ni, _node in enumerate(_nodes):
+                            _nid = _node["id"]
+                            _nc1, _nc2, _nc3 = st.columns([3.5, 3, 0.6])
+                            _node["label"] = _nc1.text_input(
+                                f"ノード {_ni + 1}",
+                                value=_node.get("label", ""),
+                                key=f"skt_in_b{_bid}_n{_nid}_label",
+                                label_visibility="collapsed",
+                                placeholder="ノード名",
+                            )
+                            # 親選択(自分以外＋ルート)
+                            _opt_ids = [None] + [
+                                _n["id"] for _n in _nodes if _n["id"] != _nid
+                            ]
+                            _opt_labels = ["（ルート）"] + [
+                                f"└ {_label_by_id.get(_oid, '')} #{_oid}"
+                                for _oid in _opt_ids[1:]
+                            ]
+                            _cur_parent = _node.get("parent")
+                            try:
+                                _idx_p = _opt_ids.index(_cur_parent)
+                            except ValueError:
+                                _idx_p = 0
+                            _new_p_idx = _nc2.selectbox(
+                                f"親 (ノード{_ni + 1})",
+                                options=list(range(len(_opt_ids))),
+                                index=_idx_p,
+                                format_func=lambda i, ol=_opt_labels: ol[i],
+                                key=f"skt_in_b{_bid}_n{_nid}_parent",
+                                label_visibility="collapsed",
+                            )
+                            _node["parent"] = _opt_ids[_new_p_idx]
+                            if _nc3.button("🗑", key=f"skt_b{_bid}_n{_nid}_del", help="削除"):
+                                _node_del = _ni
+                        if _node_del is not None:
+                            _del_node = _nodes[_node_del]
+                            _del_id = _del_node["id"]
+                            _del_parent = _del_node.get("parent")
+                            # 子は祖父に再連結
+                            for _n in _nodes:
+                                if _n.get("parent") == _del_id:
+                                    _n["parent"] = _del_parent
+                            _nodes.pop(_node_del)
+                            st.rerun()
+
+                    # ノード追加
+                    _add_c1, _add_c2 = st.columns([5, 1])
+                    _new_node_label = _add_c1.text_input(
+                        "新規ノード名",
+                        key=f"skt_in_b{_bid}_new_node_label",
+                        placeholder="新規ノード名（追加するときに入力）",
+                        label_visibility="collapsed",
                     )
-                    _branch["stages"] = [s.strip() for s in _new_stages.split("\n") if s.strip()]
+                    if _add_c2.button("➕ ノード", key=f"skt_b{_bid}_n_add",
+                                      use_container_width=True):
+                        _lab = (_new_node_label or "").strip() or "新規ノード"
+                        _max_nid = max([n["id"] for n in _nodes] + [0])
+                        # デフォルト親=最後のノード(なければルート)
+                        _default_parent = _nodes[-1]["id"] if _nodes else None
+                        _nodes.append({
+                            "id": _max_nid + 1,
+                            "label": _lab,
+                            "parent": _default_parent,
+                        })
+                        # クリア
+                        _k_new = f"skt_in_b{_bid}_new_node_label"
+                        if _k_new in st.session_state:
+                            del st.session_state[_k_new]
+                        st.rerun()
 
             if _move_op is not None:
                 _i, _dir = _move_op
@@ -3709,37 +3777,91 @@ if selected_key == "skill_tree":
     _start_labels = [
         s.strip() for s in (_skt_data.get("start_labels") or []) if s and s.strip()
     ] or ["新人入社"]
-    _branches_src = [
-        b for b in _skt_data.get("branches", [])
-        if (b.get("label") or "").strip() and (b.get("stages") or [])
-    ]
-    if not _branches_src:
-        st.info("スキルツリーが未定義です。「✏ 編集する」から分岐とステージを作成してください。")
-        st.stop()
 
-    _branches = [
-        ((b.get("label") or "").strip(),
-         (b.get("color") or "#888888").strip() or "#888888",
-         [s.strip() for s in (b.get("stages") or []) if s.strip()])
-        for b in _branches_src
-    ]
+    def _skt_clean_branch(_b):
+        _lab = (_b.get("label") or "").strip()
+        _col = (_b.get("color") or "#888888").strip() or "#888888"
+        _ns_raw = _b.get("nodes") or []
+        _id_set = {n.get("id") for n in _ns_raw}
+        # parent が存在しない id を指していたら None に正規化
+        _ns = []
+        for _n in _ns_raw:
+            if not (_n.get("label") or "").strip():
+                continue
+            _p = _n.get("parent")
+            if _p is not None and _p not in _id_set:
+                _p = None
+            _ns.append({"id": _n["id"], "label": _n["label"].strip(), "parent": _p})
+        return _lab, _col, _ns
+
+    _branches_src = [_skt_clean_branch(b) for b in _skt_data.get("branches", [])]
+    _branches_src = [(l, c, n) for (l, c, n) in _branches_src if l and n]
+    if not _branches_src:
+        st.info("スキルツリーが未定義です。「✏ 編集する」から分岐とノードを作成してください。")
+        st.stop()
 
     _PILL_W = 180
     _PILL_H = 44
+    _NODE_X_UNIT = 200  # ノード水平方向の最小スロット幅
+    _NODE_Y_GAP = 78    # ノード縦方向 top-to-top
+    _BRANCH_X_PAD = 60  # 分岐(ツリー)同士の左右パディング
     _START_Y = 20
-    _START_GAP = 60  # 起点ピル top-to-top
-    _GAP = 78         # ステージ top-to-top
-    _COL_W = 275
-    _LEFT_PAD = 137
+    _START_GAP = 60     # 起点ピル top-to-top
+    _LEFT_PAD = 60
     _n_starts = len(_start_labels)
     _last_start_top = _START_Y + (_n_starts - 1) * _START_GAP
     _last_start_bottom = _last_start_top + _PILL_H
     _HEADER_Y = _last_start_bottom + 50
-    _n_cols = len(_branches)
-    _SVG_W = max(_LEFT_PAD * 2, _LEFT_PAD * 2 + (_n_cols - 1) * _COL_W)
-    _COLS_X = [_LEFT_PAD + _i * _COL_W for _i in range(_n_cols)]
-    _max_stages = max(len(s) for _, _, s in _branches)
-    _SVG_H = _HEADER_Y + _max_stages * _GAP + _PILL_H + 24
+
+    # 各分岐のツリー配置を計算
+    def _layout_tree(_nodes, _x_offset):
+        """各分岐内のノード位置(ツリー)。返り値: positions, max_depth, width."""
+        _by_id = {n["id"]: n for n in _nodes}
+        _children = {}
+        _roots = []
+        for _n in _nodes:
+            _p = _n.get("parent")
+            if _p is None or _p not in _by_id:
+                _roots.append(_n["id"])
+            else:
+                _children.setdefault(_p, []).append(_n["id"])
+        _positions = {}
+        _max_d = [0]
+        _cursor = [_x_offset]
+        def _place(nid, depth):
+            _max_d[0] = max(_max_d[0], depth)
+            ch = _children.get(nid, [])
+            if not ch:
+                _x = _cursor[0]
+                _cursor[0] += _NODE_X_UNIT
+                _positions[nid] = (_x, depth)
+                return
+            for c in ch:
+                _place(c, depth + 1)
+            _xs = [_positions[c][0] for c in ch]
+            _positions[nid] = ((_xs[0] + _xs[-1]) / 2, depth)
+        for _r in _roots:
+            _place(_r, 0)
+        _width = _cursor[0] - _x_offset if _roots else _NODE_X_UNIT
+        return _positions, _max_d[0], _width, _roots
+
+    _branch_layouts = []
+    _x_cursor = _LEFT_PAD
+    for _label, _color, _nodes in _branches_src:
+        _pos, _max_d, _w, _roots = _layout_tree(_nodes, _x_cursor)
+        _branch_layouts.append({
+            "label": _label, "color": _color, "nodes": _nodes,
+            "positions": _pos, "max_depth": _max_d,
+            "width": _w, "roots": _roots,
+            "x_start": _x_cursor,
+            "x_end": _x_cursor + _w,
+        })
+        _x_cursor += _w + _BRANCH_X_PAD
+
+    _SVG_W = max(_x_cursor + _LEFT_PAD - _BRANCH_X_PAD, 600)
+    _max_depth_all = max((bl["max_depth"] for bl in _branch_layouts), default=0)
+    # 分岐ヘッダ行 = depth 0 の上、その下にdepth 0..max_depth_all のノードが並ぶ
+    _SVG_H = _HEADER_Y + (_max_depth_all + 1) * _NODE_Y_GAP + _PILL_H + 24
 
     import html as _skt_html
     _parts = [
@@ -3751,11 +3873,11 @@ if selected_key == "skill_tree":
         '<filter id="sk_shadow" x="-50%" y="-50%" width="200%" height="200%">'
         '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.35"/></filter>'
     )
-    for _gi, (_label, _color, _) in enumerate(_branches):
+    for _gi, _bl in enumerate(_branch_layouts):
         _parts.append(
             f'<linearGradient id="sk_g_{_gi}" x1="0" y1="0" x2="0" y2="1">'
-            f'<stop offset="0" stop-color="{_color}"/>'
-            f'<stop offset="1" stop-color="{_color}" stop-opacity="0.78"/>'
+            f'<stop offset="0" stop-color="{_bl["color"]}"/>'
+            f'<stop offset="1" stop-color="{_bl["color"]}" stop-opacity="0.78"/>'
             f'</linearGradient>'
         )
     _parts.append(
@@ -3777,19 +3899,23 @@ if selected_key == "skill_tree":
             f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
         )
 
-    # 最下段の起点 → 分岐 への接続線
+    # 最下段の起点 → 各分岐ヘッダー への接続線
+    _branch_header_xs = [
+        (_bl["x_start"] + _bl["x_end"]) / 2 for _bl in _branch_layouts
+    ]
     _parts.append(
         f'<line x1="{_mid_x}" y1="{_last_start_bottom}" x2="{_mid_x}" y2="{_fan_y}" '
         f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
     )
-    if len(_COLS_X) >= 2:
+    if len(_branch_header_xs) >= 2:
         _parts.append(
-            f'<line x1="{_COLS_X[0]}" y1="{_fan_y}" x2="{_COLS_X[-1]}" y2="{_fan_y}" '
+            f'<line x1="{_branch_header_xs[0]}" y1="{_fan_y}" '
+            f'x2="{_branch_header_xs[-1]}" y2="{_fan_y}" '
             f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
         )
-    for _cx in _COLS_X:
+    for _hx in _branch_header_xs:
         _parts.append(
-            f'<line x1="{_cx}" y1="{_fan_y}" x2="{_cx}" y2="{_HEADER_Y}" '
+            f'<line x1="{_hx}" y1="{_fan_y}" x2="{_hx}" y2="{_HEADER_Y}" '
             f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
         )
 
@@ -3807,38 +3933,91 @@ if selected_key == "skill_tree":
             f'{_skt_html.escape(_sl)}</text>'
         )
 
-    # 各分岐
-    for _col_idx, (_label, _color, _stages) in enumerate(_branches):
-        _cx = _COLS_X[_col_idx]
-        _y = _HEADER_Y
-        # 分岐ヘッダー
+    # 各分岐: ヘッダ + ノードツリー
+    for _bi, _bl in enumerate(_branch_layouts):
+        _label = _bl["label"]
+        _color = _bl["color"]
+        _hx = _branch_header_xs[_bi]
+        # ヘッダーピル
         _parts.append(
-            f'<rect x="{_cx - _PILL_W / 2}" y="{_y}" width="{_PILL_W}" height="{_PILL_H}" '
-            f'rx="22" ry="22" fill="url(#sk_g_{_col_idx})" stroke="{_color}" stroke-width="0" '
+            f'<rect x="{_hx - _PILL_W / 2}" y="{_HEADER_Y}" width="{_PILL_W}" height="{_PILL_H}" '
+            f'rx="22" ry="22" fill="url(#sk_g_{_bi})" stroke="none" '
             f'filter="url(#sk_shadow)"/>'
         )
         _parts.append(
-            f'<text x="{_cx}" y="{_y + _PILL_H / 2 + 5}" text-anchor="middle" '
+            f'<text x="{_hx}" y="{_HEADER_Y + _PILL_H / 2 + 5}" text-anchor="middle" '
             f'fill="#fff" font-weight="800" font-size="15" font-family="Meiryo, sans-serif" '
             f'letter-spacing="0.06em">{_skt_html.escape(_label)}</text>'
         )
-        # 各ステージ
-        for _i, _stage in enumerate(_stages):
-            _prev_bottom = _y + _PILL_H
-            _y = _HEADER_Y + (_i + 1) * _GAP
+        # ノードのy座標 = HEADER_Y + (depth+1) * NODE_Y_GAP
+        _depth_to_y = lambda d: _HEADER_Y + (d + 1) * _NODE_Y_GAP
+
+        # ヘッダから各ルートノードへの接続線
+        _node_by_id = {n["id"]: n for n in _bl["nodes"]}
+        _root_ids = _bl["roots"]
+        _hdr_bottom = _HEADER_Y + _PILL_H
+        if _root_ids:
+            _root_xs = [_bl["positions"][rid][0] for rid in _root_ids]
+            # ヘッダー直下の中央の y = depth0_top - 18
+            _connector_y = _depth_to_y(0) - 18
             _parts.append(
-                f'<line x1="{_cx}" y1="{_prev_bottom}" x2="{_cx}" y2="{_y}" '
+                f'<line x1="{_hx}" y1="{_hdr_bottom}" x2="{_hx}" y2="{_connector_y}" '
                 f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
             )
+            if len(_root_xs) >= 2:
+                _parts.append(
+                    f'<line x1="{min(_root_xs)}" y1="{_connector_y}" '
+                    f'x2="{max(_root_xs)}" y2="{_connector_y}" '
+                    f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
+                )
+            for _rx in _root_xs:
+                _parts.append(
+                    f'<line x1="{_rx}" y1="{_connector_y}" x2="{_rx}" y2="{_depth_to_y(0)}" '
+                    f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
+                )
+
+        # 親→子 接続線(各ノードからその子へ)
+        for _n in _bl["nodes"]:
+            _nid = _n["id"]
+            _x_n, _d_n = _bl["positions"][_nid]
+            _y_n = _depth_to_y(_d_n)
+            # 子を探す
+            _child_ids = [c["id"] for c in _bl["nodes"] if c.get("parent") == _nid]
+            if not _child_ids:
+                continue
+            _child_xs = [_bl["positions"][cid][0] for cid in _child_ids]
+            _bottom_n = _y_n + _PILL_H
+            _connector_y = _depth_to_y(_d_n + 1) - 18
             _parts.append(
-                f'<rect x="{_cx - _PILL_W / 2}" y="{_y}" width="{_PILL_W}" height="{_PILL_H}" '
-                f'rx="22" ry="22" fill="url(#sk_g_{_col_idx})" stroke="none" '
+                f'<line x1="{_x_n}" y1="{_bottom_n}" x2="{_x_n}" y2="{_connector_y}" '
+                f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
+            )
+            if len(_child_xs) >= 2:
+                _parts.append(
+                    f'<line x1="{min(_child_xs)}" y1="{_connector_y}" '
+                    f'x2="{max(_child_xs)}" y2="{_connector_y}" '
+                    f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
+                )
+            for _cx in _child_xs:
+                _parts.append(
+                    f'<line x1="{_cx}" y1="{_connector_y}" x2="{_cx}" y2="{_depth_to_y(_d_n + 1)}" '
+                    f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
+                )
+
+        # 各ノードのピル
+        for _n in _bl["nodes"]:
+            _nid = _n["id"]
+            _x_n, _d_n = _bl["positions"][_nid]
+            _y_n = _depth_to_y(_d_n)
+            _parts.append(
+                f'<rect x="{_x_n - _PILL_W / 2}" y="{_y_n}" width="{_PILL_W}" height="{_PILL_H}" '
+                f'rx="22" ry="22" fill="url(#sk_g_{_bi})" stroke="none" '
                 f'filter="url(#sk_shadow)"/>'
             )
             _parts.append(
-                f'<text x="{_cx}" y="{_y + _PILL_H / 2 + 5}" text-anchor="middle" '
+                f'<text x="{_x_n}" y="{_y_n + _PILL_H / 2 + 5}" text-anchor="middle" '
                 f'fill="#fff" font-weight="600" font-size="13" font-family="Meiryo, sans-serif">'
-                f'{_skt_html.escape(_stage)}</text>'
+                f'{_skt_html.escape(_n.get("label", ""))}</text>'
             )
 
     _parts.append('</svg>')

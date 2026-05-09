@@ -3594,38 +3594,32 @@ if selected_key == "skill_tree":
         "rankdir": "LR",
         "bgcolor": "transparent",
         "splines": "ortho",
-        "nodesep": "0.4",
-        "ranksep": "0.7",
+        "nodesep": "0.35",
+        "ranksep": "0.8",
     })
     _g.attr("node", shape="box", style="rounded,filled",
             fontname="Meiryo", fontsize="12",
-            fillcolor="#4A6FA5", fontcolor="white",
+            fontcolor="white",
             margin="0.2,0.1", height="0.5", width="2.0")
-    _g.attr("edge", color="#888", arrowsize="0.7")
 
-    # --- サンプルノード ---
-    _g.node("start", "新人入社")
-    _g.node("ph_call", "電話応対基礎")
-    _g.node("ph_sys", "システム操作基礎")
-    _g.node("inbound", "受信対応")
-    _g.node("outbound", "発信業務")
-    _g.node("claim", "クレーム対応", fillcolor="#D4850A")
-    _g.node("apply", "応用対応", fillcolor="#2E8B57")
-    _g.node("teach", "後輩指導", fillcolor="#2E8B57")
-    _g.node("master", "マスター", fillcolor="#C0392B")
+    # --- 起点 ---
+    _g.node("start", "新人入社", fillcolor="#444444")
 
-    # --- サンプル接続 ---
-    _g.edge("start", "ph_call")
-    _g.edge("start", "ph_sys")
-    _g.edge("ph_call", "inbound")
-    _g.edge("ph_call", "outbound")
-    _g.edge("ph_sys", "inbound")
-    _g.edge("ph_sys", "outbound")
-    _g.edge("inbound", "claim")
-    _g.edge("outbound", "claim")
-    _g.edge("claim", "apply")
-    _g.edge("apply", "teach")
-    _g.edge("teach", "master")
+    # --- 4分岐(枝ごとに色を統一) ---
+    _branches = [
+        ("受信",  "#2E7DD7", ["受信基礎",   "受信応用",   "受信マスター"]),
+        ("発信",  "#2E8B57", ["発信基礎",   "発信応用",   "発信マスター"]),
+        ("事務",  "#D4850A", ["事務基礎",   "事務応用",   "事務マスター"]),
+        ("育成",  "#C0392B", ["育成基礎",   "育成応用",   "育成マスター"]),
+    ]
+
+    for _b_key, _color, _stages in _branches:
+        _prev = "start"
+        for _i, _label in enumerate(_stages):
+            _nid = f"{_b_key}_{_i}"
+            _g.node(_nid, _label, fillcolor=_color)
+            _g.edge(_prev, _nid, color=_color, penwidth="2")
+            _prev = _nid
 
     st.graphviz_chart(_g, use_container_width=True)
     st.stop()

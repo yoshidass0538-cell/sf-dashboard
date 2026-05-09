@@ -3590,7 +3590,28 @@ if selected_key == "skill_tree":
         get_skill_tree, save_skill_tree, clear_skill_tree_cache, next_branch_id,
     )
 
-    # チェックボックス変更時の自動保存コールバック
+    # 親→子伝搬: 子全部チェックなら親自動チェック(再帰)
+    def _skt_propagate(branch_data):
+        _nodes_b = branch_data.get("nodes", []) or []
+        _children_of = {}
+        for _n in _nodes_b:
+            _p = _n.get("parent")
+            if _p is not None:
+                _children_of.setdefault(_p, []).append(_n["id"])
+        _by_id = {_n["id"]: _n for _n in _nodes_b}
+        _changed = True
+        while _changed:
+            _changed = False
+            for _n in _nodes_b:
+                _chs = _children_of.get(_n["id"], [])
+                if not _chs:
+                    continue
+                _new_v = all(_by_id[_c].get("checked", False) for _c in _chs)
+                if bool(_n.get("checked", False)) != _new_v:
+                    _n["checked"] = _new_v
+                    _changed = True
+
+    # チェックボックス変更時の自動保存コールバック(親自動チェック付き)
     def _skt_on_check_change(_bid, _nid, _wkey):
         _new_val = bool(st.session_state.get(_wkey, False))
         try:
@@ -3601,6 +3622,11 @@ if selected_key == "skill_tree":
                         if int(_n.get("id", 0)) == _nid:
                             _n["checked"] = _new_val
                             break
+                    _skt_propagate(_b)
+                    # session_state のチェックboxウィジェット側も同期
+                    for _n in _b.get("nodes", []):
+                        _wkey2 = f"skt_inline_b{_bid}_n{_n['id']}"
+                        st.session_state[_wkey2] = bool(_n.get("checked", False))
                     break
             save_skill_tree(_data_x)
         except Exception as _e:
@@ -3703,6 +3729,35 @@ if selected_key == "skill_tree":
                     if _nodes:
                         _node_ids = [n["id"] for n in _nodes]
                         _label_by_id = {n["id"]: n.get("label", "") for n in _nodes}
+
+                        # ドラッグ&ドロップ並び替え(オプション、エキスパンダ内)
+                        with st.expander("🔃 ノード並び替え（ドラッグ&ドロップ）", expanded=False):
+                            from streamlit_sortables import sort_items as _skt_sort
+                            _sort_input = [
+                                f"{(_n.get('label') or '(無題)').strip() or '(無題)'}　⟨#{_n['id']}⟩"
+                                for _n in _nodes
+                            ]
+                            _sort_output = _skt_sort(
+                                _sort_input,
+                                direction="vertical",
+                                key=f"skt_sort_b{_bid}",
+                            )
+                            if _sort_output != _sort_input:
+                                _new_order = []
+                                for _s in _sort_output:
+                                    try:
+                                        _tail = _s.rsplit("⟨#", 1)[1]
+                                        _nid_x = int(_tail.rstrip("⟩"))
+                                        for _n in _nodes:
+                                            if _n["id"] == _nid_x:
+                                                _new_order.append(_n)
+                                                break
+                                    except Exception:
+                                        pass
+                                if len(_new_order) == len(_nodes):
+                                    _nodes.clear()
+                                    _nodes.extend(_new_order)
+                                    st.rerun()
 
                         for _ni, _node in enumerate(_nodes):
                             _nid = _node["id"]
@@ -4135,27 +4190,48 @@ if selected_key == "skill_tree":
     _parts.append('</div>')
     st.markdown("".join(_parts), unsafe_allow_html=True)
 
-    # ----- 習得チェック (図と連動・自動保存) -----
+    # ----- 習得チェック (タブ＋親別エキスパンダ・自動保存) -----
     st.markdown("### ✅ 習得チェック")
-    st.caption("チェックすると即時保存され、上の図のチェックマークと習得率が更新されます。")
-    for _bid_chk, _label_chk, _color_chk, _nodes_chk in _branches_src:
-        st.markdown(
-            f"<div style='border-left:6px solid {_color_chk};padding:4px 10px;"
-            f"font-weight:700;margin-top:10px;'>{_skt_html.escape(_label_chk)}</div>",
-            unsafe_allow_html=True,
-        )
-        # 親→子の順で並べる(ノードが入力順なら親が先のはず。表示はそのまま)
-        _chk_cols = st.columns(3)
-        for _ci, _n in enumerate(_nodes_chk):
-            _wkey = f"skt_inline_b{_bid_chk}_n{_n['id']}"
-            if _wkey not in st.session_state:
-                st.session_state[_wkey] = bool(_n.get("checked", False))
-            _chk_cols[_ci % 3].checkbox(
-                _n.get("label", ""),
-                key=_wkey,
-                on_change=_skt_on_check_change,
-                args=(_bid_chk, _n["id"], _wkey),
-            )
+    st.caption("チェックすると即時保存。子ノード全部チェックで親が自動チェック、上の図と習得率も更新されます。")
+    _tab_labels = [_l for (_bid, _l, _c, _n) in _branches_src]
+    if _tab_labels:
+        _tabs = st.tabs(_tab_labels)
+        for (_bid_chk, _label_chk, _color_chk, _nodes_chk), _tab in zip(_branches_src, _tabs):
+            with _tab:
+                # 子マップ構築
+                _children_map = {}
+                for _n in _nodes_chk:
+                    _p = _n.get("parent")
+                    if _p is not None:
+                        _children_map.setdefault(_p, []).append(_n)
+                _roots_chk = [_n for _n in _nodes_chk if _n.get("parent") is None]
+
+                def _render_chk_tree(_node, _depth=0):
+                    _wkey = f"skt_inline_b{_bid_chk}_n{_node['id']}"
+                    if _wkey not in st.session_state:
+                        st.session_state[_wkey] = bool(_node.get("checked", False))
+                    _chs = _children_map.get(_node["id"], [])
+                    if _chs:
+                        _mark = "✅ " if st.session_state.get(_wkey) else ""
+                        with st.expander(f"{_mark}{_node.get('label', '')}", expanded=True):
+                            st.checkbox(
+                                f"{_node.get('label', '')}（親）",
+                                key=_wkey,
+                                on_change=_skt_on_check_change,
+                                args=(_bid_chk, _node["id"], _wkey),
+                            )
+                            for _ch in _chs:
+                                _render_chk_tree(_ch, _depth + 1)
+                    else:
+                        st.checkbox(
+                            _node.get("label", ""),
+                            key=_wkey,
+                            on_change=_skt_on_check_change,
+                            args=(_bid_chk, _node["id"], _wkey),
+                        )
+
+                for _root in _roots_chk:
+                    _render_chk_tree(_root)
     st.stop()
 
 

@@ -3669,7 +3669,7 @@ if selected_key == "skill_tree":
                         _add_child_to = None  # 子追加対象 node id
                         for _ni, _node in enumerate(_nodes):
                             _nid = _node["id"]
-                            _nc1, _nc2, _nc3, _nc4 = st.columns([3.2, 2.6, 0.6, 0.6])
+                            _nc1, _nc2, _nc3, _nc4 = st.columns([3, 2.4, 1.2, 1])
                             _node["label"] = _nc1.text_input(
                                 f"ノード {_ni + 1}",
                                 value=_node.get("label", ""),
@@ -3699,10 +3699,13 @@ if selected_key == "skill_tree":
                                 label_visibility="collapsed",
                             )
                             _node["parent"] = _opt_ids[_new_p_idx]
-                            if _nc3.button("➕子", key=f"skt_b{_bid}_n{_nid}_addchild",
-                                           help="このノードの子を追加"):
+                            if _nc3.button("➕ 子", key=f"skt_b{_bid}_n{_nid}_addchild",
+                                           help="このノードの子を追加",
+                                           use_container_width=True):
                                 _add_child_to = _nid
-                            if _nc4.button("🗑", key=f"skt_b{_bid}_n{_nid}_del", help="削除"):
+                            if _nc4.button("🗑", key=f"skt_b{_bid}_n{_nid}_del",
+                                           help="削除",
+                                           use_container_width=True):
                                 _node_del = _ni
                         if _add_child_to is not None:
                             _max_nid = max([n["id"] for n in _nodes] + [0])

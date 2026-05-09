@@ -4073,6 +4073,10 @@ if selected_key == "timee_management":
                 ".ag-row-odd": {"background-color": "#ffffff"},
                 ".ag-row-even": {"background-color": "#fef0f4"},
                 ".ag-row-selected": {"background-color": "#fce4ec !important"},
+                # autoHeightで伸びた行内で、コンテンツを縦横中央寄せ
+                ".ag-cell": {"display": "flex !important",
+                             "align-items": "center !important",
+                             "justify-content": "center !important"},
             }
 
             # 解除等で grid を再マウントするためのキーカウンタ

@@ -3650,9 +3650,10 @@ if selected_key == "skill_tree":
                         _label_by_id = {n["id"]: n.get("label", "") for n in _nodes}
 
                         _node_del = None
+                        _add_child_to = None  # 子追加対象 node id
                         for _ni, _node in enumerate(_nodes):
                             _nid = _node["id"]
-                            _nc1, _nc2, _nc3 = st.columns([3.5, 3, 0.6])
+                            _nc1, _nc2, _nc3, _nc4 = st.columns([3.2, 2.6, 0.6, 0.6])
                             _node["label"] = _nc1.text_input(
                                 f"ノード {_ni + 1}",
                                 value=_node.get("label", ""),
@@ -3682,8 +3683,19 @@ if selected_key == "skill_tree":
                                 label_visibility="collapsed",
                             )
                             _node["parent"] = _opt_ids[_new_p_idx]
-                            if _nc3.button("🗑", key=f"skt_b{_bid}_n{_nid}_del", help="削除"):
+                            if _nc3.button("➕子", key=f"skt_b{_bid}_n{_nid}_addchild",
+                                           help="このノードの子を追加"):
+                                _add_child_to = _nid
+                            if _nc4.button("🗑", key=f"skt_b{_bid}_n{_nid}_del", help="削除"):
                                 _node_del = _ni
+                        if _add_child_to is not None:
+                            _max_nid = max([n["id"] for n in _nodes] + [0])
+                            _nodes.append({
+                                "id": _max_nid + 1,
+                                "label": "新規ノード",
+                                "parent": _add_child_to,
+                            })
+                            st.rerun()
                         if _node_del is not None:
                             _del_node = _nodes[_node_del]
                             _del_id = _del_node["id"]

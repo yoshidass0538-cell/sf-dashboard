@@ -2757,6 +2757,9 @@ elif selected_key == "line_template":
 elif selected_key == "timee_management":
     # タイミー管理 — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "cs_shift_calendar":
+    # シフト表(CS促進全員、月カレンダー) — 後の専用ブロックで表示
+    fetched = None
 else:
     try:
         fetched = _load(selected_key)
@@ -3577,6 +3580,122 @@ if selected_key == "orikaeshi_kensu":
             st.error(f"⚠️ チェック状態の保存に失敗しました: {msg}")
 
     st.stop()
+
+# シフト表ボード（CS促進全員 / 月カレンダー）
+if selected_key == "cs_shift_calendar":
+    import calendar as _cs_cal
+    import html as _cs_html
+    from datetime import date as _cs_date
+    from metrics import fetch_cs_shift_for_month
+
+    _today_cs = _cs_date.today()
+    _default_cs_m = _today_cs.strftime("%Y-%m")
+    _cs_cur = st.session_state.get("cs_shift_cal_month", _default_cs_m)
+    try:
+        _cs_y, _cs_m = map(int, _cs_cur.split("-"))
+    except Exception:
+        _cs_y, _cs_m = _today_cs.year, _today_cs.month
+        _cs_cur = f"{_cs_y:04d}-{_cs_m:02d}"
+
+    # 月ナビ
+    _cs_n1, _cs_n2, _cs_n3 = st.columns([1, 4, 1])
+    if _cs_n1.button("⬅ 前月", key="cs_shift_prev", use_container_width=True):
+        _ny, _nm = (_cs_y, _cs_m - 1) if _cs_m > 1 else (_cs_y - 1, 12)
+        st.session_state["cs_shift_cal_month"] = f"{_ny:04d}-{_nm:02d}"
+        st.rerun()
+    _cs_n2.markdown(
+        f"<div style='text-align:center;font-size:18px;font-weight:700;padding:8px 0;'>{_cs_y}年{_cs_m}月</div>",
+        unsafe_allow_html=True,
+    )
+    if _cs_n3.button("翌月 ➡", key="cs_shift_next", use_container_width=True):
+        _ny, _nm = (_cs_y, _cs_m + 1) if _cs_m < 12 else (_cs_y + 1, 1)
+        st.session_state["cs_shift_cal_month"] = f"{_ny:04d}-{_nm:02d}"
+        st.rerun()
+
+    @st.cache_data(ttl=300, show_spinner="シフト取得中...")
+    def _cs_shift_load(year: int, month: int):
+        return fetch_cs_shift_for_month(_sf(), year, month)
+
+    try:
+        _by_day = _cs_shift_load(_cs_y, _cs_m)
+    except Exception as e:
+        st.error(f"取得に失敗しました: {e}")
+        st.stop()
+
+    # 曜日ヘッダー（月始まり）
+    _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]
+    _hcols = st.columns(7)
+    for _i, _wd in enumerate(_wd_labels):
+        _wd_color = "#4a90e2" if _i == 5 else ("#e74c3c" if _i == 6 else "#444")
+        _hcols[_i].markdown(
+            f"<div style='text-align:center;font-weight:700;color:{_wd_color};"
+            f"padding:6px 0;border-bottom:2px solid #ddd;'>{_wd}</div>",
+            unsafe_allow_html=True,
+        )
+
+    _cs_cal.setfirstweekday(_cs_cal.MONDAY)
+    _weeks = _cs_cal.monthcalendar(_cs_y, _cs_m)
+    for _week in _weeks:
+        _cols = st.columns(7)
+        for _i, _day in enumerate(_week):
+            with _cols[_i]:
+                if _day == 0:
+                    st.markdown("<div style='min-height:90px;'></div>", unsafe_allow_html=True)
+                    continue
+                _d_obj = _cs_date(_cs_y, _cs_m, _day)
+                _is_past = _d_obj < _today_cs
+                _is_today = (_d_obj == _today_cs)
+                _is_sat = _i == 5
+                _is_sun = _i == 6
+
+                if _is_today:
+                    _bg, _fg, _bd = "#fff3cd", "#664d03", "2px solid #f0c000"
+                elif _is_past:
+                    _bg, _fg, _bd = "#f5f5f5", "#aaa", "1px solid #e0e0e0"
+                elif _is_sat:
+                    _bg, _fg, _bd = "#e7f0fb", "#2c5fa0", "1px solid #c5d8ee"
+                elif _is_sun:
+                    _bg, _fg, _bd = "#fde8ec", "#a5364c", "1px solid #f0c5cf"
+                else:
+                    _bg, _fg, _bd = "#ffffff", "#222", "1px solid #d8dee5"
+
+                _list = _by_day.get(_day, [])
+                if _list:
+                    _txt_color = "#bbb" if _is_past else "#333"
+                    _time_color = "#aaa" if _is_past else "#888"
+                    _lines = []
+                    for _name, _s, _e in sorted(_list, key=lambda t: (t[1], t[0])):
+                        _t = f"{_s}-{_e}" if _s and _e else (_s or _e)
+                        _lines.append(
+                            f"<div style='font-size:11px;color:{_txt_color};line-height:1.4;text-align:left;'>"
+                            f"{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
+                        )
+                    _names_html = "".join(_lines)
+                    _cnt_html = (
+                        f"<div style='font-size:13px;font-weight:700;margin-top:2px;"
+                        f"color:{'#888' if _is_past else '#1565c0'};'>"
+                        f"{len(_list)}<span style='font-size:10px;'>名</span></div>"
+                    )
+                else:
+                    _names_html = ""
+                    _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:6px;'>—</div>"
+
+                st.markdown(
+                    f"<div style='background:{_bg};color:{_fg};border:{_bd};"
+                    f"border-radius:8px;padding:6px 6px;min-height:120px;text-align:center;"
+                    f"margin-bottom:4px;overflow-wrap:break-word;'>"
+                    f"<div style='font-size:14px;font-weight:700;'>{_day}</div>"
+                    f"{_cnt_html}"
+                    f"<div style='margin-top:4px;'>{_names_html}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    st.caption(
+        f"📆 {_cs_y}年{_cs_m}月　CS促進全員シフト　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
+    )
+    st.stop()
+
 
 # タイミー管理ボード
 if selected_key == "timee_management":

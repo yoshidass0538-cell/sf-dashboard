@@ -747,6 +747,47 @@ def _build_shift_df(records, visible_days, member_set, order_list):
     return _add_total_hours_column(df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True))
 
 
+def fetch_cs_shift_for_month(sf: Salesforce, year: int, month: int) -> dict[int, list[tuple[str, str, str]]]:
+    """指定月のCS促進全員のシフトを日別に返す。
+
+    返り値: {day_int: [(氏名, 開始 'HH:MM', 終了 'HH:MM'), ...]}
+    """
+    year_label = f"{year}年"
+    month_label = f"{month}月"
+
+    field_list = ["Field128__r.Name"]
+    for _, s, e in SHIFT_DAY_FIELDS:
+        field_list += [s, e]
+    soql = (
+        f"SELECT {', '.join(field_list)} FROM CustomObject11__c "
+        f"WHERE Field1__c = '{year_label}' AND Field2__c = '{month_label}' "
+        f"AND Field128__r.Field13__c = 'CS促進' "
+        f"ORDER BY Field128__r.Name"
+    )
+    rs = sf.query_all(soql)["records"]
+    if not rs:
+        return {}
+
+    def _fmt(t):
+        if not t:
+            return ""
+        return str(t)[:5]
+
+    by_day: dict[int, list[tuple[str, str, str]]] = {}
+    for r in rs:
+        owner = (r.get("Field128__r") or {}).get("Name") or "(不明)"
+        normalized = owner.replace(" ", "").replace("　", "")
+        if normalized in EXCLUDED_OWNERS_NORM:
+            continue
+        for day, sf_, ef in SHIFT_DAY_FIELDS:
+            s = _fmt(r.get(sf_))
+            e = _fmt(r.get(ef))
+            if not s and not e:
+                continue
+            by_day.setdefault(day, []).append((owner, s, e))
+    return by_day
+
+
 def fetch_next_month_shift(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """翌月のシフトを4グループに分けて返す。"""
     today = pd.Timestamp.today()
@@ -2138,6 +2179,13 @@ METRICS: list[Metric] = [
         label="DAYコール数",
         description="本日のCS促進メンバーの対応ステータス別コール数（帯グラフ）",
         fetch=fetch_day_calls,
+        category="TOTAL",
+    ),
+    Metric(
+        key="cs_shift_calendar",
+        label="シフト表",
+        description="CS促進全員の月間シフトをカレンダー形式で表示",
+        fetch=lambda sf: pd.DataFrame(),
         category="TOTAL",
     ),
     Metric(

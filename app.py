@@ -3584,47 +3584,114 @@ if selected_key == "orikaeshi_kensu":
 
     st.stop()
 
-# スキルツリーボード(準備中・サンプル描画)
+# スキルツリーボード(準備中・サンプル描画 / SVG手描き)
 if selected_key == "skill_tree":
-    import graphviz as _st_gv
-
     st.caption("※ サンプル表示。スキル定義・習得管理は今後追加予定。")
 
-    _g = _st_gv.Digraph(graph_attr={
-        "rankdir": "LR",
-        "bgcolor": "transparent",
-        "splines": "ortho",
-        "nodesep": "0.35",
-        "ranksep": "0.8",
-    })
-    _g.attr("node", shape="box", style="rounded,filled,bold",
-            fontname="Meiryo", fontsize="12",
-            fontcolor="#FFFFFF",
-            margin="0.2,0.1", height="0.5", width="2.0",
-            penwidth="2")
-
-    # --- 起点 ---
-    _g.node("start", "新人入社",
-            fillcolor="#404040", fontcolor="#FFFFFF", color="#666666")
-
-    # --- 4分岐(画像に寄せた配色: 緑/金/赤/青) ---
+    _SVG_W = 1100
+    _PILL_W = 180
+    _PILL_H = 44
+    _START_Y = 20
+    _HEADER_Y = 130
+    _GAP = 78
+    _COLS_X = [137, 412, 687, 962]
     _branches = [
-        ("受信", "#22c55e", ["受信基礎", "受信応用", "受信マスター"]),  # 緑
-        ("発信", "#eab308", ["発信基礎", "発信応用", "発信マスター"]),  # 金
-        ("事務", "#ef4444", ["事務基礎", "事務応用", "事務マスター"]),  # 赤
-        ("育成", "#3b82f6", ["育成基礎", "育成応用", "育成マスター"]),  # 青
+        ("受信", "#22c55e", ["受信基礎", "受信応用", "受信マスター"]),
+        ("発信", "#eab308", ["発信基礎", "発信応用", "発信マスター"]),
+        ("事務", "#ef4444", ["事務基礎", "事務応用", "事務マスター"]),
+        ("育成", "#3b82f6", ["育成基礎", "育成応用", "育成マスター"]),
     ]
+    _SVG_H = _HEADER_Y + 3 * _GAP + _PILL_H + 24
 
-    for _b_key, _color, _stages in _branches:
-        _prev = "start"
-        for _i, _label in enumerate(_stages):
-            _nid = f"{_b_key}_{_i}"
-            _g.node(_nid, _label,
-                    fillcolor=_color, color=_color, fontcolor="#FFFFFF")
-            _g.edge(_prev, _nid, color=_color, penwidth="2.5")
-            _prev = _nid
+    _parts = [
+        f'<svg viewBox="0 0 {_SVG_W} {_SVG_H}" xmlns="http://www.w3.org/2000/svg" '
+        f'style="width:100%;max-width:1100px;height:auto;display:block;margin:0 auto;">'
+    ]
+    _parts.append('<defs>')
+    _parts.append(
+        '<filter id="sk_shadow" x="-50%" y="-50%" width="200%" height="200%">'
+        '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.35"/></filter>'
+    )
+    for _label, _color, _ in _branches:
+        _parts.append(
+            f'<linearGradient id="sk_g_{_label}" x1="0" y1="0" x2="0" y2="1">'
+            f'<stop offset="0" stop-color="{_color}"/>'
+            f'<stop offset="1" stop-color="{_color}" stop-opacity="0.78"/>'
+            f'</linearGradient>'
+        )
+    _parts.append(
+        '<linearGradient id="sk_g_start" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#5a5a5a"/>'
+        '<stop offset="1" stop-color="#2d2d2d"/></linearGradient>'
+    )
+    _parts.append('</defs>')
 
-    st.graphviz_chart(_g, use_container_width=True)
+    _mid_x = _SVG_W / 2
+    _fan_y = _HEADER_Y - 18
+
+    # 起点 → 4分岐 への接続線
+    _parts.append(
+        f'<line x1="{_mid_x}" y1="{_START_Y + _PILL_H}" x2="{_mid_x}" y2="{_fan_y}" '
+        f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
+    )
+    _parts.append(
+        f'<line x1="{_COLS_X[0]}" y1="{_fan_y}" x2="{_COLS_X[-1]}" y2="{_fan_y}" '
+        f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
+    )
+    for _cx in _COLS_X:
+        _parts.append(
+            f'<line x1="{_cx}" y1="{_fan_y}" x2="{_cx}" y2="{_HEADER_Y}" '
+            f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
+        )
+
+    # 起点ピル
+    _parts.append(
+        f'<rect x="{_mid_x - _PILL_W / 2}" y="{_START_Y}" width="{_PILL_W}" height="{_PILL_H}" '
+        f'rx="22" ry="22" fill="url(#sk_g_start)" stroke="#777" stroke-width="1" '
+        f'filter="url(#sk_shadow)"/>'
+    )
+    _parts.append(
+        f'<text x="{_mid_x}" y="{_START_Y + _PILL_H / 2 + 5}" text-anchor="middle" '
+        f'fill="#fff" font-weight="700" font-size="14" font-family="Meiryo, sans-serif">'
+        f'新人入社</text>'
+    )
+
+    # 4分岐
+    for _col_idx, (_label, _color, _stages) in enumerate(_branches):
+        _cx = _COLS_X[_col_idx]
+        _y = _HEADER_Y
+        # 分岐ヘッダー
+        _parts.append(
+            f'<rect x="{_cx - _PILL_W / 2}" y="{_y}" width="{_PILL_W}" height="{_PILL_H}" '
+            f'rx="22" ry="22" fill="url(#sk_g_{_label})" stroke="{_color}" stroke-width="0" '
+            f'filter="url(#sk_shadow)"/>'
+        )
+        _parts.append(
+            f'<text x="{_cx}" y="{_y + _PILL_H / 2 + 5}" text-anchor="middle" '
+            f'fill="#fff" font-weight="800" font-size="15" font-family="Meiryo, sans-serif" '
+            f'letter-spacing="0.06em">{_label}</text>'
+        )
+        # 各ステージ
+        for _i, _stage in enumerate(_stages):
+            _prev_bottom = _y + _PILL_H
+            _y = _HEADER_Y + (_i + 1) * _GAP
+            _parts.append(
+                f'<line x1="{_cx}" y1="{_prev_bottom}" x2="{_cx}" y2="{_y}" '
+                f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
+            )
+            _parts.append(
+                f'<rect x="{_cx - _PILL_W / 2}" y="{_y}" width="{_PILL_W}" height="{_PILL_H}" '
+                f'rx="22" ry="22" fill="url(#sk_g_{_label})" stroke="none" '
+                f'filter="url(#sk_shadow)"/>'
+            )
+            _parts.append(
+                f'<text x="{_cx}" y="{_y + _PILL_H / 2 + 5}" text-anchor="middle" '
+                f'fill="#fff" font-weight="600" font-size="13" font-family="Meiryo, sans-serif">'
+                f'{_stage}</text>'
+            )
+
+    _parts.append('</svg>')
+    st.markdown("".join(_parts), unsafe_allow_html=True)
     st.stop()
 
 

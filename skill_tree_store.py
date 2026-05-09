@@ -33,7 +33,7 @@ def _linear_nodes(labels: list[str]) -> list[dict]:
     parent = None
     for i, lab in enumerate(labels):
         nid = i + 1
-        nodes.append({"id": nid, "label": lab, "parent": parent})
+        nodes.append({"id": nid, "label": lab, "parent": parent, "checked": False})
         parent = nid
     return nodes
 
@@ -100,6 +100,10 @@ def get_skill_tree() -> dict:
         if "nodes" not in b:
             stages = b.pop("stages", []) or []
             b["nodes"] = _linear_nodes([str(s) for s in stages if str(s).strip()])
+        # checked フィールドのデフォルト
+        for n in b.get("nodes", []):
+            if "checked" not in n:
+                n["checked"] = False
     return data
 
 

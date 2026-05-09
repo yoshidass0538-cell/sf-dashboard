@@ -3787,6 +3787,53 @@ if selected_key == "skill_tree":
                         del st.session_state[_k]
                 st.rerun()
 
+    # ----- 習得状況のチェック編集 -----
+    with st.expander("✅ 習得状況（チェック編集）", expanded=False):
+        if "skt_check" not in st.session_state:
+            try:
+                st.session_state["skt_check"] = get_skill_tree()
+            except Exception as _e:
+                st.error(f"読み込みに失敗: {_e}")
+                st.session_state["skt_check"] = None
+
+        if st.session_state.get("skt_check") is not None:
+            _skc = st.session_state["skt_check"]
+            for _b in _skc.get("branches", []):
+                _b_label = _b.get("label", "")
+                _b_color = _b.get("color", "#888888")
+                import html as _skt_html_local
+                st.markdown(
+                    f"<div style='border-left:6px solid {_b_color};padding:4px 10px;"
+                    f"font-weight:700;margin-top:8px;'>{_skt_html_local.escape(_b_label)}</div>",
+                    unsafe_allow_html=True,
+                )
+                for _n in _b.get("nodes", []):
+                    _n["checked"] = st.checkbox(
+                        _n.get("label", ""),
+                        value=bool(_n.get("checked", False)),
+                        key=f"skt_chk_b{_b.get('id')}_n{_n.get('id')}",
+                    )
+
+            _save_c1, _save_c2 = st.columns([1, 1])
+            if _save_c1.button("💾 習得状況を保存", key="skt_chk_save", type="primary",
+                               use_container_width=True):
+                try:
+                    ok, msg = save_skill_tree(_skc)
+                    st.toast(msg, icon="✅" if ok else "⚠️")
+                    for _k in list(st.session_state.keys()):
+                        if _k.startswith("skt_chk_") or _k == "skt_check":
+                            del st.session_state[_k]
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"保存に失敗: {_e}")
+            if _save_c2.button("🔄 リセット", key="skt_chk_reset",
+                               use_container_width=True):
+                clear_skill_tree_cache()
+                for _k in list(st.session_state.keys()):
+                    if _k.startswith("skt_chk_") or _k == "skt_check":
+                        del st.session_state[_k]
+                st.rerun()
+
     # ----- 表示(Sheetsの確定版を読込) -----
     try:
         _skt_data = get_skill_tree()
@@ -3811,7 +3858,12 @@ if selected_key == "skill_tree":
             _p = _n.get("parent")
             if _p is not None and _p not in _id_set:
                 _p = None
-            _ns.append({"id": _n["id"], "label": _n["label"].strip(), "parent": _p})
+            _ns.append({
+                "id": _n["id"],
+                "label": _n["label"].strip(),
+                "parent": _p,
+                "checked": bool(_n.get("checked", False)),
+            })
         return _lab, _col, _ns
 
     _branches_src = [_skt_clean_branch(b) for b in _skt_data.get("branches", [])]
@@ -3819,6 +3871,21 @@ if selected_key == "skill_tree":
     if not _branches_src:
         st.info("スキルツリーが未定義です。「✏ 編集する」から分岐とノードを作成してください。")
         st.stop()
+
+    # 習得率(チェックされたノード / 全ノード)
+    _total_nodes = sum(len(_n) for (_l, _c, _n) in _branches_src)
+    _checked_nodes = sum(
+        1 for (_l, _c, _n) in _branches_src for _nd in _n if _nd.get("checked")
+    )
+    _pct = (_checked_nodes / _total_nodes * 100) if _total_nodes else 0.0
+    st.markdown(
+        f"<div style='font-size:18px;font-weight:700;margin:6px 0;'>"
+        f"🎯 習得率 <span style='color:#16a34a;'>{_pct:.1f}%</span> "
+        f"<span style='font-size:13px;color:#666;font-weight:500;'>"
+        f"({_checked_nodes} / {_total_nodes})</span></div>",
+        unsafe_allow_html=True,
+    )
+    st.progress(_checked_nodes / _total_nodes if _total_nodes else 0.0)
 
     _PILL_W = 180
     _PILL_H = 44
@@ -4026,7 +4093,7 @@ if selected_key == "skill_tree":
                     f'stroke="{_color}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>'
                 )
 
-        # 各ノードのピル
+        # 各ノードのピル + チェックボックス
         for _n in _bl["nodes"]:
             _nid = _n["id"]
             _x_n, _d_n = _bl["positions"][_nid]
@@ -4036,8 +4103,30 @@ if selected_key == "skill_tree":
                 f'rx="22" ry="22" fill="url(#sk_g_{_bi})" stroke="none" '
                 f'filter="url(#sk_shadow)"/>'
             )
+            # チェックボックス(ピル左端)
+            _box_size = 16
+            _box_x = _x_n - _PILL_W / 2 + 10
+            _box_y = _y_n + (_PILL_H - _box_size) / 2
+            if _n.get("checked"):
+                _parts.append(
+                    f'<rect x="{_box_x}" y="{_box_y}" width="{_box_size}" height="{_box_size}" '
+                    f'rx="3" ry="3" fill="#ffffff" stroke="#ffffff" stroke-width="1.5"/>'
+                )
+                # チェックマーク (✓)
+                _parts.append(
+                    f'<path d="M {_box_x + 3} {_box_y + 8} L {_box_x + 7} {_box_y + 12} '
+                    f'L {_box_x + 13} {_box_y + 4}" stroke="#16a34a" stroke-width="2.5" '
+                    f'fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+                )
+            else:
+                _parts.append(
+                    f'<rect x="{_box_x}" y="{_box_y}" width="{_box_size}" height="{_box_size}" '
+                    f'rx="3" ry="3" fill="rgba(255,255,255,0.18)" stroke="#ffffff" '
+                    f'stroke-width="1.5"/>'
+                )
+            # ラベル(チェックボックス分だけ右にシフト)
             _parts.append(
-                f'<text x="{_x_n}" y="{_y_n + _PILL_H / 2 + 5}" text-anchor="middle" '
+                f'<text x="{_x_n + _box_size / 2 + 4}" y="{_y_n + _PILL_H / 2 + 5}" text-anchor="middle" '
                 f'fill="#fff" font-weight="600" font-size="13" font-family="Meiryo, sans-serif">'
                 f'{_skt_html.escape(_n.get("label", ""))}</text>'
             )

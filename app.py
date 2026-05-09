@@ -3607,10 +3607,15 @@ if selected_key == "skill_tree":
         if st.session_state.get("skt_edit") is not None:
             _skt = st.session_state["skt_edit"]
 
-            _skt["start_label"] = st.text_input(
-                "起点ラベル", value=_skt.get("start_label", "新人入社"),
-                key="skt_in_start",
+            _starts_list = _skt.get("start_labels") or ["新人入社"]
+            _starts_text = "\n".join(_starts_list)
+            _new_starts = st.text_area(
+                "起点ラベル（1行=1ノード、上から下へ縦に並ぶ）",
+                value=_starts_text,
+                key="skt_in_starts",
+                height=110,
             )
+            _skt["start_labels"] = [s.strip() for s in _new_starts.split("\n") if s.strip()] or ["新人入社"]
 
             st.markdown("**分岐**")
 
@@ -3701,13 +3706,15 @@ if selected_key == "skill_tree":
         st.error(f"スキルツリーデータの読み込みに失敗: {_e}")
         st.stop()
 
-    _start_label = (_skt_data.get("start_label") or "新人入社").strip() or "新人入社"
+    _start_labels = [
+        s.strip() for s in (_skt_data.get("start_labels") or []) if s and s.strip()
+    ] or ["新人入社"]
     _branches_src = [
         b for b in _skt_data.get("branches", [])
         if (b.get("label") or "").strip() and (b.get("stages") or [])
     ]
     if not _branches_src:
-        st.info("スキルツリーが未定義です。マスタ画面で分岐とステージを作成してください。")
+        st.info("スキルツリーが未定義です。「✏ 編集する」から分岐とステージを作成してください。")
         st.stop()
 
     _branches = [
@@ -3720,10 +3727,14 @@ if selected_key == "skill_tree":
     _PILL_W = 180
     _PILL_H = 44
     _START_Y = 20
-    _HEADER_Y = 130
-    _GAP = 78
-    _COL_W = 275  # カラム間の中心距離
+    _START_GAP = 60  # 起点ピル top-to-top
+    _GAP = 78         # ステージ top-to-top
+    _COL_W = 275
     _LEFT_PAD = 137
+    _n_starts = len(_start_labels)
+    _last_start_top = _START_Y + (_n_starts - 1) * _START_GAP
+    _last_start_bottom = _last_start_top + _PILL_H
+    _HEADER_Y = _last_start_bottom + 50
     _n_cols = len(_branches)
     _SVG_W = max(_LEFT_PAD * 2, _LEFT_PAD * 2 + (_n_cols - 1) * _COL_W)
     _COLS_X = [_LEFT_PAD + _i * _COL_W for _i in range(_n_cols)]
@@ -3755,11 +3766,20 @@ if selected_key == "skill_tree":
     _parts.append('</defs>')
 
     _mid_x = _SVG_W / 2
-    _fan_y = _HEADER_Y - 18
+    _fan_y = (_last_start_bottom + _HEADER_Y) / 2
 
-    # 起点 → 分岐 への接続線
+    # 起点ピル間の縦接続線
+    for _si in range(_n_starts - 1):
+        _y_top = _START_Y + _si * _START_GAP + _PILL_H
+        _y_bot = _START_Y + (_si + 1) * _START_GAP
+        _parts.append(
+            f'<line x1="{_mid_x}" y1="{_y_top}" x2="{_mid_x}" y2="{_y_bot}" '
+            f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
+        )
+
+    # 最下段の起点 → 分岐 への接続線
     _parts.append(
-        f'<line x1="{_mid_x}" y1="{_START_Y + _PILL_H}" x2="{_mid_x}" y2="{_fan_y}" '
+        f'<line x1="{_mid_x}" y1="{_last_start_bottom}" x2="{_mid_x}" y2="{_fan_y}" '
         f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
     )
     if len(_COLS_X) >= 2:
@@ -3773,17 +3793,19 @@ if selected_key == "skill_tree":
             f'stroke="#888" stroke-width="2.5" stroke-linecap="round"/>'
         )
 
-    # 起点ピル
-    _parts.append(
-        f'<rect x="{_mid_x - _PILL_W / 2}" y="{_START_Y}" width="{_PILL_W}" height="{_PILL_H}" '
-        f'rx="22" ry="22" fill="url(#sk_g_start)" stroke="#777" stroke-width="1" '
-        f'filter="url(#sk_shadow)"/>'
-    )
-    _parts.append(
-        f'<text x="{_mid_x}" y="{_START_Y + _PILL_H / 2 + 5}" text-anchor="middle" '
-        f'fill="#fff" font-weight="700" font-size="14" font-family="Meiryo, sans-serif">'
-        f'{_skt_html.escape(_start_label)}</text>'
-    )
+    # 起点ピル(上から下へ複数段)
+    for _si, _sl in enumerate(_start_labels):
+        _y = _START_Y + _si * _START_GAP
+        _parts.append(
+            f'<rect x="{_mid_x - _PILL_W / 2}" y="{_y}" width="{_PILL_W}" height="{_PILL_H}" '
+            f'rx="22" ry="22" fill="url(#sk_g_start)" stroke="#777" stroke-width="1" '
+            f'filter="url(#sk_shadow)"/>'
+        )
+        _parts.append(
+            f'<text x="{_mid_x}" y="{_y + _PILL_H / 2 + 5}" text-anchor="middle" '
+            f'fill="#fff" font-weight="700" font-size="14" font-family="Meiryo, sans-serif">'
+            f'{_skt_html.escape(_sl)}</text>'
+        )
 
     # 各分岐
     for _col_idx, (_label, _color, _stages) in enumerate(_branches):

@@ -29,7 +29,7 @@ WORKSHEET_NAME = "skill_tree_data"
 CELL = "A1"
 
 _DEFAULT_DATA = {
-    "start_label": "新人入社",
+    "start_labels": ["新人入社"],
     "branches": [
         {"id": 1, "label": "受信", "color": "#22c55e",
          "stages": ["受信基礎", "受信応用", "受信マスター"]},
@@ -78,8 +78,14 @@ def get_skill_tree() -> dict:
     cached = _shared_cache().get("data")
     if cached is None:
         return json.loads(json.dumps(_DEFAULT_DATA))  # deep copy
-    # deep copy して呼び出し側の変更がキャッシュへ波及しないようにする
-    return json.loads(json.dumps(cached))
+    data = json.loads(json.dumps(cached))
+    # 後方互換: 旧フォーマット (start_label: str) → 新 (start_labels: list[str])
+    if "start_labels" not in data:
+        old = data.pop("start_label", None) or "新人入社"
+        data["start_labels"] = [old]
+    if not isinstance(data.get("start_labels"), list):
+        data["start_labels"] = [str(data.get("start_labels") or "新人入社")]
+    return data
 
 
 def save_skill_tree(data: dict) -> tuple[bool, str]:

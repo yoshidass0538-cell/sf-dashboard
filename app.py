@@ -3606,6 +3606,45 @@ if selected_key == "skill_tree":
         except Exception as _e:
             st.toast(f"保存失敗: {_e}", icon="⚠️")
 
+    # ノード操作コールバック(編集UI)
+    def _skt_cb_add_child(_bid, _parent_nid):
+        _skt0 = st.session_state.get("skt_edit")
+        if not _skt0:
+            return
+        for _b in _skt0.get("branches", []):
+            if _b.get("id") == _bid:
+                _ns = _b.setdefault("nodes", [])
+                _max = max([n["id"] for n in _ns] + [0])
+                _ns.append({
+                    "id": _max + 1,
+                    "label": "新規ノード",
+                    "parent": _parent_nid,
+                    "checked": False,
+                })
+                return
+
+    def _skt_cb_del_node(_bid, _nid):
+        _skt0 = st.session_state.get("skt_edit")
+        if not _skt0:
+            return
+        for _b in _skt0.get("branches", []):
+            if _b.get("id") == _bid:
+                _ns = _b.get("nodes", []) or []
+                _idx_d = None
+                _parent_d = None
+                for _i, _n in enumerate(_ns):
+                    if _n.get("id") == _nid:
+                        _idx_d = _i
+                        _parent_d = _n.get("parent")
+                        break
+                if _idx_d is None:
+                    return
+                for _n in _ns:
+                    if _n.get("parent") == _nid:
+                        _n["parent"] = _parent_d
+                _ns.pop(_idx_d)
+                return
+
     # ----- 編集UI(画面上で直接編集) -----
     with st.expander("✏ 編集する", expanded=False):
         st.caption(
@@ -3665,8 +3704,6 @@ if selected_key == "skill_tree":
                         _node_ids = [n["id"] for n in _nodes]
                         _label_by_id = {n["id"]: n.get("label", "") for n in _nodes}
 
-                        _node_del = None
-                        _add_child_to = None  # 子追加対象 node id
                         for _ni, _node in enumerate(_nodes):
                             _nid = _node["id"]
                             _nc1, _nc2, _nc3, _nc4 = st.columns([3, 2.4, 1.2, 1])
@@ -3699,32 +3736,22 @@ if selected_key == "skill_tree":
                                 label_visibility="collapsed",
                             )
                             _node["parent"] = _opt_ids[_new_p_idx]
-                            if _nc3.button("➕ 子", key=f"skt_b{_bid}_n{_nid}_addchild",
-                                           help="このノードの子を追加",
-                                           use_container_width=True):
-                                _add_child_to = _nid
-                            if _nc4.button("🗑", key=f"skt_b{_bid}_n{_nid}_del",
-                                           help="削除",
-                                           use_container_width=True):
-                                _node_del = _ni
-                        if _add_child_to is not None:
-                            _max_nid = max([n["id"] for n in _nodes] + [0])
-                            _nodes.append({
-                                "id": _max_nid + 1,
-                                "label": "新規ノード",
-                                "parent": _add_child_to,
-                            })
-                            st.rerun()
-                        if _node_del is not None:
-                            _del_node = _nodes[_node_del]
-                            _del_id = _del_node["id"]
-                            _del_parent = _del_node.get("parent")
-                            # 子は祖父に再連結
-                            for _n in _nodes:
-                                if _n.get("parent") == _del_id:
-                                    _n["parent"] = _del_parent
-                            _nodes.pop(_node_del)
-                            st.rerun()
+                            _nc3.button(
+                                "➕ 子",
+                                key=f"skt_b{_bid}_n{_nid}_addchild",
+                                help="このノードの子を追加",
+                                use_container_width=True,
+                                on_click=_skt_cb_add_child,
+                                args=(_bid, _nid),
+                            )
+                            _nc4.button(
+                                "🗑",
+                                key=f"skt_b{_bid}_n{_nid}_del",
+                                help="削除",
+                                use_container_width=True,
+                                on_click=_skt_cb_del_node,
+                                args=(_bid, _nid),
+                            )
 
                     # ノード追加(ルート/子の選択可)
                     _add_c1, _add_c2, _add_c3 = st.columns([4, 1, 1])

@@ -3590,29 +3590,21 @@ if selected_key == "skill_tree":
         get_skill_tree, save_skill_tree, clear_skill_tree_cache, next_branch_id,
     )
 
-    # クエリパラメータ経由のチェック切替（SVG内のリンククリック時）
-    _toggle_val = st.query_params.get("skt_toggle")
-    if _toggle_val:
+    # チェックボックス変更時の自動保存コールバック
+    def _skt_on_check_change(_bid, _nid, _wkey):
+        _new_val = bool(st.session_state.get(_wkey, False))
         try:
-            _bid_str, _nid_str = str(_toggle_val).split("-", 1)
-            _target_bid = int(_bid_str)
-            _target_nid = int(_nid_str)
-            _data_t = get_skill_tree()
-            for _b in _data_t.get("branches", []):
-                if int(_b.get("id", 0)) == _target_bid:
+            _data_x = get_skill_tree()
+            for _b in _data_x.get("branches", []):
+                if int(_b.get("id", 0)) == _bid:
                     for _n in _b.get("nodes", []):
-                        if int(_n.get("id", 0)) == _target_nid:
-                            _n["checked"] = not bool(_n.get("checked", False))
+                        if int(_n.get("id", 0)) == _nid:
+                            _n["checked"] = _new_val
                             break
                     break
-            save_skill_tree(_data_t)
-            for _k in list(st.session_state.keys()):
-                if _k.startswith("skt_chk_") or _k == "skt_check":
-                    del st.session_state[_k]
-        except Exception:
-            pass
-        st.query_params.pop("skt_toggle", None)
-        st.rerun()
+            save_skill_tree(_data_x)
+        except Exception as _e:
+            st.toast(f"保存失敗: {_e}", icon="⚠️")
 
     # ----- 編集UI(画面上で直接編集) -----
     with st.expander("✏ 編集する", expanded=False):
@@ -3808,53 +3800,6 @@ if selected_key == "skill_tree":
                 clear_skill_tree_cache()
                 for _k in list(st.session_state.keys()):
                     if _k.startswith("skt_in_") or _k == "skt_edit":
-                        del st.session_state[_k]
-                st.rerun()
-
-    # ----- 習得状況のチェック編集 -----
-    with st.expander("✅ 習得状況（チェック編集）", expanded=False):
-        if "skt_check" not in st.session_state:
-            try:
-                st.session_state["skt_check"] = get_skill_tree()
-            except Exception as _e:
-                st.error(f"読み込みに失敗: {_e}")
-                st.session_state["skt_check"] = None
-
-        if st.session_state.get("skt_check") is not None:
-            _skc = st.session_state["skt_check"]
-            for _b in _skc.get("branches", []):
-                _b_label = _b.get("label", "")
-                _b_color = _b.get("color", "#888888")
-                import html as _skt_html_local
-                st.markdown(
-                    f"<div style='border-left:6px solid {_b_color};padding:4px 10px;"
-                    f"font-weight:700;margin-top:8px;'>{_skt_html_local.escape(_b_label)}</div>",
-                    unsafe_allow_html=True,
-                )
-                for _n in _b.get("nodes", []):
-                    _n["checked"] = st.checkbox(
-                        _n.get("label", ""),
-                        value=bool(_n.get("checked", False)),
-                        key=f"skt_chk_b{_b.get('id')}_n{_n.get('id')}",
-                    )
-
-            _save_c1, _save_c2 = st.columns([1, 1])
-            if _save_c1.button("💾 習得状況を保存", key="skt_chk_save", type="primary",
-                               use_container_width=True):
-                try:
-                    ok, msg = save_skill_tree(_skc)
-                    st.toast(msg, icon="✅" if ok else "⚠️")
-                    for _k in list(st.session_state.keys()):
-                        if _k.startswith("skt_chk_") or _k == "skt_check":
-                            del st.session_state[_k]
-                    st.rerun()
-                except Exception as _e:
-                    st.error(f"保存に失敗: {_e}")
-            if _save_c2.button("🔄 リセット", key="skt_chk_reset",
-                               use_container_width=True):
-                clear_skill_tree_cache()
-                for _k in list(st.session_state.keys()):
-                    if _k.startswith("skt_chk_") or _k == "skt_check":
                         del st.session_state[_k]
                 st.rerun()
 
@@ -4129,39 +4074,26 @@ if selected_key == "skill_tree":
                 f'rx="22" ry="22" fill="url(#sk_g_{_bi})" stroke="none" '
                 f'filter="url(#sk_shadow)"/>'
             )
-            # チェックボックス(ピル左端) -- クリックで toggle (URLパラメータ経由)
-            _box_size = 18
-            _box_x = _x_n - _PILL_W / 2 + 8
+            # チェックボックス(ピル左端、視覚的表示のみ。トグルは下部のチェックUIで)
+            _box_size = 16
+            _box_x = _x_n - _PILL_W / 2 + 10
             _box_y = _y_n + (_PILL_H - _box_size) / 2
-            _toggle_href = f"?skt_toggle={_bl['id']}-{_nid}"
-            _parts.append(
-                f'<a href="{_toggle_href}" target="_self" '
-                f'style="cursor:pointer;text-decoration:none;">'
-            )
             if _n.get("checked"):
                 _parts.append(
                     f'<rect x="{_box_x}" y="{_box_y}" width="{_box_size}" height="{_box_size}" '
                     f'rx="3" ry="3" fill="#ffffff" stroke="#ffffff" stroke-width="1.5"/>'
                 )
-                # チェックマーク (✓)
                 _parts.append(
-                    f'<path d="M {_box_x + 3} {_box_y + 9} L {_box_x + 7.5} {_box_y + 13.5} '
-                    f'L {_box_x + 15} {_box_y + 4.5}" stroke="#16a34a" stroke-width="2.8" '
+                    f'<path d="M {_box_x + 3} {_box_y + 8} L {_box_x + 7} {_box_y + 12} '
+                    f'L {_box_x + 13} {_box_y + 4}" stroke="#16a34a" stroke-width="2.5" '
                     f'fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
                 )
             else:
                 _parts.append(
                     f'<rect x="{_box_x}" y="{_box_y}" width="{_box_size}" height="{_box_size}" '
-                    f'rx="3" ry="3" fill="rgba(255,255,255,0.22)" stroke="#ffffff" '
+                    f'rx="3" ry="3" fill="rgba(255,255,255,0.18)" stroke="#ffffff" '
                     f'stroke-width="1.5"/>'
                 )
-            # 透明な拡大クリック領域(押しやすく)
-            _parts.append(
-                f'<rect x="{_box_x - 4}" y="{_box_y - 4}" '
-                f'width="{_box_size + 8}" height="{_box_size + 8}" '
-                f'fill="transparent"/>'
-            )
-            _parts.append('</a>')
             # ラベル(チェックボックス分だけ右にシフト)
             _parts.append(
                 f'<text x="{_x_n + _box_size / 2 + 4}" y="{_y_n + _PILL_H / 2 + 5}" text-anchor="middle" '
@@ -4172,6 +4104,28 @@ if selected_key == "skill_tree":
     _parts.append('</svg>')
     _parts.append('</div>')
     st.markdown("".join(_parts), unsafe_allow_html=True)
+
+    # ----- 習得チェック (図と連動・自動保存) -----
+    st.markdown("### ✅ 習得チェック")
+    st.caption("チェックすると即時保存され、上の図のチェックマークと習得率が更新されます。")
+    for _bid_chk, _label_chk, _color_chk, _nodes_chk in _branches_src:
+        st.markdown(
+            f"<div style='border-left:6px solid {_color_chk};padding:4px 10px;"
+            f"font-weight:700;margin-top:10px;'>{_skt_html.escape(_label_chk)}</div>",
+            unsafe_allow_html=True,
+        )
+        # 親→子の順で並べる(ノードが入力順なら親が先のはず。表示はそのまま)
+        _chk_cols = st.columns(3)
+        for _ci, _n in enumerate(_nodes_chk):
+            _wkey = f"skt_inline_b{_bid_chk}_n{_n['id']}"
+            if _wkey not in st.session_state:
+                st.session_state[_wkey] = bool(_n.get("checked", False))
+            _chk_cols[_ci % 3].checkbox(
+                _n.get("label", ""),
+                key=_wkey,
+                on_change=_skt_on_check_change,
+                args=(_bid_chk, _n["id"], _wkey),
+            )
     st.stop()
 
 

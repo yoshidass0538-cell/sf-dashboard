@@ -3880,9 +3880,18 @@ if selected_key == "skill_tree":
                                 label_visibility="collapsed",
                                 placeholder="ノード名",
                             )
-                            # 親選択(自分以外＋ルート)
+                            # 親選択(自分・自分の子孫を除外、循環防止)
+                            _desc_set = set()
+                            _stack_d = [_nid]
+                            while _stack_d:
+                                _cur_d = _stack_d.pop()
+                                for _n_d in _nodes:
+                                    if _n_d.get("parent") == _cur_d and _n_d["id"] not in _desc_set:
+                                        _desc_set.add(_n_d["id"])
+                                        _stack_d.append(_n_d["id"])
                             _opt_ids = [None] + [
-                                _n["id"] for _n in _nodes if _n["id"] != _nid
+                                _n["id"] for _n in _nodes
+                                if _n["id"] != _nid and _n["id"] not in _desc_set
                             ]
                             _opt_labels = ["（ルート）"] + [
                                 f"└ {_label_by_id.get(_oid, '')} #{_oid}"
@@ -4107,9 +4116,9 @@ if selected_key == "skill_tree":
     _last_start_bottom = _last_start_top + _PILL_H
     _HEADER_Y = _last_start_bottom + 50
 
-    # 各分岐のツリー配置を計算
+    # 各分岐のツリー配置を計算 (循環耐性あり)
     def _layout_tree(_nodes, _x_offset):
-        """各分岐内のノード位置(ツリー)。返り値: positions, max_depth, width."""
+        """各分岐内のノード位置(ツリー)。返り値: positions, max_depth, width, roots."""
         _by_id = {n["id"]: n for n in _nodes}
         _children = {}
         _roots = []
@@ -4122,7 +4131,12 @@ if selected_key == "skill_tree":
         _positions = {}
         _max_d = [0]
         _cursor = [_x_offset]
+        _visited = set()
+
         def _place(nid, depth):
+            if nid in _visited:
+                return  # 循環ガード
+            _visited.add(nid)
             _max_d[0] = max(_max_d[0], depth)
             ch = _children.get(nid, [])
             if not ch:
@@ -4132,11 +4146,27 @@ if selected_key == "skill_tree":
                 return
             for c in ch:
                 _place(c, depth + 1)
-            _xs = [_positions[c][0] for c in ch]
-            _positions[nid] = ((_xs[0] + _xs[-1]) / 2, depth)
+            _placed_xs = [_positions[c][0] for c in ch if c in _positions]
+            if _placed_xs:
+                _positions[nid] = ((_placed_xs[0] + _placed_xs[-1]) / 2, depth)
+            else:
+                _x = _cursor[0]
+                _cursor[0] += _NODE_X_UNIT
+                _positions[nid] = (_x, depth)
+
         for _r in _roots:
             _place(_r, 0)
-        _width = _cursor[0] - _x_offset if _roots else _NODE_X_UNIT
+        # 配置されなかったノード(循環の一部など)は仮のルートとして配置
+        for _n in _nodes:
+            if _n["id"] not in _positions:
+                _x = _cursor[0]
+                _cursor[0] += _NODE_X_UNIT
+                _positions[_n["id"]] = (_x, 0)
+                if _n["id"] not in _roots:
+                    _roots.append(_n["id"])
+        _width = _cursor[0] - _x_offset
+        if _width <= 0:
+            _width = _NODE_X_UNIT
         return _positions, _max_d[0], _width, _roots
 
     _branch_layouts = []

@@ -3695,26 +3695,34 @@ if selected_key == "skill_tree":
                             _nodes.pop(_node_del)
                             st.rerun()
 
-                    # ノード追加
-                    _add_c1, _add_c2 = st.columns([5, 1])
+                    # ノード追加(ルート/子の選択可)
+                    _add_c1, _add_c2, _add_c3 = st.columns([4, 1, 1])
                     _new_node_label = _add_c1.text_input(
                         "新規ノード名",
                         key=f"skt_in_b{_bid}_new_node_label",
-                        placeholder="新規ノード名（追加するときに入力）",
+                        placeholder="新規ノード名",
                         label_visibility="collapsed",
                     )
-                    if _add_c2.button("➕ ノード", key=f"skt_b{_bid}_n_add",
-                                      use_container_width=True):
+                    _add_root = _add_c2.button(
+                        "🌱 ルート", key=f"skt_b{_bid}_n_add_root",
+                        use_container_width=True, help="分岐ヘッダ直下のルートノードを追加",
+                    )
+                    _add_child = _add_c3.button(
+                        "➕ 子ノード", key=f"skt_b{_bid}_n_add_child",
+                        use_container_width=True, help="最後のノードの子として追加(後で親変更可)",
+                    )
+                    if _add_root or _add_child:
                         _lab = (_new_node_label or "").strip() or "新規ノード"
                         _max_nid = max([n["id"] for n in _nodes] + [0])
-                        # デフォルト親=最後のノード(なければルート)
-                        _default_parent = _nodes[-1]["id"] if _nodes else None
+                        if _add_root or not _nodes:
+                            _new_parent = None
+                        else:
+                            _new_parent = _nodes[-1]["id"]
                         _nodes.append({
                             "id": _max_nid + 1,
                             "label": _lab,
-                            "parent": _default_parent,
+                            "parent": _new_parent,
                         })
-                        # クリア
                         _k_new = f"skt_in_b{_bid}_new_node_label"
                         if _k_new in st.session_state:
                             del st.session_state[_k_new]

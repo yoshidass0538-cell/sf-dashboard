@@ -747,6 +747,11 @@ def _build_shift_df(records, visible_days, member_set, order_list):
     return _add_total_hours_column(df.assign(_o=df["担当者"].map(_rank)).sort_values("_o", kind="stable").drop(columns="_o").reset_index(drop=True))
 
 
+# シフト表ボード(cs_shift_calendar)専用の追加除外メンバー
+# (退職者ではないが本ボードの表示対象外。EXCLUDED_OWNERS_NORMには含めない)
+CS_SHIFT_CALENDAR_EXTRA_EXCLUDED_NORM = {"吉田颯"}
+
+
 def fetch_cs_shift_for_month(sf: Salesforce, year: int, month: int) -> dict[int, list[tuple[str, str, str]]]:
     """指定月のCS促進全員のシフトを日別に返す。
 
@@ -778,6 +783,8 @@ def fetch_cs_shift_for_month(sf: Salesforce, year: int, month: int) -> dict[int,
         owner = (r.get("Field128__r") or {}).get("Name") or "(不明)"
         normalized = owner.replace(" ", "").replace("　", "")
         if normalized in EXCLUDED_OWNERS_NORM:
+            continue
+        if normalized in CS_SHIFT_CALENDAR_EXTRA_EXCLUDED_NORM:
             continue
         for day, sf_, ef in SHIFT_DAY_FIELDS:
             s = _fmt(r.get(sf_))

@@ -4340,48 +4340,48 @@ if selected_key == "skill_tree":
     _parts.append('</div>')
     st.markdown("".join(_parts), unsafe_allow_html=True)
 
-    # ----- 習得チェック (タブ＋親別エキスパンダ・自動保存) -----
-    st.markdown("### ✅ 習得チェック")
-    st.caption("チェックすると即時保存。子ノード全部チェックで親が自動チェック、上の図と習得率も更新されます。")
-    _tab_labels = [_l for (_bid, _l, _c, _n) in _branches_src]
-    if _tab_labels:
-        _tabs = st.tabs(_tab_labels)
-        for (_bid_chk, _label_chk, _color_chk, _nodes_chk), _tab in zip(_branches_src, _tabs):
-            with _tab:
-                # 子マップ構築
-                _children_map = {}
-                for _n in _nodes_chk:
-                    _p = _n.get("parent")
-                    if _p is not None:
-                        _children_map.setdefault(_p, []).append(_n)
-                _roots_chk = [_n for _n in _nodes_chk if _n.get("parent") is None]
+    # ----- 習得チェック (折りたたみ・タブ＋親別エキスパンダ・自動保存) -----
+    with st.expander("✅ 習得チェック", expanded=False):
+        st.caption("チェックすると即時保存。子ノード全部チェックで親が自動チェック、上の図と習得率も更新されます。")
+        _tab_labels = [_l for (_bid, _l, _c, _n) in _branches_src]
+        if _tab_labels:
+            _tabs = st.tabs(_tab_labels)
+            for (_bid_chk, _label_chk, _color_chk, _nodes_chk), _tab in zip(_branches_src, _tabs):
+                with _tab:
+                    # 子マップ構築
+                    _children_map = {}
+                    for _n in _nodes_chk:
+                        _p = _n.get("parent")
+                        if _p is not None:
+                            _children_map.setdefault(_p, []).append(_n)
+                    _roots_chk = [_n for _n in _nodes_chk if _n.get("parent") is None]
 
-                def _render_chk_tree(_node, _depth=0):
-                    _wkey = f"skt_inline_b{_bid_chk}_n{_node['id']}"
-                    if _wkey not in st.session_state:
-                        st.session_state[_wkey] = bool(_node.get("checked", False))
-                    _chs = _children_map.get(_node["id"], [])
-                    if _chs:
-                        _mark = "✅ " if st.session_state.get(_wkey) else ""
-                        with st.expander(f"{_mark}{_node.get('label', '')}", expanded=True):
+                    def _render_chk_tree(_node, _depth=0):
+                        _wkey = f"skt_inline_b{_bid_chk}_n{_node['id']}"
+                        if _wkey not in st.session_state:
+                            st.session_state[_wkey] = bool(_node.get("checked", False))
+                        _chs = _children_map.get(_node["id"], [])
+                        if _chs:
+                            _mark = "✅ " if st.session_state.get(_wkey) else ""
+                            with st.expander(f"{_mark}{_node.get('label', '')}", expanded=True):
+                                st.checkbox(
+                                    f"{_node.get('label', '')}（親）",
+                                    key=_wkey,
+                                    on_change=_skt_on_check_change,
+                                    args=(_bid_chk, _node["id"], _wkey),
+                                )
+                                for _ch in _chs:
+                                    _render_chk_tree(_ch, _depth + 1)
+                        else:
                             st.checkbox(
-                                f"{_node.get('label', '')}（親）",
+                                _node.get("label", ""),
                                 key=_wkey,
                                 on_change=_skt_on_check_change,
                                 args=(_bid_chk, _node["id"], _wkey),
                             )
-                            for _ch in _chs:
-                                _render_chk_tree(_ch, _depth + 1)
-                    else:
-                        st.checkbox(
-                            _node.get("label", ""),
-                            key=_wkey,
-                            on_change=_skt_on_check_change,
-                            args=(_bid_chk, _node["id"], _wkey),
-                        )
 
-                for _root in _roots_chk:
-                    _render_chk_tree(_root)
+                    for _root in _roots_chk:
+                        _render_chk_tree(_root)
     st.stop()
 
 

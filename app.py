@@ -4629,12 +4629,19 @@ if selected_key == "cs_shift_calendar":
                 if _list:
                     _txt_color = "#bbb" if _is_past else "#333"
                     _time_color = "#aaa" if _is_past else "#888"
+                    _highlight_surnames = ("佐々木", "室谷", "原田", "堀田")
+                    def _is_hi(nm: str) -> bool:
+                        return any(s in (nm or "") for s in _highlight_surnames)
                     _lines = []
-                    for _name, _s, _e in sorted(_list, key=lambda t: (t[1], t[0])):
+                    for _name, _s, _e in sorted(
+                        _list,
+                        key=lambda t: (0 if _is_hi(t[0]) else 1, t[1], t[0]),
+                    ):
                         _t = f"{_s}-{_e}" if _s and _e else (_s or _e)
+                        _mark = "🟡 " if _is_hi(_name) else ""
                         _lines.append(
                             f"<div style='font-size:11px;color:{_txt_color};line-height:1.4;text-align:left;'>"
-                            f"{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
+                            f"{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
                         )
                     _names_html = "".join(_lines)
                     _cnt_html = (

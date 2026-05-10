@@ -356,6 +356,7 @@ def run_sync() -> None:
             no_match = 0
             key_to_wid = store.build_key_to_id(workers)
             non_disclosed_n = 0
+            extract_failed_n = 0
             for k, fields in detail_map.items():
                 wid = key_to_wid.get(k)
                 if not wid:
@@ -378,14 +379,27 @@ def run_sync() -> None:
                     w["timee_not_in_list"] = False
                     non_disclosed_n += 1
                     continue
-                w["good_rate"] = fields.get("good_rate", "")
-                w["cancel_rate"] = fields.get("cancel_rate", "")
-                w["timee_memo"] = fields.get("timee_memo", "")
+                if _status == "extract_failed":
+                    # DOM変化/タイムアウト等で抽出失敗。既存値を保持し、fetched_at も更新しない
+                    # → 次 run で優先的に再試行される
+                    extract_failed_n += 1
+                    print(f"[Timee Sync] {wid} extract_failed → 既存値保持(再試行待ち)", flush=True)
+                    continue
+                # 念のため per-field でも空上書きを防ぐ(過去の事故防止)
+                new_good = fields.get("good_rate", "")
+                new_cancel = fields.get("cancel_rate", "")
+                new_memo = fields.get("timee_memo", "")
+                if new_good:
+                    w["good_rate"] = new_good
+                if new_cancel:
+                    w["cancel_rate"] = new_cancel
+                w["timee_memo"] = new_memo  # メモは空でも上書き許容(クリア可能)
                 w["timee_detail_fetched_at"] = now_iso
                 w["timee_not_in_list"] = False
                 w["timee_non_disclosed"] = False
                 updated += 1
-            print(f"[Timee Sync] worker_detail updated {updated}名 / no_match {no_match}名 / non_disclosed {non_disclosed_n}名")
+            print(f"[Timee Sync] worker_detail updated {updated}名 / no_match {no_match}名 / "
+                  f"non_disclosed {non_disclosed_n}名 / extract_failed {extract_failed_n}名")
             if updated or no_match or non_disclosed_n:
                 store.save_workers(workers)
     except Exception as e:

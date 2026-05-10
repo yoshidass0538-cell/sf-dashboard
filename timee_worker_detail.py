@@ -403,6 +403,11 @@ def _extract_detail_fields(page) -> Dict[str, str]:
     }
     if non_disclosed:
         out["_status"] = "non_disclosed"
+    elif not good and not cancel:
+        # ラベルは見えているのに値が両方空 = DOM変化/タイムアウトなどの抽出失敗。
+        # 既存値を「空文字で上書きして消す」事故を防ぐため明示フラグ。
+        # Why: 過去にこの上書きでほぼ全ワーカーの値が消える事故が発生
+        out["_status"] = "extract_failed"
     return out
 
 

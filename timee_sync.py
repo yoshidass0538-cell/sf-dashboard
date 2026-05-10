@@ -310,21 +310,18 @@ def run_sync() -> None:
     print(f"[Timee Sync] first-match wids current={len(current_first_match_wids)} "
           f"new={len(new_first_match_wids)}")
     try:
-        # 候補: ワーカーマスタ全員 (過去ワーカー含む)。non_disclosed は再試行不要なので除外。
+        # 候補: ワーカーマスタ全員 (過去ワーカー含む)。
+        # 注意: 過去 non_disclosed 誤検知でフラグが残っているワーカーが大量に存在しうるため
+        # ローテからは除外しない (再取得で本来の値に戻すため)。
         # TTL での skip は廃止し、常に「最古に取得した順」に MAX_PER_RUN 名を処理。
-        # → 未取得/誤値ワーカーが先頭、その後は取得済みワーカーが古い順にローテ更新される。
         all_wids = list(workers.keys())
-        candidates = [
-            wid for wid in all_wids
-            if not workers[wid].get("timee_non_disclosed", False)
-        ]
+        candidates = list(all_wids)
         # 古いものから優先（None=未取得→最古扱い）
         candidates.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
         # 未稼働ワーカー(現在マッチング中・出勤回数=0)は最優先で先頭に持ってくる。
         # 新規マッチ ⊂ 現マッチ なので current_first_match_wids にまとめる。
         priority_set = (current_first_match_wids | new_first_match_wids)
-        priority_all = [wid for wid in priority_set
-                        if wid in workers and not workers[wid].get("timee_non_disclosed", False)]
+        priority_all = [wid for wid in priority_set if wid in workers]
         # 優先内も古いもの順にソート(同一バッチで全員捌けない場合の公平性確保)
         priority_all.sort(key=lambda wid: workers.get(wid, {}).get("timee_detail_fetched_at") or "")
         # priority(=posting_path対象)は1run あたりPOSTING_PATH_MAX_PER_RUNまでに制限

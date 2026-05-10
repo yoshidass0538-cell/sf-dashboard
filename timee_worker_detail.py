@@ -380,9 +380,15 @@ def _extract_detail_fields(page) -> Dict[str, str]:
     memo_raw = _zw_strip(result.get("timee_memo") or "")
 
     # 「※ワーカーには公開されません」(=Timee側で統計非開示) は空文字 + non_disclosed フラグ
-    non_disclosed = False
-    if "公開されません" in good_raw or "公開されません" in cancel_raw:
-        non_disclosed = True
+    # 注意: この文言は実は「管理用メモ」フィールドの注意書き(<small>)のテキスト。
+    # value セルが空のとき valueFor() が祖先方向に探索して誤拾いすることがある。
+    # 過去にこれで大量の workers が誤って non_disclosed フラグ付与され、
+    # ローテから除外されて値が戻らない状態になった。
+    # 厳格化: good_raw と cancel_raw の両方に同時に出現した場合のみ非開示扱いにする
+    # (片方だけは誤拾いの可能性が高い)。
+    non_disclosed = (
+        "公開されません" in good_raw and "公開されません" in cancel_raw
+    )
 
     good = good_raw if not non_disclosed else ""
     if not non_disclosed:

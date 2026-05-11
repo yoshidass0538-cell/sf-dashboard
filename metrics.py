@@ -535,19 +535,44 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
     return summary, details
 
 
+# コードベース・sync_report.pyから判明している label→API名 のハードコードマップ
+_KNOWN_ACCOUNT_FIELDS: dict[str, str] = {
+    "status大区分（引用）": "status__c",
+    "工事Ⅰ状況（引用）": "Field210__c",
+    "ダイコンステータス": "Field225__c",
+    "促進ステータス": "Field144__c",
+}
+
+
 def _resolve_account_fields_by_label(sf: Salesforce, labels: list[str]) -> dict[str, str]:
-    """Account describe を引いて、label → API名 のマップを返す。
-    見つからなかった label は欠落として返らない（呼び出し側でハンドル）。"""
+    """label → API名 のマップを返す。
+    1) コードベースで判明している既知マップを優先
+    2) 未解決ぶんを Account.describe() で補完（label/label正規化の両方で照合）
+    """
+    label_to_api: dict[str, str] = {}
+    # 1) known map
+    for lab in labels:
+        if lab in _KNOWN_ACCOUNT_FIELDS:
+            label_to_api[lab] = _KNOWN_ACCOUNT_FIELDS[lab]
+    # 2) describe で補完
+    remaining = [l for l in labels if l not in label_to_api]
+    if not remaining:
+        return label_to_api
     try:
         desc = sf.Account.describe()
     except Exception:
-        return {}
-    label_to_api: dict[str, str] = {}
-    target = set(labels)
+        return label_to_api
+
+    def _norm(s: str) -> str:
+        return (s or "").replace(" ", "").replace("　", "").strip()
+
+    target_norm = {_norm(l): l for l in remaining}
     for f in desc.get("fields", []):
-        lab = f.get("label")
-        if lab in target:
-            label_to_api[lab] = f.get("name")
+        api = f.get("name")
+        lab = f.get("label") or ""
+        nlab = _norm(lab)
+        if nlab in target_norm:
+            label_to_api[target_norm[nlab]] = api
     return label_to_api
 
 

@@ -17,7 +17,7 @@ from google.oauth2.service_account import Credentials
 # --- 設定 ---
 CHATWORK_API_TOKEN = os.environ.get("CHATWORK_API_TOKEN", "")
 # 詳細フォーマット用（従来形式）
-ROOM_IDS_DETAILED = ["398296862", "380105765"]
+ROOM_IDS_DETAILED = ["398296862"]  # 380105765は2026-05-11に配信停止
 # コンパクトフォーマット用
 ROOM_IDS_COMPACT = ["422217521", "398125674"]
 CHATWORK_ROOM_IDS = ROOM_IDS_DETAILED + ROOM_IDS_COMPACT  # 260721357は2026-04-15に配信停止

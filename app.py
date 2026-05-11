@@ -5815,50 +5815,34 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
         col_idx = cols_list.index(highlight_col) if highlight_col and highlight_col in cols_list else None
         if from_idx is not None or col_idx is not None:
             import re
+            CX_STYLE = "background:#C0392B !important;color:#ffffff !important;"
+            COL_STYLE = "background:#F1C40F !important;color:#1a1a1a !important;font-weight:700 !important;"
+            BOTH_STYLE = "background:#E67E22 !important;color:#ffffff !important;font-weight:700 !important;"
             def _highlight_row(m):
                 tag = m.group(0)
                 cells = re.findall(r"<(th|td)\b[^>]*>.*?</\1>", tag, re.DOTALL)
                 if not cells:
                     return tag
                 for i, cell in enumerate(cells):
-                    classes = []
-                    if from_idx is not None and i >= from_idx:
-                        classes.append("cx-hl")
-                    if col_idx is not None and i == col_idx:
-                        classes.append("col-hl")
-                    if classes:
-                        cls_attr = " ".join(classes)
-                        new_cell = re.sub(
-                            r"<(th|td)\b",
-                            lambda mm: f'<{mm.group(1)} class="{cls_attr}"',
-                            cell,
-                            count=1,
-                        )
-                        tag = tag.replace(cell, new_cell, 1)
+                    is_cx = from_idx is not None and i >= from_idx
+                    is_col = col_idx is not None and i == col_idx
+                    if not (is_cx or is_col):
+                        continue
+                    style = BOTH_STYLE if (is_cx and is_col) else (COL_STYLE if is_col else CX_STYLE)
+                    # 既存 style 属性があれば連結、なければ新規付与
+                    m2 = re.match(r"<(th|td)\b([^>]*)>", cell)
+                    if not m2:
+                        continue
+                    tag_name = m2.group(1)
+                    attrs = m2.group(2)
+                    if 'style="' in attrs:
+                        new_attrs = re.sub(r'style="([^"]*)"', lambda x: f'style="{x.group(1)};{style}"', attrs, count=1)
+                    else:
+                        new_attrs = f'{attrs} style="{style}"'
+                    new_cell = cell.replace(m2.group(0), f"<{tag_name}{new_attrs}>", 1)
+                    tag = tag.replace(cell, new_cell, 1)
                 return tag
             html = re.sub(r"<tr\b[^>]*>.*?</tr>", _highlight_row, html, flags=re.DOTALL)
-            hl_css = f"""
-            .{css_class} .cx-hl {{
-                background: #C0392B !important;
-                color: #ffffff !important;
-            }}
-            .{css_class} tr:hover .cx-hl {{
-                background: #A93226 !important;
-            }}
-            .{css_class} .col-hl {{
-                background: #F1C40F !important;
-                color: #1a1a1a !important;
-                font-weight: 700 !important;
-            }}
-            .{css_class} tr:hover .col-hl {{
-                background: #D4AC0D !important;
-            }}
-            .{css_class} .cx-hl.col-hl {{
-                background: #E67E22 !important;
-                color: #ffffff !important;
-            }}
-            """
-            st.markdown(f"<style>{hl_css}</style>", unsafe_allow_html=True)
         table_html = html.replace("<table", f'<table class="{css_class}"', 1)
         st.markdown(f'<div class="responsive-table-wrapper">{table_html}</div>', unsafe_allow_html=True)
     st.download_button(

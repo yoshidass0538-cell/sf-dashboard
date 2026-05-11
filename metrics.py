@@ -422,18 +422,30 @@ def _progress_start() -> str:
     return dt.replace(day=1).strftime("%Y-%m-%d")
 
 
-def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlement: bool):
+def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlement: bool,
+                    extra_sf_fields: list[tuple[str, str]] | None = None,
+                    detail_columns: list[str] | None = None):
+    """
+    extra_sf_fields: 追加でSELECTするSalesforce項目 [(sf_field, 表示名), ...]
+    detail_columns: 促進必要件数明細に表示する列名(順序付き)。
+                    既定: ["申込受付番号", "電話番号"]
+                    特殊ラベル「エントリ日」「工事予定日」はbase項目から抽出される。
+    """
+    extra_sf_fields = extra_sf_fields or []
+    detail_columns = detail_columns or ["申込受付番号", "電話番号"]
     start = _progress_start()
+    base_select = "Field156__c, Field130__c, Field128__c, Field131__c, Field119__c, Field63__c, X1__c"
+    extra_select = ", ".join(sf_f for sf_f, _ in extra_sf_fields)
+    select_clause = base_select + (", " + extra_select if extra_select else "")
     soql = (
-        "SELECT Field156__c, Field130__c, Field128__c, Field131__c, Field119__c, "
-        "Field63__c, X1__c "
+        f"SELECT {select_clause} "
         "FROM Account "
         f"WHERE Field76__r.Name LIKE '{like_pattern}' "
         f"AND Field156__c >= {start}"
     )
     rs = sf.query_all(soql)["records"]
     if not rs:
-        return pd.DataFrame(), pd.DataFrame(columns=["月", "申込受付番号", "電話番号"])
+        return pd.DataFrame(), pd.DataFrame(columns=["月"] + detail_columns)
     df = pd.DataFrame([
         {
             "entry": r.get("Field156__c"),
@@ -443,6 +455,7 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             "cancel": r.get("Field119__c"),
             "申込受付番号": r.get("Field63__c") or "",
             "電話番号": r.get("X1__c") or "",
+            **{label: (r.get(sf_field) or "") for sf_field, label in extra_sf_fields},
         }
         for r in rs
     ])
@@ -504,26 +517,77 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             & ~(sub["yotei"] > today)
         )
         for _, dr in sub[sokushin_mask].iterrows():
-            detail_rows.append({
-                "月": month,
-                "申込受付番号": dr["申込受付番号"],
-                "電話番号": dr["電話番号"],
-            })
+            row_out = {"月": month}
+            for col in detail_columns:
+                if col == "エントリ日":
+                    v = dr.get("entry")
+                    row_out[col] = v.strftime("%Y-%m-%d") if pd.notna(v) else ""
+                elif col == "工事予定日":
+                    v = dr.get("yotei")
+                    row_out[col] = v.strftime("%Y-%m-%d") if pd.notna(v) else ""
+                else:
+                    row_out[col] = dr.get(col, "")
+            detail_rows.append(row_out)
 
     result = pd.DataFrame(out_rows)
     summary = result.iloc[::-1].reset_index(drop=True) if not result.empty else result
-    details = pd.DataFrame(detail_rows, columns=["月", "申込受付番号", "電話番号"])
+    details = pd.DataFrame(detail_rows, columns=["月"] + detail_columns)
     return summary, details
+
+
+def _resolve_account_fields_by_label(sf: Salesforce, labels: list[str]) -> dict[str, str]:
+    """Account describe を引いて、label → API名 のマップを返す。
+    見つからなかった label は欠落として返らない（呼び出し側でハンドル）。"""
+    try:
+        desc = sf.Account.describe()
+    except Exception:
+        return {}
+    label_to_api: dict[str, str] = {}
+    target = set(labels)
+    for f in desc.get("fields", []):
+        lab = f.get("label")
+        if lab in target:
+            label_to_api[lab] = f.get("name")
+    return label_to_api
 
 
 def fetch_progress(sf: Salesforce) -> dict[str, dict]:
     def _pack(pair):
         summary, details = pair
         return {"summary": summary, "details": details}
+
+    # 各商材で必要な追加ラベル
+    nuro_extras = ["status大区分（引用）", "プラン名（引用）", "工事Ⅰ状況（引用）", "工事Ⅱ状況（引用）", "status小区分"]
+    sonet_extras = ["status大区分（引用）", "ダイコンステータス", "促進ステータス"]
+    au_extras = ["status大区分（引用）"]
+
+    label_map = _resolve_account_fields_by_label(
+        sf, list(set(nuro_extras + sonet_extras + au_extras))
+    )
+
+    def _build(extras):
+        return [(label_map[lab], lab) for lab in extras if lab in label_map]
+
+    nuro_detail = ["申込受付番号", "電話番号"] + [l for l in nuro_extras if l in label_map]
+    sonet_detail = ["申込受付番号", "電話番号"] + [l for l in sonet_extras if l in label_map]
+    au_detail = ["申込受付番号", "電話番号"] + [l for l in au_extras if l in label_map] + ["エントリ日", "工事予定日"]
+
     return {
-        "NURO開通進捗": _pack(_fetch_progress(sf, "%NURO%", "NURO開通進捗", False)),
-        "ソネット開通進捗": _pack(_fetch_progress(sf, "%So-net%", "ソネット開通進捗", True)),
-        "AU光開通進捗": _pack(_fetch_progress(sf, "AU光%", "AU光開通進捗", False)),
+        "NURO開通進捗": _pack(_fetch_progress(
+            sf, "%NURO%", "NURO開通進捗", False,
+            extra_sf_fields=_build(nuro_extras),
+            detail_columns=nuro_detail,
+        )),
+        "ソネット開通進捗": _pack(_fetch_progress(
+            sf, "%So-net%", "ソネット開通進捗", True,
+            extra_sf_fields=_build(sonet_extras),
+            detail_columns=sonet_detail,
+        )),
+        "AU光開通進捗": _pack(_fetch_progress(
+            sf, "AU光%", "AU光開通進捗", False,
+            extra_sf_fields=_build(au_extras),
+            detail_columns=au_detail,
+        )),
     }
 
 

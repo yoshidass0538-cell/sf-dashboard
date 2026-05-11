@@ -422,17 +422,18 @@ def _progress_start() -> str:
     return dt.replace(day=1).strftime("%Y-%m-%d")
 
 
-def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlement: bool) -> pd.DataFrame:
+def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlement: bool):
     start = _progress_start()
     soql = (
-        "SELECT Field156__c, Field130__c, Field128__c, Field131__c, Field119__c "
+        "SELECT Field156__c, Field130__c, Field128__c, Field131__c, Field119__c, "
+        "Field63__c, X1__c "
         "FROM Account "
         f"WHERE Field76__r.Name LIKE '{like_pattern}' "
         f"AND Field156__c >= {start}"
     )
     rs = sf.query_all(soql)["records"]
     if not rs:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(columns=["月", "申込受付番号", "電話番号"])
     df = pd.DataFrame([
         {
             "entry": r.get("Field156__c"),
@@ -440,6 +441,8 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             "yotei": r.get("Field128__c"),
             "kessai": r.get("Field131__c"),
             "cancel": r.get("Field119__c"),
+            "申込受付番号": r.get("Field63__c") or "",
+            "電話番号": r.get("X1__c") or "",
         }
         for r in rs
     ])
@@ -450,6 +453,7 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
     today = pd.Timestamp(pd.Timestamp.today().date())
 
     out_rows = []
+    detail_rows = []
     for month, sub in df.groupby("月", sort=True):
         entry_n = len(sub)
         kaitsu_n = sub["kaitsu"].notna().sum()
@@ -493,15 +497,33 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             row[f"{label}CX率"] = pct(cx_d)
         out_rows.append(row)
 
+        # 促進必要 = キャンセル無し AND 工事完了無し AND 工事予定が未来でない
+        sokushin_mask = (
+            sub["cancel"].isna()
+            & sub["kaitsu"].isna()
+            & ~(sub["yotei"] > today)
+        )
+        for _, dr in sub[sokushin_mask].iterrows():
+            detail_rows.append({
+                "月": month,
+                "申込受付番号": dr["申込受付番号"],
+                "電話番号": dr["電話番号"],
+            })
+
     result = pd.DataFrame(out_rows)
-    return result.iloc[::-1].reset_index(drop=True) if not result.empty else result
+    summary = result.iloc[::-1].reset_index(drop=True) if not result.empty else result
+    details = pd.DataFrame(detail_rows, columns=["月", "申込受付番号", "電話番号"])
+    return summary, details
 
 
-def fetch_progress(sf: Salesforce) -> dict[str, pd.DataFrame]:
+def fetch_progress(sf: Salesforce) -> dict[str, dict]:
+    def _pack(pair):
+        summary, details = pair
+        return {"summary": summary, "details": details}
     return {
-        "NURO開通進捗": _fetch_progress(sf, "%NURO%", "NURO開通進捗", False),
-        "ソネット開通進捗": _fetch_progress(sf, "%So-net%", "ソネット開通進捗", True),
-        "AU光開通進捗": _fetch_progress(sf, "AU光%", "AU光開通進捗", False),
+        "NURO開通進捗": _pack(_fetch_progress(sf, "%NURO%", "NURO開通進捗", False)),
+        "ソネット開通進捗": _pack(_fetch_progress(sf, "%So-net%", "ソネット開通進捗", True)),
+        "AU光開通進捗": _pack(_fetch_progress(sf, "AU光%", "AU光開通進捗", False)),
     }
 
 

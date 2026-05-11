@@ -165,7 +165,7 @@ def _load_cx_age_area(start_date: str, end_date: str):
 
 
 @st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
-def _load_daily(metric_key: str, cache_day: str, v: int = 7) -> pd.DataFrame:
+def _load_daily(metric_key: str, cache_day: str, v: int = 8) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 
@@ -5852,6 +5852,33 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     )
 
 
-for i, (title, df) in enumerate(tables.items()):
-    _render_table(title, df, str(i))
+def _render_sokushin_details(title: str, details_df: pd.DataFrame, key_suffix: str):
+    """促進必要件数の対象レコードを月別タブで表示。"""
+    if details_df is None or details_df.empty:
+        return
+    months = sorted(details_df["月"].unique(), reverse=True)
+    if not months:
+        return
+    with st.expander(f"促進必要件数 一覧（{title}）", expanded=False):
+        tab_labels = [f"{m}（{int((details_df['月']==m).sum())}件）" for m in months]
+        tabs = st.tabs(tab_labels)
+        for tab, month in zip(tabs, months):
+            with tab:
+                month_df = (
+                    details_df[details_df["月"] == month][["申込受付番号", "電話番号"]]
+                    .reset_index(drop=True)
+                )
+                st.dataframe(month_df, use_container_width=True, hide_index=True)
+
+
+for i, (title, value) in enumerate(tables.items()):
+    if isinstance(value, dict):
+        df_summary = value.get("summary")
+        df_details = value.get("details")
+    else:
+        df_summary = value
+        df_details = None
+    _render_table(title, df_summary, str(i))
+    if df_details is not None:
+        _render_sokushin_details(title, df_details, str(i))
     st.divider()

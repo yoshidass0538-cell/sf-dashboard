@@ -165,7 +165,7 @@ def _load_cx_age_area(start_date: str, end_date: str):
 
 
 @st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
-def _load_daily(metric_key: str, cache_day: str, v: int = 3) -> pd.DataFrame:
+def _load_daily(metric_key: str, cache_day: str, v: int = 4) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 
@@ -5803,7 +5803,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
         # - 1日目〜7日目CX(数/率)を薄い赤で
         # - NURO「工事完了率」/ ソネット「入金率」を黄色で目立たせる
         highlight_col = None
-        if title and "NURO" in title:
+        if title and ("NURO" in title or "AU光" in title):
             highlight_col = "工事完了率"
         elif title and "ソネット" in title:
             highlight_col = "入金率"

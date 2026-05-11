@@ -499,6 +499,7 @@ def fetch_progress(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return {
         "NURO開通進捗": _fetch_progress(sf, "NURO", "NURO開通進捗", False),
         "ソネット開通進捗": _fetch_progress(sf, "So-net", "ソネット開通進捗", True),
+        "AU光開通進捗": _fetch_progress(sf, "auひかり", "AU光開通進捗", False),
     }
 
 

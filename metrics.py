@@ -587,7 +587,7 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
         return {"summary": summary, "details": details}
 
     # 各商材で必要な追加ラベル
-    nuro_extras = ["status大区分（引用）", "プラン名（引用）", "工事Ⅰ状況（引用）", "工事Ⅱ状況（引用）", "status小区分"]
+    nuro_extras = ["status大区分（引用）", "プラン名（引用）", "工事Ⅰ状況（引用）", "工事Ⅱ状況（引用）", "status小区分", "工事予定日Ⅱ"]
     sonet_extras = ["status大区分（引用）", "ダイコンステータス", "促進ステータス", "工事Ⅰ状況（引用）"]
     au_extras = ["status大区分（引用）", "工事取得FC"]
 
@@ -599,7 +599,10 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
         return [(label_map[lab], lab) for lab in extras if lab in label_map]
 
     # 電話番号の右に工事予定日を必ず差し込む
-    nuro_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in nuro_extras if l in label_map]
+    # NURO: 工事予定日の右に工事予定日Ⅱを置く
+    nuro_after_yotei = [l for l in ["工事予定日Ⅱ"] if l in label_map]
+    nuro_remaining = [l for l in nuro_extras if l in label_map and l not in nuro_after_yotei]
+    nuro_detail = ["申込受付番号", "電話番号", "工事予定日"] + nuro_after_yotei + nuro_remaining
     sonet_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in sonet_extras if l in label_map]
     # AU光: 工事予定日の右に工事取得FCを置く
     au_after_yotei = [l for l in ["工事取得FC"] if l in label_map]

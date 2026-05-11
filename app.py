@@ -5799,23 +5799,41 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             """,
             unsafe_allow_html=True,
         )
-        # 開通進捗: 特定列以降をハイライト（NURO=4日目〜, ソネット=5日目〜）
+        # 開通進捗ハイライト
+        # - NURO=4日目CX〜 / ソネット=5日目CX〜 を赤
+        # - NURO「工事完了率」/ ソネット「入金率」を黄色で目立たせる
         highlight_from = None
+        highlight_col = None
         if title and "NURO" in title:
             highlight_from = "4日目CX数"
+            highlight_col = "工事完了率"
         elif title and "ソネット" in title:
             highlight_from = "5日目CX数"
-        if highlight_from and highlight_from in df.columns:
+            highlight_col = "入金率"
+        cols_list = list(df.columns)
+        from_idx = cols_list.index(highlight_from) if highlight_from and highlight_from in cols_list else None
+        col_idx = cols_list.index(highlight_col) if highlight_col and highlight_col in cols_list else None
+        if from_idx is not None or col_idx is not None:
             import re
-            col_idx = list(df.columns).index(highlight_from)
             def _highlight_row(m):
                 tag = m.group(0)
                 cells = re.findall(r"<(th|td)\b[^>]*>.*?</\1>", tag, re.DOTALL)
                 if not cells:
                     return tag
                 for i, cell in enumerate(cells):
-                    if i >= col_idx:
-                        new_cell = re.sub(r"<(th|td)\b", r'<\1 class="cx-hl"', cell, count=1)
+                    classes = []
+                    if from_idx is not None and i >= from_idx:
+                        classes.append("cx-hl")
+                    if col_idx is not None and i == col_idx:
+                        classes.append("col-hl")
+                    if classes:
+                        cls_attr = " ".join(classes)
+                        new_cell = re.sub(
+                            r"<(th|td)\b",
+                            lambda mm: f'<{mm.group(1)} class="{cls_attr}"',
+                            cell,
+                            count=1,
+                        )
                         tag = tag.replace(cell, new_cell, 1)
                 return tag
             html = re.sub(r"<tr\b[^>]*>.*?</tr>", _highlight_row, html, flags=re.DOTALL)
@@ -5826,6 +5844,18 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             }}
             .{css_class} tr:hover .cx-hl {{
                 background: #A93226 !important;
+            }}
+            .{css_class} .col-hl {{
+                background: #F1C40F !important;
+                color: #1a1a1a !important;
+                font-weight: 700 !important;
+            }}
+            .{css_class} tr:hover .col-hl {{
+                background: #D4AC0D !important;
+            }}
+            .{css_class} .cx-hl.col-hl {{
+                background: #E67E22 !important;
+                color: #ffffff !important;
             }}
             """
             st.markdown(f"<style>{hl_css}</style>", unsafe_allow_html=True)

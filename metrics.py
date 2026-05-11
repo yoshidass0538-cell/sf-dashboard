@@ -582,9 +582,9 @@ def _resolve_account_fields_by_label(sf: Salesforce, labels: list[str]) -> dict[
 
 
 def fetch_progress(sf: Salesforce) -> dict[str, dict]:
-    def _pack(pair):
+    def _pack(pair, missing_labels):
         summary, details = pair
-        return {"summary": summary, "details": details}
+        return {"summary": summary, "details": details, "missing_labels": missing_labels}
 
     # 各商材で必要な追加ラベル
     nuro_extras = ["status大区分（引用）", "プラン名（引用）", "工事Ⅰ状況（引用）", "工事Ⅱ状況（引用）", "status小区分", "工事予定日Ⅱ"]
@@ -597,6 +597,9 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
 
     def _build(extras):
         return [(label_map[lab], lab) for lab in extras if lab in label_map]
+
+    def _missing(extras):
+        return [l for l in extras if l not in label_map]
 
     # 電話番号の右に工事予定日を必ず差し込む
     # NURO: 工事予定日の右に工事予定日Ⅱを置く
@@ -611,17 +614,17 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
             sf, "%NURO%", "NURO開通進捗", False,
             extra_sf_fields=_build(nuro_extras),
             detail_columns=nuro_detail,
-        )),
+        ), _missing(nuro_extras)),
         "ソネット開通進捗": _pack(_fetch_progress(
             sf, "%So-net%", "ソネット開通進捗", True,
             extra_sf_fields=_build(sonet_extras),
             detail_columns=sonet_detail,
-        )),
+        ), _missing(sonet_extras)),
         "AU光開通進捗": _pack(_fetch_progress(
             sf, "AU光%", "AU光開通進捗", False,
             extra_sf_fields=_build(au_extras),
             detail_columns=au_detail,
-        )),
+        ), _missing(au_extras)),
     }
 
 

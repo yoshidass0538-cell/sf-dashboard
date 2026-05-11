@@ -5860,6 +5860,15 @@ def _render_sokushin_details(title: str, details_df: pd.DataFrame, key_suffix: s
     if not months:
         return
     with st.expander(f"促進必要件数 一覧（{title}）", expanded=False):
+        # 全月まとめCSV
+        all_df = details_df[["月", "申込受付番号", "電話番号"]].reset_index(drop=True)
+        st.download_button(
+            "全月まとめてCSVダウンロード",
+            all_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"sokushin_need_{title}_all.csv",
+            mime="text/csv",
+            key=f"dl_sokushin_all_{key_suffix}",
+        )
         tab_labels = [f"{m}（{int((details_df['月']==m).sum())}件）" for m in months]
         tabs = st.tabs(tab_labels)
         for tab, month in zip(tabs, months):
@@ -5869,6 +5878,13 @@ def _render_sokushin_details(title: str, details_df: pd.DataFrame, key_suffix: s
                     .reset_index(drop=True)
                 )
                 st.dataframe(month_df, use_container_width=True, hide_index=True)
+                st.download_button(
+                    f"{month} のCSVをダウンロード",
+                    month_df.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"sokushin_need_{title}_{month}.csv",
+                    mime="text/csv",
+                    key=f"dl_sokushin_{key_suffix}_{month}",
+                )
 
 
 for i, (title, value) in enumerate(tables.items()):

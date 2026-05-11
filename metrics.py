@@ -461,9 +461,12 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
         def pct(n):
             return f"{round(n / entry_n * 100, 1)}%" if entry_n else "-"
 
+        zanson_n = int(entry_n - cancel_n)
         row = {
             "月": month,
             "エントリー数": int(entry_n),
+            "残存件数": zanson_n,
+            "残存率": pct(zanson_n),
             "工事完了数": int(kaitsu_n),
             "工事完了率": pct(kaitsu_n),
             "工事待ち数": int(yotei_n),

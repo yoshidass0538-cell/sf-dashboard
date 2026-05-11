@@ -556,6 +556,8 @@ _KNOWN_ACCOUNT_FIELDS: dict[str, str] = {
     "促進ステータス": "Field144__c",
     "status小区分": "Field209__c",
     "工事予定日Ⅱ": "Field129__c",
+    "プラン名（引用）": "Field285__c",
+    "工事Ⅱ状況（引用）": "Field284__c",
 }
 
 

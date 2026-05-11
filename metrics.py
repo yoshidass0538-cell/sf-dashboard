@@ -462,7 +462,7 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             return f"{round(n / entry_n * 100, 1)}%" if entry_n else "-"
 
         zanson_n = int(entry_n - cancel_n)
-        sokushin_need_n = int(zanson_n - yotei_n)
+        sokushin_need_n = int(zanson_n - kaitsu_n - yotei_n)
         row = {
             "月": month,
             "エントリー数": int(entry_n),

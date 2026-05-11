@@ -446,10 +446,18 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
     rs = sf.query_all(soql)["records"]
     if not rs:
         return pd.DataFrame(), pd.DataFrame(columns=["月"] + detail_columns)
+    import re as _re
+    _ISO_DATE = _re.compile(r"^\d{4}-\d{2}-\d{2}")
+
     def _fmt(v):
         if isinstance(v, bool):
             return "✓" if v else ""
-        return v if v is not None else ""
+        if v is None:
+            return ""
+        if isinstance(v, str) and _ISO_DATE.match(v):
+            # 日付/日時の "-" 区切りを "/" に正規化(日付部のみ)
+            return v[:10].replace("-", "/") + v[10:]
+        return v
 
     df = pd.DataFrame([
         {
@@ -526,10 +534,10 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             for col in detail_columns:
                 if col == "エントリ日":
                     v = dr.get("entry")
-                    row_out[col] = v.strftime("%Y-%m-%d") if pd.notna(v) else ""
+                    row_out[col] = v.strftime("%Y/%m/%d") if pd.notna(v) else ""
                 elif col == "工事予定日":
                     v = dr.get("yotei")
-                    row_out[col] = v.strftime("%Y-%m-%d") if pd.notna(v) else ""
+                    row_out[col] = v.strftime("%Y/%m/%d") if pd.notna(v) else ""
                 else:
                     row_out[col] = dr.get(col, "")
             detail_rows.append(row_out)

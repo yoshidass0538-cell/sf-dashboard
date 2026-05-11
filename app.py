@@ -165,7 +165,7 @@ def _load_cx_age_area(start_date: str, end_date: str):
 
 
 @st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
-def _load_daily(metric_key: str, cache_day: str, v: int = 16) -> pd.DataFrame:
+def _load_daily(metric_key: str, cache_day: str, v: int = 17) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 

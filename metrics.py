@@ -603,15 +603,16 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
     def _missing(extras):
         return [l for l in extras if l not in label_map]
 
-    # NURO: 指定の列順
+    # NURO: 指定の列順(電話番号の右にエントリ日)
     nuro_order = [
-        "申込受付番号", "電話番号", "工事予定日", "工事Ⅰ状況（引用）",
+        "申込受付番号", "電話番号", "エントリ日", "工事予定日", "工事Ⅰ状況（引用）",
         "工事予定日Ⅱ", "工事Ⅱ状況（引用）", "status大区分（引用）",
         "status小区分", "プラン名（引用）",
     ]
-    nuro_detail = [c for c in nuro_order if c in ("申込受付番号", "電話番号", "工事予定日") or c in label_map]
-    sonet_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in sonet_extras if l in label_map]
-    au_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in au_extras if l in label_map] + ["エントリ日"]
+    _base_cols = {"申込受付番号", "電話番号", "エントリ日", "工事予定日"}
+    nuro_detail = [c for c in nuro_order if c in _base_cols or c in label_map]
+    sonet_detail = ["申込受付番号", "電話番号", "エントリ日", "工事予定日"] + [l for l in sonet_extras if l in label_map]
+    au_detail = ["申込受付番号", "電話番号", "エントリ日", "工事予定日"] + [l for l in au_extras if l in label_map]
 
     return {
         "NURO開通進捗": _pack(_fetch_progress(

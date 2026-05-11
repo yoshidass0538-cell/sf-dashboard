@@ -583,7 +583,7 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
 
     # 各商材で必要な追加ラベル
     nuro_extras = ["status大区分（引用）", "プラン名（引用）", "工事Ⅰ状況（引用）", "工事Ⅱ状況（引用）", "status小区分"]
-    sonet_extras = ["status大区分（引用）", "ダイコンステータス", "促進ステータス"]
+    sonet_extras = ["status大区分（引用）", "ダイコンステータス", "促進ステータス", "工事Ⅰ状況（引用）"]
     au_extras = ["status大区分（引用）"]
 
     label_map = _resolve_account_fields_by_label(
@@ -593,9 +593,10 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
     def _build(extras):
         return [(label_map[lab], lab) for lab in extras if lab in label_map]
 
-    nuro_detail = ["申込受付番号", "電話番号"] + [l for l in nuro_extras if l in label_map]
-    sonet_detail = ["申込受付番号", "電話番号"] + [l for l in sonet_extras if l in label_map]
-    au_detail = ["申込受付番号", "電話番号"] + [l for l in au_extras if l in label_map] + ["エントリ日", "工事予定日"]
+    # 電話番号の右に工事予定日を必ず差し込む
+    nuro_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in nuro_extras if l in label_map]
+    sonet_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in sonet_extras if l in label_map]
+    au_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in au_extras if l in label_map] + ["エントリ日"]
 
     return {
         "NURO開通進捗": _pack(_fetch_progress(

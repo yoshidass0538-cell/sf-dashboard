@@ -5818,30 +5818,28 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             CX_STYLE = "background:#C0392B !important;color:#ffffff !important;"
             COL_STYLE = "background:#F1C40F !important;color:#1a1a1a !important;font-weight:700 !important;"
             BOTH_STYLE = "background:#E67E22 !important;color:#ffffff !important;font-weight:700 !important;"
+            CELL_RE = re.compile(r"<(th|td)\b([^>]*)>(.*?)</\1>", re.DOTALL)
             def _highlight_row(m):
-                tag = m.group(0)
-                cells = re.findall(r"<(th|td)\b[^>]*>.*?</\1>", tag, re.DOTALL)
-                if not cells:
-                    return tag
-                for i, cell in enumerate(cells):
+                row_html = m.group(0)
+                # 行内のセルを順に置換（インデックスで対象判定）
+                idx = {"i": 0}
+                def _replace_cell(cm):
+                    i = idx["i"]
+                    idx["i"] += 1
+                    tag_name = cm.group(1)
+                    attrs = cm.group(2)
+                    inner = cm.group(3)
                     is_cx = from_idx is not None and i >= from_idx
                     is_col = col_idx is not None and i == col_idx
                     if not (is_cx or is_col):
-                        continue
+                        return cm.group(0)
                     style = BOTH_STYLE if (is_cx and is_col) else (COL_STYLE if is_col else CX_STYLE)
-                    # 既存 style 属性があれば連結、なければ新規付与
-                    m2 = re.match(r"<(th|td)\b([^>]*)>", cell)
-                    if not m2:
-                        continue
-                    tag_name = m2.group(1)
-                    attrs = m2.group(2)
                     if 'style="' in attrs:
                         new_attrs = re.sub(r'style="([^"]*)"', lambda x: f'style="{x.group(1)};{style}"', attrs, count=1)
                     else:
                         new_attrs = f'{attrs} style="{style}"'
-                    new_cell = cell.replace(m2.group(0), f"<{tag_name}{new_attrs}>", 1)
-                    tag = tag.replace(cell, new_cell, 1)
-                return tag
+                    return f"<{tag_name}{new_attrs}>{inner}</{tag_name}>"
+                return CELL_RE.sub(_replace_cell, row_html)
             html = re.sub(r"<tr\b[^>]*>.*?</tr>", _highlight_row, html, flags=re.DOTALL)
         table_html = html.replace("<table", f'<table class="{css_class}"', 1)
         st.markdown(f'<div class="responsive-table-wrapper">{table_html}</div>', unsafe_allow_html=True)

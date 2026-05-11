@@ -446,6 +446,11 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
     rs = sf.query_all(soql)["records"]
     if not rs:
         return pd.DataFrame(), pd.DataFrame(columns=["月"] + detail_columns)
+    def _fmt(v):
+        if isinstance(v, bool):
+            return "✓" if v else ""
+        return v if v is not None else ""
+
     df = pd.DataFrame([
         {
             "entry": r.get("Field156__c"),
@@ -455,7 +460,7 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             "cancel": r.get("Field119__c"),
             "申込受付番号": r.get("Field63__c") or "",
             "電話番号": r.get("X1__c") or "",
-            **{label: (r.get(sf_field) or "") for sf_field, label in extra_sf_fields},
+            **{label: _fmt(r.get(sf_field)) for sf_field, label in extra_sf_fields},
         }
         for r in rs
     ])
@@ -584,7 +589,7 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
     # 各商材で必要な追加ラベル
     nuro_extras = ["status大区分（引用）", "プラン名（引用）", "工事Ⅰ状況（引用）", "工事Ⅱ状況（引用）", "status小区分"]
     sonet_extras = ["status大区分（引用）", "ダイコンステータス", "促進ステータス", "工事Ⅰ状況（引用）"]
-    au_extras = ["status大区分（引用）"]
+    au_extras = ["status大区分（引用）", "工事取得FC"]
 
     label_map = _resolve_account_fields_by_label(
         sf, list(set(nuro_extras + sonet_extras + au_extras))
@@ -596,7 +601,10 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
     # 電話番号の右に工事予定日を必ず差し込む
     nuro_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in nuro_extras if l in label_map]
     sonet_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in sonet_extras if l in label_map]
-    au_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in au_extras if l in label_map] + ["エントリ日"]
+    # AU光: 工事予定日の右に工事取得FCを置く
+    au_after_yotei = [l for l in ["工事取得FC"] if l in label_map]
+    au_remaining = [l for l in au_extras if l in label_map and l not in au_after_yotei]
+    au_detail = ["申込受付番号", "電話番号", "工事予定日"] + au_after_yotei + au_remaining + ["エントリ日"]
 
     return {
         "NURO開通進捗": _pack(_fetch_progress(

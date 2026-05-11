@@ -5800,28 +5800,31 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             unsafe_allow_html=True,
         )
         # 開通進捗ハイライト
-        # - NURO=4日目CX〜 / ソネット=5日目CX〜 を赤
+        # - 1日目〜7日目CX(数/率)を薄い赤で
         # - NURO「工事完了率」/ ソネット「入金率」を黄色で目立たせる
-        highlight_from = None
         highlight_col = None
         if title and "NURO" in title:
-            highlight_from = "4日目CX数"
             highlight_col = "工事完了率"
         elif title and "ソネット" in title:
-            highlight_from = "5日目CX数"
             highlight_col = "入金率"
+        is_progress = bool(highlight_col)
         cols_list = list(df.columns)
-        from_idx = cols_list.index(highlight_from) if highlight_from and highlight_from in cols_list else None
         col_idx = cols_list.index(highlight_col) if highlight_col and highlight_col in cols_list else None
-        if from_idx is not None or col_idx is not None:
+        cx_target_cols = []
+        if is_progress:
+            for d in range(1, 8):  # 1日目〜7日目
+                for suffix in ("CX数", "CX率"):
+                    name = f"{d}日目{suffix}"
+                    if name in cols_list:
+                        cx_target_cols.append(cols_list.index(name))
+        if col_idx is not None or cx_target_cols:
             hl_rules = []
-            if from_idx is not None:
-                # 4日目/5日目CX〜以降の列を赤に
-                for n in range(from_idx + 1, len(cols_list) + 1):
-                    hl_rules.append(
-                        f".{css_class} th:nth-child({n}), .{css_class} td:nth-child({n}) "
-                        f"{{ background:#C0392B !important; color:#ffffff !important; }}"
-                    )
+            for ci in cx_target_cols:
+                n = ci + 1
+                hl_rules.append(
+                    f".{css_class} th:nth-child({n}), .{css_class} td:nth-child({n}) "
+                    f"{{ background:#EC7063 !important; color:#ffffff !important; }}"
+                )
             if col_idx is not None:
                 n = col_idx + 1
                 hl_rules.append(

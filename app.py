@@ -165,7 +165,7 @@ def _load_cx_age_area(start_date: str, end_date: str):
 
 
 @st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
-def _load_daily(metric_key: str, cache_day: str, v: int = 5) -> pd.DataFrame:
+def _load_daily(metric_key: str, cache_day: str, v: int = 6) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 
@@ -5739,7 +5739,8 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             },
         }
         t = THEME.get(metric.category, THEME["1週間後FC"])
-        css_class = f"table-{metric.category.replace(' ', '_')}"
+        # テーブルごとにユニークなクラスを付与（同カテゴリ複数表でCSSが混線するのを防ぐ）
+        css_class = f"table-{metric.category.replace(' ', '_')}-{key_suffix}"
         html = df.to_html(index=False, escape=False)
         st.markdown(
             f"""
@@ -5802,6 +5803,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
         # 開通進捗ハイライト
         # - 1日目〜7日目CX(数/率)を薄い赤で
         # - NURO「工事完了率」/ ソネット「入金率」を黄色で目立たせる
+        # - 促進必要件数を青で目立たせる
         highlight_col = None
         if title and ("NURO" in title or "AU光" in title):
             highlight_col = "工事完了率"
@@ -5810,6 +5812,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
         is_progress = bool(highlight_col)
         cols_list = list(df.columns)
         col_idx = cols_list.index(highlight_col) if highlight_col and highlight_col in cols_list else None
+        sokushin_idx = cols_list.index("促進必要件数") if is_progress and "促進必要件数" in cols_list else None
         cx_target_cols = []
         if is_progress:
             for d in range(1, 8):  # 1日目〜7日目
@@ -5817,7 +5820,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
                     name = f"{d}日目{suffix}"
                     if name in cols_list:
                         cx_target_cols.append(cols_list.index(name))
-        if col_idx is not None or cx_target_cols:
+        if col_idx is not None or cx_target_cols or sokushin_idx is not None:
             hl_rules = []
             for ci in cx_target_cols:
                 n = ci + 1
@@ -5830,6 +5833,12 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
                 hl_rules.append(
                     f".{css_class} th:nth-child({n}), .{css_class} td:nth-child({n}) "
                     f"{{ background:#F1C40F !important; color:#1a1a1a !important; font-weight:700 !important; }}"
+                )
+            if sokushin_idx is not None:
+                n = sokushin_idx + 1
+                hl_rules.append(
+                    f".{css_class} th:nth-child({n}), .{css_class} td:nth-child({n}) "
+                    f"{{ background:#5DADE2 !important; color:#ffffff !important; font-weight:700 !important; }}"
                 )
             st.markdown("<style>" + "\n".join(hl_rules) + "</style>", unsafe_allow_html=True)
         table_html = html.replace("<table", f'<table class="{css_class}"', 1)

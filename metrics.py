@@ -462,6 +462,7 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             return f"{round(n / entry_n * 100, 1)}%" if entry_n else "-"
 
         zanson_n = int(entry_n - cancel_n)
+        sokushin_need_n = int(zanson_n - yotei_n)
         row = {
             "月": month,
             "エントリー数": int(entry_n),
@@ -471,6 +472,7 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
             "工事完了率": pct(kaitsu_n),
             "工事待ち数": int(yotei_n),
             "工事待ち率": pct(yotei_n),
+            "促進必要件数": sokushin_need_n,
         }
         if with_settlement:
             kessai_n = sub["kessai"].notna().sum()

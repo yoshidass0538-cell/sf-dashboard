@@ -422,12 +422,12 @@ def _progress_start() -> str:
     return dt.replace(day=1).strftime("%Y-%m-%d")
 
 
-def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_settlement: bool) -> pd.DataFrame:
+def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlement: bool) -> pd.DataFrame:
     start = _progress_start()
     soql = (
         "SELECT Field156__c, Field130__c, Field128__c, Field131__c, Field119__c "
         "FROM Account "
-        f"WHERE Field76__r.Name LIKE '%{product_keyword}%' "
+        f"WHERE Field76__r.Name LIKE '{like_pattern}' "
         f"AND Field156__c >= {start}"
     )
     rs = sf.query_all(soql)["records"]
@@ -497,9 +497,9 @@ def _fetch_progress(sf: Salesforce, product_keyword: str, header: str, with_sett
 
 def fetch_progress(sf: Salesforce) -> dict[str, pd.DataFrame]:
     return {
-        "NURO開通進捗": _fetch_progress(sf, "NURO", "NURO開通進捗", False),
-        "ソネット開通進捗": _fetch_progress(sf, "So-net", "ソネット開通進捗", True),
-        "AU光開通進捗": _fetch_progress(sf, "auひかり", "AU光開通進捗", False),
+        "NURO開通進捗": _fetch_progress(sf, "%NURO%", "NURO開通進捗", False),
+        "ソネット開通進捗": _fetch_progress(sf, "%So-net%", "ソネット開通進捗", True),
+        "AU光開通進捗": _fetch_progress(sf, "AU光%", "AU光開通進捗", False),
     }
 
 

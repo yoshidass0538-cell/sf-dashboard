@@ -165,7 +165,7 @@ def _load_cx_age_area(start_date: str, end_date: str):
 
 
 @st.cache_data(ttl=86400, show_spinner="Salesforce から取得中...")
-def _load_daily(metric_key: str, cache_day: str, v: int = 4) -> pd.DataFrame:
+def _load_daily(metric_key: str, cache_day: str, v: int = 5) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 
@@ -5823,7 +5823,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
                 n = ci + 1
                 hl_rules.append(
                     f".{css_class} th:nth-child({n}), .{css_class} td:nth-child({n}) "
-                    f"{{ background:#EC7063 !important; color:#ffffff !important; }}"
+                    f"{{ background:#F5B7B1 !important; color:#641E16 !important; }}"
                 )
             if col_idx is not None:
                 n = col_idx + 1

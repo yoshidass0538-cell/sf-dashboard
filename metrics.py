@@ -546,6 +546,8 @@ _KNOWN_ACCOUNT_FIELDS: dict[str, str] = {
     "工事Ⅰ状況（引用）": "Field210__c",
     "ダイコンステータス": "Field225__c",
     "促進ステータス": "Field144__c",
+    "status小区分": "Field209__c",
+    "工事予定日Ⅱ": "Field129__c",
 }
 
 
@@ -601,11 +603,13 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
     def _missing(extras):
         return [l for l in extras if l not in label_map]
 
-    # 電話番号の右に工事予定日を必ず差し込む
-    # NURO: 工事予定日の右に工事予定日Ⅱを置く
-    nuro_after_yotei = [l for l in ["工事予定日Ⅱ"] if l in label_map]
-    nuro_remaining = [l for l in nuro_extras if l in label_map and l not in nuro_after_yotei]
-    nuro_detail = ["申込受付番号", "電話番号", "工事予定日"] + nuro_after_yotei + nuro_remaining
+    # NURO: 指定の列順
+    nuro_order = [
+        "申込受付番号", "電話番号", "工事予定日", "工事Ⅰ状況（引用）",
+        "工事予定日Ⅱ", "工事Ⅱ状況（引用）", "status大区分（引用）",
+        "status小区分", "プラン名（引用）",
+    ]
+    nuro_detail = [c for c in nuro_order if c in ("申込受付番号", "電話番号", "工事予定日") or c in label_map]
     sonet_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in sonet_extras if l in label_map]
     au_detail = ["申込受付番号", "電話番号", "工事予定日"] + [l for l in au_extras if l in label_map] + ["エントリ日"]
 

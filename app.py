@@ -5859,9 +5859,11 @@ def _render_sokushin_details(title: str, details_df: pd.DataFrame, key_suffix: s
     months = sorted(details_df["月"].unique(), reverse=True)
     if not months:
         return
+    # 表示列 = 月以外の全列(metrics側で順序指定済)
+    display_cols = [c for c in details_df.columns if c != "月"]
     with st.expander(f"促進必要件数 一覧（{title}）", expanded=False):
-        # 全月まとめCSV
-        all_df = details_df[["月", "申込受付番号", "電話番号"]].reset_index(drop=True)
+        # 全月まとめCSV(月列も含めて出力)
+        all_df = details_df[["月"] + display_cols].reset_index(drop=True)
         st.download_button(
             "全月まとめてCSVダウンロード",
             all_df.to_csv(index=False).encode("utf-8-sig"),
@@ -5874,7 +5876,7 @@ def _render_sokushin_details(title: str, details_df: pd.DataFrame, key_suffix: s
         for tab, month in zip(tabs, months):
             with tab:
                 month_df = (
-                    details_df[details_df["月"] == month][["申込受付番号", "電話番号"]]
+                    details_df[details_df["月"] == month][display_cols]
                     .reset_index(drop=True)
                 )
                 st.dataframe(month_df, use_container_width=True, hide_index=True)

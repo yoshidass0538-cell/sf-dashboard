@@ -36,10 +36,10 @@ BY_SHEET_ID = "1Xg2oxrIrXy3oju8s9POm8RRHW6RWqqbj7ALTBjAzkvA"
 EXCLUDED_TIME_SLOTS = {"14:00", "19:00", "20:00"}
 
 TARGET_CATEGORIES = {
-    "折返CS開通前": "折り返し希望(開通前)",
-    "折返新設FC": "折り返し希望(新設FC)",
-    "折返１週間FC": "折り返し希望(1週間後)",
-    "折返工事取得": "折り返し希望(工事取得)",
+    "折返CS開通前": "(開通前)",
+    "折返新設FC": "(新設FC)",
+    "折返１週間FC": "(1週間後)",
+    "折返工事取得": "(工事取得)",
 }
 
 JST = timezone(timedelta(hours=9))

@@ -3448,8 +3448,9 @@ if selected_key == "orikaeshi_kensu":
                         pass
 
         # --- 件数テーブル (HTML) ---
-        # 列幅: 種別=140px固定, それ以外=均等割 → 下のAgGridと揃える
-        _SHUBETSU_W = 140  # px
+        # 列幅: 種別=200px固定, 合計=80px, 時間列=均等割 → 下のAgGridと揃える
+        _SHUBETSU_W = 200  # px
+        _GOKEI_W = 80      # px
         css_cls = f"table-orikaeshi-{i}"
         html = df.to_html(index=False, escape=False)
         _hl_css = ""
@@ -3462,7 +3463,8 @@ if selected_key == "orikaeshi_kensu":
             f"""
             <style>
             .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.9rem; table-layout:fixed; }}
-            .{css_cls} th:nth-child(1), .{css_cls} td:nth-child(1) {{ width:{_SHUBETSU_W}px; font-size:0.95rem!important; }}
+            .{css_cls} th:nth-child(1), .{css_cls} td:nth-child(1) {{ width:{_SHUBETSU_W}px; font-size:1.1rem!important; }}
+            .{css_cls} th:nth-child(2), .{css_cls} td:nth-child(2) {{ width:{_GOKEI_W}px; }}
             .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:28px 12px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:700; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.5rem; }}
             .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:26px 12px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:900; font-size:2.1rem; }}
             .{css_cls} tr:nth-child(even) {{ background:{t['even_bg']}; }}
@@ -3542,11 +3544,11 @@ if selected_key == "orikaeshi_kensu":
         )
         gb.configure_column("種別",
             cellRenderer=None, editable=False, pinned="left",
-            width=140, minWidth=140, maxWidth=140, suppressSizeToFit=True,
+            width=200, minWidth=200, maxWidth=200, suppressSizeToFit=True,
             cellStyle={"fontWeight": "bold", "textAlign": "left", "fontSize": "1.25rem",
                        "display": "flex", "alignItems": "center"})
         gb.configure_column("ALL",
-            editable=True, width=100, minWidth=50,
+            editable=True, width=80, minWidth=80, maxWidth=80, suppressSizeToFit=True,
             headerClass="orikaeshi-all-hdr",
             cellStyle={"backgroundColor": "rgba(212,133,10,0.25)",
                        "display": "flex", "alignItems": "center",

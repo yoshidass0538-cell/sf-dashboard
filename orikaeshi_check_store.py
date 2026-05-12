@@ -19,6 +19,26 @@ from talk_template_store import (
 WORKSHEET_NAME = "orikaeshi_check_data"
 CELL = "A1"
 
+# 旧ラベル(折り返し希望(○○)) → 新ラベル((○○)) 移行マップ
+_LABEL_MIGRATION = {
+    "折り返し希望(開通前)": "(開通前)",
+    "折り返し希望(1週間後)": "(1週間後)",
+    "折り返し希望(工事取得)": "(工事取得)",
+    "折り返し希望(新設FC)": "(新設FC)",
+}
+
+
+def _migrate_keys(checks: dict) -> tuple[dict, bool]:
+    out: dict = {}
+    changed = False
+    for k, v in checks.items():
+        parts = k.split("|")
+        if len(parts) == 3 and parts[1] in _LABEL_MIGRATION:
+            parts[1] = _LABEL_MIGRATION[parts[1]]
+            changed = True
+        out["|".join(parts)] = v
+    return out, changed
+
 
 def _get_ws():
     client = _get_writable_client()
@@ -40,7 +60,14 @@ def _shared_check_cache() -> dict:
         ws = _get_ws()
         raw = ws.acell(CELL).value
         if raw:
-            return {"checks": json.loads(raw)}
+            loaded = json.loads(raw)
+            migrated, changed = _migrate_keys(loaded)
+            if changed:
+                try:
+                    ws.update_acell(CELL, json.dumps(migrated, ensure_ascii=False))
+                except Exception:
+                    pass
+            return {"checks": migrated}
     except Exception:
         pass
     return {"checks": {}}

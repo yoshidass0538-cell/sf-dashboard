@@ -3448,6 +3448,9 @@ if selected_key == "orikaeshi_kensu":
                         pass
 
         # --- 件数テーブル (HTML) ---
+        # 列幅: 種別=flex2, それ以外=flex1 → 下のAgGridと揃える
+        _n_cols = len(df.columns)
+        _shubetsu_pct = 200.0 / (_n_cols + 1)  # 種別の幅 (%)
         css_cls = f"table-orikaeshi-{i}"
         html = df.to_html(index=False, escape=False)
         _hl_css = ""
@@ -3459,7 +3462,8 @@ if selected_key == "orikaeshi_kensu":
         st.markdown(
             f"""
             <style>
-            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.45rem; }}
+            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.45rem; table-layout:fixed; }}
+            .{css_cls} th:nth-child(1), .{css_cls} td:nth-child(1) {{ width:{_shubetsu_pct:.3f}%; }}
             .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:24px 12px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:700; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.45rem; }}
             .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:22px 12px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; font-size:1.45rem; }}
             .{css_cls} tr:nth-child(even) {{ background:{t['even_bg']}; }}
@@ -3503,8 +3507,8 @@ if selected_key == "orikaeshi_kensu":
                 this.g.type='checkbox';
                 this.g.checked=p.value===true;
                 this.g.style.cursor='pointer';
-                this.g.style.width='16px';
-                this.g.style.height='16px';
+                this.g.style.width='28px';
+                this.g.style.height='28px';
                 this.h=e=>{p.node.setDataValue(p.column.colId,e.target.checked);};
                 this.g.addEventListener('click',this.h);
             }
@@ -3513,6 +3517,11 @@ if selected_key == "orikaeshi_kensu":
             destroy(){this.g.removeEventListener('click',this.h);}
         }
         """)
+
+        # 上の表とハイライト列を揃える (HTMLの_highlight_idxに対応する時間ラベル)
+        _hl_col_name = None
+        if _highlight_idx and 1 <= (_highlight_idx - 1) < len(df.columns):
+            _hl_col_name = df.columns[_highlight_idx - 1]
 
         # ALL切替時に全時間帯を連動
         import json as _json
@@ -3535,7 +3544,7 @@ if selected_key == "orikaeshi_kensu":
         gb.configure_column("種別",
             cellRenderer=None, editable=False, pinned="left",
             flex=2, minWidth=140,
-            cellStyle={"fontWeight": "bold", "textAlign": "left",
+            cellStyle={"fontWeight": "bold", "textAlign": "left", "fontSize": "1.25rem",
                        "display": "flex", "alignItems": "center"})
         gb.configure_column("ALL",
             editable=True, flex=1, minWidth=50,
@@ -3544,11 +3553,18 @@ if selected_key == "orikaeshi_kensu":
                        "display": "flex", "alignItems": "center",
                        "justifyContent": "center"})
         for tc in check_time_cols:
+            _is_hl = (tc == _hl_col_name)
+            _cstyle = {"display": "flex", "alignItems": "center", "justifyContent": "center"}
+            if _is_hl:
+                _cstyle["backgroundColor"] = "#ffe9b0"
+                _cstyle["boxShadow"] = "inset 2px 0 0 #c0392b, inset -2px 0 0 #c0392b"
             gb.configure_column(tc, editable=True, flex=1, minWidth=50,
-                cellStyle={"display": "flex", "alignItems": "center",
-                           "justifyContent": "center"})
+                headerClass=("orikaeshi-hl-hdr" if _is_hl else None),
+                cellStyle=_cstyle)
         gb.configure_grid_options(
             onCellValueChanged=_all_toggle,
+            rowHeight=64,
+            headerHeight=64,
         )
 
         _ag_css = {
@@ -3557,13 +3573,20 @@ if selected_key == "orikaeshi_kensu":
                 "color": "#fff",
                 "font-weight": "bold",
                 "text-align": "center",
+                "font-size": "1.25rem",
             },
             ".ag-header-cell-label": {"justify-content": "center"},
             ".orikaeshi-all-hdr": {
                 "background-color": "#D4850A !important",
                 "color": "#fff !important",
                 "font-weight": "900 !important",
-                "font-size": "0.95rem !important",
+                "font-size": "1.25rem !important",
+            },
+            ".orikaeshi-hl-hdr": {
+                "background-color": "#c0392b !important",
+                "color": "#fff !important",
+                "font-weight": "900 !important",
+                "font-size": "1.25rem !important",
             },
             ".ag-row-odd": {"background-color": "#ffffff"},
             ".ag-row-even": {"background-color": "#fdf5e9"},
@@ -3572,7 +3595,7 @@ if selected_key == "orikaeshi_kensu":
         ag_result = AgGrid(
             check_df,
             gridOptions=gb.build(),
-            height=max(120, 42 + 35 * len(check_df)),
+            height=max(160, 70 + 64 * len(check_df)),
             theme="balham",
             allow_unsafe_jscode=True,
             custom_css=_ag_css,

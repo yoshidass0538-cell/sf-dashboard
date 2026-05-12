@@ -3461,18 +3461,18 @@ if selected_key == "orikaeshi_kensu":
         st.markdown(
             f"""
             <style>
-            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.45rem; table-layout:fixed; }}
-            .{css_cls} th:nth-child(1), .{css_cls} td:nth-child(1) {{ width:{_SHUBETSU_W}px; }}
-            .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:24px 12px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:700; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.45rem; }}
-            .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:22px 12px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; font-size:1.45rem; }}
+            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.9rem; table-layout:fixed; }}
+            .{css_cls} th:nth-child(1), .{css_cls} td:nth-child(1) {{ width:{_SHUBETSU_W}px; font-size:0.95rem!important; }}
+            .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:28px 12px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:700; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.5rem; }}
+            .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:26px 12px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:900; font-size:2.1rem; }}
             .{css_cls} tr:nth-child(even) {{ background:{t['even_bg']}; }}
             .{css_cls} tr:nth-child(odd) {{ background:{t['odd_bg']}; }}
             .{css_cls} tr:hover {{ background:{t['hover_bg']}; }}
             {_hl_css}
             @media screen and (max-width:768px) {{
-                .{css_cls} {{ font-size:1.1rem; min-width:600px; }}
-                .{css_cls} th {{ padding:14px 6px; white-space:nowrap; font-size:1.1rem; }}
-                .{css_cls} td {{ padding:14px 6px; white-space:nowrap; font-size:1.1rem; }}
+                .{css_cls} {{ font-size:1.5rem; min-width:600px; }}
+                .{css_cls} th {{ padding:14px 6px; white-space:nowrap; font-size:1.15rem; }}
+                .{css_cls} td {{ padding:16px 6px; white-space:nowrap; font-size:1.6rem; }}
             }}
             </style>
             """,

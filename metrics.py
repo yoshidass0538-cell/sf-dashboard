@@ -2126,6 +2126,9 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
         if ":" in label:
             parts = label.split(":")
             label = f"{parts[0]}:{parts[1]}"
+        # 20:00 は表示不要
+        if label == "20:00":
+            continue
         time_slots.append((col_idx, label))
 
     # 日付別に対象種別の行を収集

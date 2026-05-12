@@ -3432,16 +3432,16 @@ if selected_key == "orikaeshi_kensu":
         st.markdown(
             f"""
             <style>
-            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:0.9rem; }}
-            .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:8px 10px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:600; border:1px solid {t['th_border']}; position:sticky; top:0; }}
-            .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:6px 10px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; }}
+            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.15rem; }}
+            .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:16px 10px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:600; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.15rem; }}
+            .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:14px 10px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; font-size:1.15rem; }}
             .{css_cls} tr:nth-child(even) {{ background:{t['even_bg']}; }}
             .{css_cls} tr:nth-child(odd) {{ background:{t['odd_bg']}; }}
             .{css_cls} tr:hover {{ background:{t['hover_bg']}; }}
             @media screen and (max-width:768px) {{
-                .{css_cls} {{ font-size:0.75rem; min-width:600px; }}
-                .{css_cls} th {{ padding:5px 6px; white-space:nowrap; }}
-                .{css_cls} td {{ padding:4px 6px; white-space:nowrap; }}
+                .{css_cls} {{ font-size:0.95rem; min-width:600px; }}
+                .{css_cls} th {{ padding:10px 6px; white-space:nowrap; font-size:0.95rem; }}
+                .{css_cls} td {{ padding:10px 6px; white-space:nowrap; font-size:0.95rem; }}
             }}
             </style>
             """,

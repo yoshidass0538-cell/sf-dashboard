@@ -3448,9 +3448,8 @@ if selected_key == "orikaeshi_kensu":
                         pass
 
         # --- 件数テーブル (HTML) ---
-        # 列幅: 種別=flex2, それ以外=flex1 → 下のAgGridと揃える
-        _n_cols = len(df.columns)
-        _shubetsu_pct = 200.0 / (_n_cols + 1)  # 種別の幅 (%)
+        # 列幅: 種別=140px固定, それ以外=均等割 → 下のAgGridと揃える
+        _SHUBETSU_W = 140  # px
         css_cls = f"table-orikaeshi-{i}"
         html = df.to_html(index=False, escape=False)
         _hl_css = ""
@@ -3463,7 +3462,7 @@ if selected_key == "orikaeshi_kensu":
             f"""
             <style>
             .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.45rem; table-layout:fixed; }}
-            .{css_cls} th:nth-child(1), .{css_cls} td:nth-child(1) {{ width:{_shubetsu_pct:.3f}%; }}
+            .{css_cls} th:nth-child(1), .{css_cls} td:nth-child(1) {{ width:{_SHUBETSU_W}px; }}
             .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:24px 12px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:700; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.45rem; }}
             .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:22px 12px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; font-size:1.45rem; }}
             .{css_cls} tr:nth-child(even) {{ background:{t['even_bg']}; }}
@@ -3543,7 +3542,7 @@ if selected_key == "orikaeshi_kensu":
         )
         gb.configure_column("種別",
             cellRenderer=None, editable=False, pinned="left",
-            flex=2, minWidth=140,
+            width=140, minWidth=140, maxWidth=140, suppressSizeToFit=True,
             cellStyle={"fontWeight": "bold", "textAlign": "left", "fontSize": "1.25rem",
                        "display": "flex", "alignItems": "center"})
         gb.configure_column("ALL",
@@ -3599,7 +3598,7 @@ if selected_key == "orikaeshi_kensu":
             theme="balham",
             allow_unsafe_jscode=True,
             custom_css=_ag_css,
-            fit_columns_on_grid_load=True,
+            fit_columns_on_grid_load=False,
             update_mode="VALUE_CHANGED",
             key=f"orikaeshi_chk_{i}",
         )

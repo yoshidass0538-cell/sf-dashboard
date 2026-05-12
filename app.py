@@ -3426,22 +3426,50 @@ if selected_key == "orikaeshi_kensu":
 
         time_cols = [c for c in df.columns if c != "種別"]
 
+        # --- 現在時刻の列を特定 (今日の表のみ) ---
+        from datetime import datetime as _dt_now, timezone as _tz_now, timedelta as _td_now
+        _jst_now = _tz_now(_td_now(hours=9))
+        _now_jst = _dt_now.now(_jst_now)
+        _is_today_tbl = False
+        try:
+            _is_today_tbl = (_dt_now.strptime(date_str, "%Y/%m/%d").date() == _now_jst.date())
+        except ValueError:
+            pass
+        _highlight_idx = None
+        if _is_today_tbl:
+            for _ci, _col in enumerate(df.columns):
+                _col_s = str(_col)
+                if ":" in _col_s:
+                    try:
+                        if int(_col_s.split(":")[0]) == _now_jst.hour:
+                            _highlight_idx = _ci + 1  # CSS nth-child は 1-based
+                            break
+                    except ValueError:
+                        pass
+
         # --- 件数テーブル (HTML) ---
         css_cls = f"table-orikaeshi-{i}"
         html = df.to_html(index=False, escape=False)
+        _hl_css = ""
+        if _highlight_idx:
+            _hl_css = (
+                f".{css_cls} th:nth-child({_highlight_idx}) {{ background:#c0392b!important; color:#fff!important; box-shadow:inset 0 -3px 0 #ffd86b; }}"
+                f".{css_cls} td:nth-child({_highlight_idx}) {{ background:#ffe9b0!important; color:#7a1c10!important; font-weight:900!important; box-shadow:inset 2px 0 0 #c0392b, inset -2px 0 0 #c0392b; }}"
+            )
         st.markdown(
             f"""
             <style>
-            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.15rem; }}
-            .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:16px 10px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:600; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.15rem; }}
-            .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:14px 10px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; font-size:1.15rem; }}
+            .{css_cls} {{ width:100%; border-collapse:collapse; font-size:1.45rem; }}
+            .{css_cls} th {{ text-align:center!important; vertical-align:middle!important; padding:24px 12px; background:{t['th_bg']}; color:{t['th_color']}; font-weight:700; border:1px solid {t['th_border']}; position:sticky; top:0; font-size:1.45rem; }}
+            .{css_cls} td {{ text-align:center!important; vertical-align:middle!important; padding:22px 12px; color:{t['td_color']}; border:1px solid {t['td_border']}; font-weight:bold; font-size:1.45rem; }}
             .{css_cls} tr:nth-child(even) {{ background:{t['even_bg']}; }}
             .{css_cls} tr:nth-child(odd) {{ background:{t['odd_bg']}; }}
             .{css_cls} tr:hover {{ background:{t['hover_bg']}; }}
+            {_hl_css}
             @media screen and (max-width:768px) {{
-                .{css_cls} {{ font-size:0.95rem; min-width:600px; }}
-                .{css_cls} th {{ padding:10px 6px; white-space:nowrap; font-size:0.95rem; }}
-                .{css_cls} td {{ padding:10px 6px; white-space:nowrap; font-size:0.95rem; }}
+                .{css_cls} {{ font-size:1.1rem; min-width:600px; }}
+                .{css_cls} th {{ padding:14px 6px; white-space:nowrap; font-size:1.1rem; }}
+                .{css_cls} td {{ padding:14px 6px; white-space:nowrap; font-size:1.1rem; }}
             }}
             </style>
             """,

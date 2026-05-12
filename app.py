@@ -3506,8 +3506,8 @@ if selected_key == "orikaeshi_kensu":
                 this.g.type='checkbox';
                 this.g.checked=p.value===true;
                 this.g.style.cursor='pointer';
-                this.g.style.width='28px';
-                this.g.style.height='28px';
+                this.g.style.width='36px';
+                this.g.style.height='36px';
                 this.h=e=>{p.node.setDataValue(p.column.colId,e.target.checked);};
                 this.g.addEventListener('click',this.h);
             }
@@ -3562,8 +3562,8 @@ if selected_key == "orikaeshi_kensu":
                 cellStyle=_cstyle)
         gb.configure_grid_options(
             onCellValueChanged=_all_toggle,
-            rowHeight=64,
-            headerHeight=64,
+            rowHeight=88,
+            headerHeight=84,
         )
 
         _ag_css = {
@@ -3572,20 +3572,20 @@ if selected_key == "orikaeshi_kensu":
                 "color": "#fff",
                 "font-weight": "bold",
                 "text-align": "center",
-                "font-size": "1.25rem",
+                "font-size": "1.5rem",
             },
             ".ag-header-cell-label": {"justify-content": "center"},
             ".orikaeshi-all-hdr": {
                 "background-color": "#D4850A !important",
                 "color": "#fff !important",
                 "font-weight": "900 !important",
-                "font-size": "1.25rem !important",
+                "font-size": "1.5rem !important",
             },
             ".orikaeshi-hl-hdr": {
                 "background-color": "#c0392b !important",
                 "color": "#fff !important",
                 "font-weight": "900 !important",
-                "font-size": "1.25rem !important",
+                "font-size": "1.5rem !important",
             },
             ".ag-row-odd": {"background-color": "#ffffff"},
             ".ag-row-even": {"background-color": "#fdf5e9"},
@@ -3594,7 +3594,7 @@ if selected_key == "orikaeshi_kensu":
         ag_result = AgGrid(
             check_df,
             gridOptions=gb.build(),
-            height=max(160, 70 + 64 * len(check_df)),
+            height=max(200, 90 + 88 * len(check_df)),
             theme="balham",
             allow_unsafe_jscode=True,
             custom_css=_ag_css,

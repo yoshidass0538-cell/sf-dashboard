@@ -3733,25 +3733,28 @@ if selected_key == "skill_tree":
                 return
 
     def _skt_cb_del_node(_bid, _nid):
+        """ノード削除: 配下の子孫もすべて再帰的に削除する。"""
         _skt0 = st.session_state.get("skt_edit")
         if not _skt0:
             return
         for _b in _skt0.get("branches", []):
             if _b.get("id") == _bid:
                 _ns = _b.get("nodes", []) or []
-                _idx_d = None
-                _parent_d = None
-                for _i, _n in enumerate(_ns):
-                    if _n.get("id") == _nid:
-                        _idx_d = _i
-                        _parent_d = _n.get("parent")
-                        break
-                if _idx_d is None:
-                    return
+                # 子孫を辿って削除対象IDを収集
+                _children_of: dict = {}
                 for _n in _ns:
-                    if _n.get("parent") == _nid:
-                        _n["parent"] = _parent_d
-                _ns.pop(_idx_d)
+                    _p = _n.get("parent")
+                    if _p is not None:
+                        _children_of.setdefault(_p, []).append(_n["id"])
+                _to_remove = set()
+                _stack = [_nid]
+                while _stack:
+                    _cur = _stack.pop()
+                    if _cur in _to_remove:
+                        continue
+                    _to_remove.add(_cur)
+                    _stack.extend(_children_of.get(_cur, []))
+                _b["nodes"] = [_n for _n in _ns if _n.get("id") not in _to_remove]
                 return
 
     def _skt_cb_move_node(_bid, _nid, _dir):

@@ -3546,7 +3546,7 @@ if selected_key == "orikaeshi_kensu":
             cellStyle={"fontWeight": "bold", "textAlign": "left", "fontSize": "1.25rem",
                        "display": "flex", "alignItems": "center"})
         gb.configure_column("ALL",
-            editable=True, flex=1, minWidth=50,
+            editable=True, width=100, minWidth=50,
             headerClass="orikaeshi-all-hdr",
             cellStyle={"backgroundColor": "rgba(212,133,10,0.25)",
                        "display": "flex", "alignItems": "center",
@@ -3557,11 +3557,15 @@ if selected_key == "orikaeshi_kensu":
             if _is_hl:
                 _cstyle["backgroundColor"] = "#ffe9b0"
                 _cstyle["boxShadow"] = "inset 2px 0 0 #c0392b, inset -2px 0 0 #c0392b"
-            gb.configure_column(tc, editable=True, flex=1, minWidth=50,
+            gb.configure_column(tc, editable=True, width=100, minWidth=50,
                 headerClass=("orikaeshi-hl-hdr" if _is_hl else None),
                 cellStyle=_cstyle)
+        # サイドバー開閉/ウィンドウリサイズで列幅を再計算（種別はsuppressSizeToFit=Trueで140px固定）
+        _resize_fit = JsCode("function(p){ p.api.sizeColumnsToFit(); }")
         gb.configure_grid_options(
             onCellValueChanged=_all_toggle,
+            onGridSizeChanged=_resize_fit,
+            onFirstDataRendered=_resize_fit,
             rowHeight=88,
             headerHeight=84,
         )
@@ -3598,7 +3602,7 @@ if selected_key == "orikaeshi_kensu":
             theme="balham",
             allow_unsafe_jscode=True,
             custom_css=_ag_css,
-            fit_columns_on_grid_load=False,
+            fit_columns_on_grid_load=True,
             update_mode="VALUE_CHANGED",
             key=f"orikaeshi_chk_{i}",
         )

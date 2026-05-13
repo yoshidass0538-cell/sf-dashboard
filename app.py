@@ -346,6 +346,13 @@ if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     clear_template_cache()
     _clear_ts_caches()
     reload_talk_script_metrics()
+    # board_order の共有キャッシュもクリア（Sheets 側の最新を強制再読込）
+    try:
+        _clear_order_cache()
+    except Exception:
+        pass
+    if "board_order" in st.session_state:
+        del st.session_state["board_order"]
     st.rerun()
 
 st.sidebar.caption("データは5分間キャッシュされます")

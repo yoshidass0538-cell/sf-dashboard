@@ -2354,7 +2354,7 @@ METRICS: list[Metric] = [
         label="エリア別年代別CX内訳",
         description="エリア×年代別のCX件数＋CX理由TOP10（「その他」除外、構成比付き）",
         fetch=fetch_cx_age_area,
-        category="TOTAL",
+        category="SECRET",
     ),
     Metric(
         key="orikaeshi_kensu",
@@ -2396,7 +2396,7 @@ METRICS: list[Metric] = [
         label="FC完了CX率",
         description="2025/12以降の月別 1週間後FC完了 vs 留守(完了フラグなし) の開通率・CX率比較",
         fetch=fetch_kari_keisan,
-        category="1週間後FC",
+        category="SECRET",
     ),
     # --- 1週間後FC ---
     Metric(
@@ -2404,7 +2404,7 @@ METRICS: list[Metric] = [
         label="1週間後FC TODAY",
         description="本日分: 1週間後FCの集計（担当者別）",
         fetch=fetch_fc_1week_today,
-        category="1週間後FC",
+        category="SECRET",
     ),
     Metric(
         key="cs_shift",
@@ -2433,7 +2433,7 @@ METRICS: list[Metric] = [
         label="新設FC TODAY",
         description="本日分: 新設FC（代コン/代コン窓口/工事取得）の集計（担当者別）",
         fetch=fetch_shinsetsu_fc_today,
-        category="促進",
+        category="SECRET",
     ),
     Metric(
         key="shinsetsu_shift",

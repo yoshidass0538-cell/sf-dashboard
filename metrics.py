@@ -2382,7 +2382,7 @@ METRICS: list[Metric] = [
         label="仮計算",
         description="2026/1-4月エントリ: レコード所有企業が株式会社GIFT以外のソネット/NURO取次件数を月別集計",
         fetch=fetch_kari_keisan_gift_gai,
-        category="TOTAL",
+        category="SECRET",
     ),
     Metric(
         key="timee_management",
@@ -2411,7 +2411,7 @@ METRICS: list[Metric] = [
         label="1週間FCシフト",
         description="稼働実績(CS促進)の今月シフト一覧",
         fetch=fetch_cs_shift,
-        category="1週間後FC",
+        category="SECRET",
     ),
     Metric(
         key="fc_1week",
@@ -2425,7 +2425,7 @@ METRICS: list[Metric] = [
         label="1週間後FC リスト体積",
         description="1週間後FCの架電対象数を当日〜30日後まで日別に予測",
         fetch=fetch_list_volume,
-        category="1週間後FC",
+        category="SECRET",
     ),
     # --- 促進 ---
     Metric(
@@ -2440,7 +2440,7 @@ METRICS: list[Metric] = [
         label="新設FCシフト",
         description="新設FC担当の今月シフト一覧",
         fetch=fetch_shinsetsu_fc_shift,
-        category="促進",
+        category="SECRET",
     ),
     Metric(
         key="sokushin_monthly",
@@ -2484,14 +2484,14 @@ METRICS: list[Metric] = [
         label="育成KPI",
         description="育成KPI（準備中）",
         fetch=lambda sf: pd.DataFrame(),
-        category="責任者用",
+        category="SECRET",
     ),
     Metric(
         key="skill_tree",
         label="スキルツリー",
         description="スキルツリー（準備中）",
         fetch=lambda sf: pd.DataFrame(),
-        category="責任者用",
+        category="SECRET",
     ),
     Metric(
         key="call_history",

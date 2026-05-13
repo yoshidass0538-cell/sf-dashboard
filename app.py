@@ -243,11 +243,15 @@ _CAT_COLORS = {
     "促進":      {"bg": "#2E8B57", "fg": "#ffffff"},
     "ツール":    {"bg": "#D4850A", "fg": "#ffffff"},
     "タイミー":  {"bg": "#FFC107", "fg": "#222222"},
+    "SECRET":    {"bg": "#DC2626", "fg": "#ffffff"},
 }
 
 # サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
+# SECRET は「マスタ」ボタンの下に表示するためここではスキップ
 for container in st.session_state["board_order"]:
     cat = container["header"]
+    if cat == "SECRET":
+        continue
     if cat == "TOTAL":
         st.sidebar.subheader(cat)
         for label in container["items"]:
@@ -269,6 +273,9 @@ for container in st.session_state["board_order"]:
                     st.rerun()
                 elif cat == "タイミー" and not st.session_state.get("timee_auth"):
                     st.session_state["selected"] = "_timee_auth"
+                    st.rerun()
+                elif cat == "SECRET" and not st.session_state.get("secret_auth"):
+                    st.session_state["selected"] = "_secret_auth"
                     st.rerun()
                 else:
                     st.session_state[toggle_key] = not is_open
@@ -317,7 +324,7 @@ for container in st.session_state["board_order"]:
                     mkey = label_to_key.get(label)
                     if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                         st.session_state["selected"] = mkey
-valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth", "_timee_auth"}
+valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth", "_timee_auth", "_secret_auth"}
 _sel = st.session_state.get("selected")
 # talk_script_* は動的生成のため、キャッシュ未更新でも有効とみなす
 if _sel not in valid_keys and not (_sel and _sel.startswith("talk_script_")):
@@ -378,6 +385,7 @@ const colorMap = {
     '責任者用':  {bg: '#8B5CF6', hover: '#7C3AED'},
     'ツール':    {bg: '#D4850A', hover: '#B8730A'},
     'タイミー':  {bg: '#E91E63', hover: '#C2185B'},
+    'SECRET':    {bg: '#DC2626', hover: '#B91C1C'},
 };
 function applyCatStyle(btn, c, hovered) {
     // ダークモードCSSの !important に勝つため setProperty(..., 'important') で上書き
@@ -440,6 +448,31 @@ setInterval(detectTheme, 2000);
 if st.sidebar.button("🔒 マスタ", key="btn_master", width="stretch"):
     st.session_state["selected"] = "_master"
 
+# --- SECRET カテゴリ（マスタの直下、パスワード保護）---
+_secret_container = next(
+    (c for c in st.session_state["board_order"] if c.get("header") == "SECRET"),
+    None,
+)
+if _secret_container:
+    _secret_toggle_key = "cat_open_SECRET"
+    if _secret_toggle_key not in st.session_state:
+        st.session_state[_secret_toggle_key] = False
+    _secret_open = st.session_state[_secret_toggle_key]
+    _secret_arrow = "▼" if _secret_open else "▶"
+    with st.sidebar.container(key="cat-SECRET"):
+        if st.button(f"{_secret_arrow}  SECRET", key="toggle_SECRET", use_container_width=True):
+            if not st.session_state.get("secret_auth"):
+                st.session_state["selected"] = "_secret_auth"
+                st.rerun()
+            else:
+                st.session_state[_secret_toggle_key] = not _secret_open
+                st.rerun()
+    if _secret_open and st.session_state.get("secret_auth"):
+        for label in _secret_container.get("items", []):
+            mkey = label_to_key.get(label)
+            if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
+                st.session_state["selected"] = mkey
+
 
 # ----------------------------------------------------------------------
 # メイン
@@ -465,6 +498,26 @@ if selected_key == "_timee_auth":
             st.session_state["timee_auth"] = True
             st.session_state["cat_open_タイミー"] = True
             st.session_state["selected"] = "timee_management"
+            st.rerun()
+        else:
+            st.error("パスワードが違います")
+    st.stop()
+
+if selected_key == "_secret_auth":
+    st.title("🔒 SECRET")
+    pw = st.text_input("パスワードを入力してください", type="password", key="secret_pw")
+    if pw:
+        if pw == "pokipoki":
+            st.session_state["secret_auth"] = True
+            st.session_state["cat_open_SECRET"] = True
+            # SECRET 1番上のボードを開く（無ければマスタへ）
+            _secret_c = next(
+                (c for c in st.session_state["board_order"] if c.get("header") == "SECRET"),
+                None,
+            )
+            _first_label = (_secret_c.get("items") or [None])[0] if _secret_c else None
+            _first_key = label_to_key.get(_first_label) if _first_label else None
+            st.session_state["selected"] = _first_key or "_master"
             st.rerun()
         else:
             st.error("パスワードが違います")
@@ -5716,6 +5769,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
             "促進": {"headerBg": "#2E8B57", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#edf7f1", "fg": "#1a2f22"},
             "TOTAL": {"headerBg": "#D4850A", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#fdf5e9", "fg": "#2a1f0a"},
             "責任者用": {"headerBg": "#8B5CF6", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#f3effe", "fg": "#2d1a5e"},
+            "SECRET": {"headerBg": "#DC2626", "headerFg": "#fff", "oddBg": "#ffffff", "evenBg": "#fde8e8", "fg": "#3a0a0a"},
         }
         ag_t = AG_THEME.get(metric.category, AG_THEME["1週間後FC"])
         custom_css = {
@@ -5795,6 +5849,11 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
                 "th_bg": "#D4850A", "th_border": "#B8730A", "th_color": "#ffffff",
                 "even_bg": "#fdf5e9", "odd_bg": "#ffffff", "hover_bg": "#f5e4c8",
                 "td_color": "#2a1f0a", "td_border": "#e0d0b5",
+            },
+            "SECRET": {
+                "th_bg": "#DC2626", "th_border": "#B91C1C", "th_color": "#ffffff",
+                "even_bg": "#fde8e8", "odd_bg": "#ffffff", "hover_bg": "#fbcaca",
+                "td_color": "#3a0a0a", "td_border": "#f0b8b8",
             },
         }
         t = THEME.get(metric.category, THEME["1週間後FC"])

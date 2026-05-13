@@ -23,7 +23,7 @@ UI_ORDER_WORKSHEET = "ui_order_data"
 UI_ORDER_CELL = "A1"
 
 # デフォルトのカテゴリ表示順
-DEFAULT_CATEGORY_ORDER = ["TOTAL", "1週間後FC", "促進", "ツール", "タイミー", "責任者用"]
+DEFAULT_CATEGORY_ORDER = ["TOTAL", "1週間後FC", "促進", "ツール", "タイミー", "責任者用", "SECRET"]
 
 
 def _get_ws():

@@ -3458,10 +3458,10 @@ if selected_key == "shuchi":
 if selected_key == "orikaeshi_kensu":
     from orikaeshi_check_store import get_checks, save_checks
 
-    # 1時間ごとに自動更新（短い間隔だとチェック操作中のrerunとAgGridが競合してチェックが外れる）
+    # 10分ごとに自動更新（キャッシュ更新ボタンを押さなくてもデータが新しくなる）
     try:
         from streamlit_autorefresh import st_autorefresh as _ok_autorefresh
-        _ok_autorefresh(interval=3600000, key="orikaeshi_autorefresh")
+        _ok_autorefresh(interval=600000, key="orikaeshi_autorefresh")
     except ImportError:
         pass
 

@@ -416,9 +416,9 @@ def fetch_1week_cx_check(sf: Salesforce) -> pd.DataFrame:
 # 指標レジストリ
 # ----------------------------------------------------------------------
 def _progress_start() -> str:
-    """6ヶ月前の1日を YYYY-MM-DD で返す。"""
+    """13ヶ月前の1日を YYYY-MM-DD で返す。"""
     today = pd.Timestamp.today()
-    dt = today - pd.DateOffset(months=6)
+    dt = today - pd.DateOffset(months=13)
     return dt.replace(day=1).strftime("%Y-%m-%d")
 
 

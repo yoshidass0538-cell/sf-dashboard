@@ -6014,20 +6014,39 @@ def _render_sokushin_details(title: str, details_df: pd.DataFrame, key_suffix: s
                 )
 
 
-for i, (title, value) in enumerate(tables.items()):
-    if isinstance(value, dict):
-        df_summary = value.get("summary")
-        df_details = value.get("details")
-        missing_labels = value.get("missing_labels") or []
+if metric.key == "daikon_kaitsu":
+    # ET月ごとにタブ表示（新しい月が左）
+    month_keys = list(tables.keys())
+    if not month_keys:
+        st.info("該当データはありません。")
     else:
-        df_summary = value
-        df_details = None
-        missing_labels = []
-    _render_table(title, df_summary, str(i))
-    if df_details is not None:
-        _render_sokushin_details(title, df_details, str(i))
-        if missing_labels:
-            st.caption(
-                f"⚠ Salesforce で見つからなかったラベル: " + ", ".join(f"`{l}`" for l in missing_labels)
-            )
-    st.divider()
+        tab_labels = [f"📅 {ym}" for ym in month_keys]
+        month_tabs = st.tabs(tab_labels)
+        for ti, (tab, ym) in enumerate(zip(month_tabs, month_keys)):
+            with tab:
+                month_tables = tables[ym] or {}
+                if not month_tables or all(
+                    (df is None or df.empty) for df in month_tables.values()
+                ):
+                    st.info(f"{ym} の該当データはありません。")
+                    continue
+                for ji, (sub_title, sub_df) in enumerate(month_tables.items()):
+                    _render_table(sub_title, sub_df, f"{ti}_{ji}")
+else:
+    for i, (title, value) in enumerate(tables.items()):
+        if isinstance(value, dict):
+            df_summary = value.get("summary")
+            df_details = value.get("details")
+            missing_labels = value.get("missing_labels") or []
+        else:
+            df_summary = value
+            df_details = None
+            missing_labels = []
+        _render_table(title, df_summary, str(i))
+        if df_details is not None:
+            _render_sokushin_details(title, df_details, str(i))
+            if missing_labels:
+                st.caption(
+                    f"⚠ Salesforce で見つからなかったラベル: " + ", ".join(f"`{l}`" for l in missing_labels)
+                )
+        st.divider()

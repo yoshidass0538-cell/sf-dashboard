@@ -1239,35 +1239,40 @@ DAIKON_REASON_FIELDS = [
 ]
 
 
-def fetch_daikon_kaitsu(sf: Salesforce) -> dict[str, pd.DataFrame]:
-    """全次数のダイコン理由を統合し、理由ごとの発生率・開通率を集計。
-    1次ダイコン理由が1件もない月は母数から除外。"""
+def fetch_daikon_kaitsu(sf: Salesforce) -> dict[str, dict[str, pd.DataFrame]]:
+    """直近6ヶ月のET月ごとに、全体/東/西の停滞別開通率を集計。
+    返り値: {YYYY-MM: {"停滞別開通率（全体）": df, "...（東）": df, "...（西）": df}}"""
+    from datetime import date
+
+    # 直近6ヶ月のET月(YYYY-MM)を新しい順に列挙
+    today = date.today()
+    months: list[str] = []
+    y, m = today.year, today.month
+    for _ in range(6):
+        months.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    start_ym = months[-1]  # 6ヶ月前
+    start_date = f"{start_ym}-01"
+
     reason_fields = ", ".join(f[1] for f in DAIKON_REASON_FIELDS)
     soql = (
         f"SELECT Id, Field130__c, Field43__c, Field156__c, {reason_fields} "
         "FROM Account "
-        "WHERE Field232__c LIKE 'So-net光%'"
+        "WHERE Field232__c LIKE 'So-net光%' "
+        f"AND Field156__c >= {start_date}"
     )
     all_records = sf.query_all(soql)["records"]
-    if not all_records:
-        return {"停滞別開通率": pd.DataFrame()}
 
-    # 月別に1次ダイコン理由(Field242__c)が1件でもある月を特定
-    from collections import defaultdict
-    month_has_daikon: dict[str, bool] = defaultdict(bool)
-    month_map: dict[str, str] = {}  # record Id -> YYYY-MM
+    # ET月ごとに分類
+    by_month: dict[str, list] = {ym: [] for ym in months}
     for r in all_records:
         entry = r.get("Field156__c") or ""
-        ym = entry[:7] if len(entry) >= 7 else "unknown"
-        month_map[r["Id"]] = ym
-        if r.get("Field242__c"):
-            month_has_daikon[ym] = True
-
-    valid_months = {ym for ym, has in month_has_daikon.items() if has}
-    records = [r for r in all_records if month_map.get(r["Id"], "") in valid_months]
-    total_accounts = len(records)
-    if total_accounts == 0:
-        return {"停滞別開通率": pd.DataFrame()}
+        ym = entry[:7] if len(entry) >= 7 else ""
+        if ym in by_month:
+            by_month[ym].append(r)
 
     def _build_table(recs, total):
         counts: dict[str, dict[str, int]] = {}
@@ -1298,19 +1303,21 @@ def fetch_daikon_kaitsu(sf: Salesforce) -> dict[str, pd.DataFrame]:
             })
         return pd.DataFrame(rows)
 
-    # 全体
-    tables: dict[str, pd.DataFrame] = {}
-    tables["停滞別開通率（全体）"] = _build_table(records, total_accounts)
+    # 月別 → {全体, 東, 西}
+    result: dict[str, dict[str, pd.DataFrame]] = {}
+    for ym in months:
+        recs = by_month.get(ym, [])
+        tables: dict[str, pd.DataFrame] = {}
+        tables["停滞別開通率（全体）"] = _build_table(recs, len(recs)) if recs else pd.DataFrame()
+        east = [r for r in recs if r.get("Field43__c") == "東"]
+        west = [r for r in recs if r.get("Field43__c") == "西"]
+        if east:
+            tables["停滞別開通率（東）"] = _build_table(east, len(east))
+        if west:
+            tables["停滞別開通率（西）"] = _build_table(west, len(west))
+        result[ym] = tables
 
-    # エリア別
-    east = [r for r in records if r.get("Field43__c") == "東"]
-    west = [r for r in records if r.get("Field43__c") == "西"]
-    if east:
-        tables["停滞別開通率（東）"] = _build_table(east, len(east))
-    if west:
-        tables["停滞別開通率（西）"] = _build_table(west, len(west))
-
-    return tables
+    return result
 
 
 # ======================================================================

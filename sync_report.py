@@ -230,16 +230,24 @@ def write_to_sheet(client, sheet_id: str, tab_name: str, headers: list[str], row
     try:
         ws = sh.worksheet(tab_name)
     except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title=tab_name, rows=max(len(rows) + 10, 100), cols=max(len(headers) + 5, 30))
-
-    # 必要サイズを事前確保
-    needed_rows = max(len(rows) + 1, 100)
-    if needed_rows > ws.row_count:
-        ws.add_rows(needed_rows - ws.row_count + 100)
-    if len(headers) > ws.col_count:
-        ws.add_cols(len(headers) - ws.col_count + 5)
+        ws = sh.add_worksheet(title=tab_name, rows=max(len(rows) + 1, 100), cols=max(len(headers), 30))
 
     ws.clear()
+
+    needed_rows = max(len(rows) + 1, 100)
+    needed_cols = max(len(headers), 1)
+
+    # 必要サイズちょうどにresize（バッファ追加は workbook 10Mセル上限を圧迫するので避ける）
+    # cols は基本縮む方向 → 先に縮めて空きセルを稼いでから rows を確保する
+    if ws.col_count != needed_cols:
+        try:
+            ws.resize(cols=needed_cols)
+        except gspread.exceptions.APIError as e:
+            if "10000000 cells" not in str(e):
+                raise
+            print(f"  WARN: cols resize失敗: {e}")
+    if ws.row_count != needed_rows:
+        ws.resize(rows=needed_rows)
 
     # ヘッダー
     ws.update(range_name="A1", values=[headers])

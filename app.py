@@ -3468,6 +3468,18 @@ if selected_key == "orikaeshi_kensu":
     checks = get_checks()
     changed = False
 
+    # ユーザー直前の操作を session_state に保持し、autorefresh で再描画されても
+    # 反映前のクリックを引き継げるようにする（key -> 意図する bool）
+    _intent_key = "orikaeshi_user_intent"
+    if _intent_key not in st.session_state:
+        st.session_state[_intent_key] = {}
+    user_intent: dict = st.session_state[_intent_key]
+
+    # 保存済みと一致した user_intent エントリは掃除（メモリ肥大防止）
+    for _ik in list(user_intent.keys()):
+        if user_intent[_ik] == checks.get(_ik, False):
+            del user_intent[_ik]
+
     # TOTAL配色
     t = {
         "th_bg": "#D4850A", "th_border": "#B8730A", "th_color": "#ffffff",
@@ -3552,7 +3564,8 @@ if selected_key == "orikaeshi_kensu":
             time_vals = {}
             for tc in check_time_cols:
                 key = f"{date_str}|{cat}|{tc}"
-                time_vals[tc] = checks.get(key, False)
+                # user_intent優先（クリック直後の保存途中状態を保護）
+                time_vals[tc] = user_intent.get(key, checks.get(key, False))
             all_val = all(time_vals.values()) if time_vals else False
             r = {"種別": cat, "ALL": all_val}
             r.update(time_vals)
@@ -3676,8 +3689,11 @@ if selected_key == "orikaeshi_kensu":
                 for tc in check_time_cols:
                     key = f"{date_str}|{cat}|{tc}"
                     val = bool(row[tc])
-                    old_val = checks.get(key, False)
-                    if val != old_val:
+                    # 入力時に流した値（user_intent優先のcheck_df基準）と比較
+                    expected = user_intent.get(key, checks.get(key, False))
+                    if val != expected:
+                        # ユーザーが今このセルを操作した
+                        user_intent[key] = val
                         if val:
                             checks[key] = True
                         else:

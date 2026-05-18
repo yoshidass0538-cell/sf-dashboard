@@ -232,17 +232,27 @@ def write_to_sheet(client, sheet_id: str, tab_name: str, headers: list[str], row
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title=tab_name, rows=max(len(rows) + 10, 100), cols=max(len(headers) + 5, 30))
 
-    # 全データをクリアして書き込み
-    ws.clear()
-    all_data = [headers] + rows
-    # バッチ書き込み（大量データ対応）
-    if len(all_data) > ws.row_count:
-        ws.add_rows(len(all_data) - ws.row_count + 100)
+    # 必要サイズを事前確保
+    needed_rows = max(len(rows) + 1, 100)
+    if needed_rows > ws.row_count:
+        ws.add_rows(needed_rows - ws.row_count + 100)
     if len(headers) > ws.col_count:
         ws.add_cols(len(headers) - ws.col_count + 5)
 
-    # 一括書き込み
-    ws.update(range_name="A1", values=all_data)
+    ws.clear()
+
+    # ヘッダー
+    ws.update(range_name="A1", values=[headers])
+
+    # データ本体はチャンク分割（Sheets API のリクエストサイズ制限を回避）
+    CHUNK = 1000
+    total = len(rows)
+    for start in range(0, total, CHUNK):
+        chunk = rows[start:start + CHUNK]
+        cell_row = start + 2  # 1行目はヘッダー
+        ws.update(range_name=f"A{cell_row}", values=chunk)
+        print(f"  {tab_name}: {start + len(chunk)}/{total} 行書込")
+
     print(f"  {tab_name}: {len(rows)}行 x {len(headers)}列 書込完了")
 
 

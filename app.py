@@ -3475,10 +3475,21 @@ if selected_key == "orikaeshi_kensu":
         st.session_state[_intent_key] = {}
     user_intent: dict = st.session_state[_intent_key]
 
-    # 保存済みと一致した user_intent エントリは掃除（メモリ肥大防止）
+    # user_intent と checks の差分処理
+    #  - 一致: 既に保存済みなので user_intent から掃除（メモリ肥大防止）
+    #  - 不一致: 前回のsaveがautorefresh等で取りこぼされた可能性 → checksに再同期して
+    #            末尾の save_checks() で再保存させる
     for _ik in list(user_intent.keys()):
-        if user_intent[_ik] == checks.get(_ik, False):
+        _iv = user_intent[_ik]
+        _sv = checks.get(_ik, False)
+        if _iv == _sv:
             del user_intent[_ik]
+        else:
+            if _iv:
+                checks[_ik] = True
+            else:
+                checks.pop(_ik, None)
+            changed = True
 
     # TOTAL配色
     t = {

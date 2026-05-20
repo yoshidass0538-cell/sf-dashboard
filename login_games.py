@@ -34,8 +34,8 @@ body {
   border: 1px solid rgba(255,255,255,0.18);
   border-radius: 18px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.4);
-  padding: 18px 20px 20px;
-  margin-top: 18px;
+  padding: 16px 20px 18px;
+  margin: 0;
   animation: cardIn 0.6s cubic-bezier(0.2,0.9,0.3,1.2) both;
 }
 @keyframes cardIn {

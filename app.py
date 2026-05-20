@@ -187,15 +187,16 @@ if not st.session_state.get("logged_in_user"):
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            min-height: 92vh;
-            padding-top: 7vh;
+            padding-top: 4vh;
+            padding-bottom: 0;
+            margin-bottom: 0;
             position: relative;
             z-index: 1;
         }
         .login-card {
             width: 100%;
-            max-width: 440px;
-            padding: 40px 42px 32px;
+            max-width: 880px;
+            padding: 32px 48px 14px;
             background: rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(22px) saturate(180%);
             -webkit-backdrop-filter: blur(22px) saturate(180%);
@@ -204,6 +205,7 @@ if not st.session_state.get("logged_in_user"):
             box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45),
                         0 0 0 1px rgba(255, 255, 255, 0.05) inset;
             animation: cardIn 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+            margin-bottom: 0;
         }
         @keyframes cardIn {
             from { opacity: 0; transform: translateY(24px) scale(0.96); }
@@ -238,15 +240,26 @@ if not st.session_state.get("logged_in_user"):
             text-align: center;
             color: rgba(255, 255, 255, 0.72);
             font-size: 0.92rem;
-            margin: 0 0 26px 0;
+            margin: 0;
             letter-spacing: 0.02em;
         }
+        /* タイトルカード直後の Streamlit ブロック余白を詰める */
+        .login-wrap + div [data-testid="stVerticalBlock"] > div:first-child > div:first-child,
+        [data-testid="stIFrame"] { margin-top: -8px !important; }
+        [data-testid="stMainBlockContainer"] {
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            max-width: 100% !important;
+        }
+        [data-testid="stMain"] { padding: 0 !important; }
 
         /* 入力欄を白背景＋ガラス風に */
         [data-testid="stForm"] {
             background: transparent !important;
             border: none !important;
             padding: 0 !important;
+            max-width: 480px !important;
+            margin: 0 auto !important;
         }
         [data-testid="stForm"] label {
             color: #ffffff !important;
@@ -328,8 +341,8 @@ if not st.session_state.get("logged_in_user"):
         unsafe_allow_html=True,
     )
 
-    # フォームをカード内っぽく見せるためのラッパ（実態は別divだがスタイルで揃える）
-    _form_col = st.columns([1, 2, 1])[1]
+    # フル幅ラッパ（タイトルカード直下、画面幅いっぱい）
+    _form_col = st.columns([1, 20, 1])[1]
     with _form_col:
         # --- 🎮 日替わりミニゲーム（タイトル直下、ログイン欄の上）---
         import streamlit.components.v1 as _login_components

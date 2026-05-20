@@ -114,6 +114,53 @@ st.markdown(
 
 
 # ----------------------------------------------------------------------
+# 入口ログインゲート（IDとパスワードで認証）
+# ----------------------------------------------------------------------
+from user_auth_store import (
+    verify_credentials as _auth_verify,
+    record_login as _auth_record_login,
+    ensure_seeded as _auth_ensure_seeded,
+)
+
+if not st.session_state.get("logged_in_user"):
+    _auth_ensure_seeded()
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { display: none !important; }
+        .login-box { max-width: 420px; margin: 6vh auto 0 auto; padding: 32px 36px;
+                     background: rgba(255,255,255,0.92); border-radius: 16px;
+                     box-shadow: 0 8px 24px rgba(0,0,0,0.18); }
+        .login-box h2 { margin: 0 0 4px 0; font-size: 1.6rem; color: #1a1a2e; }
+        .login-box p  { margin: 0 0 18px 0; color: #555; font-size: 0.9rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="login-box"><h2>🔐 ログイン</h2>'
+        '<p>IDとパスワードを入力してください。</p></div>',
+        unsafe_allow_html=True,
+    )
+    with st.form("login_form", clear_on_submit=False):
+        _login_id = st.text_input("ID", key="login_id_input", autocomplete="username")
+        _login_pw = st.text_input("パスワード", type="password", key="login_pw_input", autocomplete="current-password")
+        _submitted = st.form_submit_button("ログイン", type="primary", use_container_width=True)
+    if _submitted:
+        _ok, _msg, _user = _auth_verify(_login_id, _login_pw)
+        if _ok and _user is not None:
+            st.session_state["logged_in_user"] = {
+                "id": _user["id"],
+                "display_name": _user.get("display_name", _user["id"]),
+            }
+            _auth_record_login(_user["id"])
+            st.rerun()
+        else:
+            st.error(_msg)
+    st.stop()
+
+
+# ----------------------------------------------------------------------
 # 接続 & データ取得（キャッシュ）
 # ----------------------------------------------------------------------
 @st.cache_resource
@@ -341,10 +388,12 @@ if st.sidebar.button("🔄 キャッシュ更新", width="stretch"):
     from tool_members_store import clear_members_cache
     from talk_template_store import clear_template_cache
     from talk_script_store import clear_caches as _clear_ts_caches
+    from user_auth_store import clear_users_cache as _clear_users_cache
     clear_check_cache()
     clear_members_cache()
     clear_template_cache()
     _clear_ts_caches()
+    _clear_users_cache()
     reload_talk_script_metrics()
     # board_order の共有キャッシュもクリア（Sheets 側の最新を強制再読込）
     try:
@@ -481,6 +530,22 @@ if _secret_container:
                 st.session_state["selected"] = mkey
 
 
+# --- 👤 ログイン情報＋ログアウト（サイドバー最下部）---
+st.sidebar.markdown("---")
+_current_user = st.session_state.get("logged_in_user") or {}
+_current_name = _current_user.get("display_name") or _current_user.get("id") or ""
+if _current_name:
+    st.sidebar.markdown(
+        f'<div style="padding:6px 8px; font-size:0.9rem; color:#1a1a2e;">'
+        f'👤 <b>{_current_name}</b></div>',
+        unsafe_allow_html=True,
+    )
+if st.sidebar.button("🚪 ログアウト", key="btn_logout", use_container_width=True):
+    for _k in list(st.session_state.keys()):
+        del st.session_state[_k]
+    st.rerun()
+
+
 # ----------------------------------------------------------------------
 # メイン
 # ----------------------------------------------------------------------
@@ -565,6 +630,129 @@ if selected_key == "_master":
             ok, msg = _save_board_order(new_order)
             st.session_state["selected"] = "_master"
             st.toast(msg, icon="✅" if ok else "⚠️")
+
+    st.divider()
+
+    # --- 👥 ユーザー管理（入口ログイン用ID/パスワード） ---
+    with st.expander("👥 ユーザー管理（ログインID／パスワード）", expanded=False):
+        from user_auth_store import (
+            get_users as _ua_get_users,
+            add_user as _ua_add_user,
+            update_password as _ua_update_password,
+            update_display_name as _ua_update_display_name,
+            set_active as _ua_set_active,
+            delete_user as _ua_delete_user,
+            clear_users_cache as _ua_clear_cache,
+        )
+
+        st.caption(
+            "ボードへのログインに使うID／パスワードを管理します。"
+            "「有効」のチェックを外すと、そのユーザーはログイン不可になります（削除しなくても締め出せます）。"
+        )
+
+        # --- 新規追加 ---
+        st.markdown("##### ➕ 新規ユーザーを追加")
+        _ua_c1, _ua_c2, _ua_c3, _ua_c4 = st.columns([2, 2, 3, 1])
+        _new_uid = _ua_c1.text_input("ID", key="ua_new_id", placeholder="例: y-tanaka")
+        _new_upw = _ua_c2.text_input("パスワード", key="ua_new_pw", placeholder="例: tanaka2026")
+        _new_uname = _ua_c3.text_input("表示名", key="ua_new_name", placeholder="例: 田中 太郎")
+        if _ua_c4.button("追加", key="ua_add_btn", use_container_width=True):
+            ok, msg = _ua_add_user(_new_uid, _new_upw, _new_uname)
+            st.toast(msg, icon="✅" if ok else "⚠️")
+            if ok:
+                st.session_state.pop("ua_new_id", None)
+                st.session_state.pop("ua_new_pw", None)
+                st.session_state.pop("ua_new_name", None)
+                st.rerun()
+
+        st.divider()
+
+        # --- 一覧 ---
+        st.markdown("##### 📋 登録済みユーザー")
+        _users = _ua_get_users()
+        if not _users:
+            st.info("ユーザーが登録されていません。")
+        else:
+            _h1, _h2, _h3, _h4, _h5, _h6 = st.columns([2, 2, 3, 1, 2, 1])
+            _h1.markdown("**ID**")
+            _h2.markdown("**パスワード**")
+            _h3.markdown("**表示名**")
+            _h4.markdown("**有効**")
+            _h5.markdown("**最終ログイン**")
+            _h6.markdown("**削除**")
+
+            for _ui, _u in enumerate(_users):
+                _uid = _u.get("id", "")
+                c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 1, 2, 1])
+                with c1:
+                    st.text_input(
+                        "ID", value=_uid, key=f"ua_id_show_{_ui}",
+                        disabled=True, label_visibility="collapsed",
+                    )
+                with c2:
+                    _pw_val = st.text_input(
+                        "パスワード", value=_u.get("password", ""),
+                        key=f"ua_pw_{_ui}", label_visibility="collapsed",
+                    )
+                with c3:
+                    _name_val = st.text_input(
+                        "表示名", value=_u.get("display_name", ""),
+                        key=f"ua_name_{_ui}", label_visibility="collapsed",
+                    )
+                with c4:
+                    _active_val = st.checkbox(
+                        "有効", value=_u.get("active", True),
+                        key=f"ua_active_{_ui}", label_visibility="collapsed",
+                    )
+                with c5:
+                    st.markdown(
+                        f"<span style='font-size:0.85rem;color:#555;'>{_u.get('last_login') or '—'}</span>",
+                        unsafe_allow_html=True,
+                    )
+                with c6:
+                    if st.button("🗑", key=f"ua_del_{_ui}", help=f"{_u.get('display_name', _uid)} を削除"):
+                        # 自分自身は削除させない
+                        _me = (st.session_state.get("logged_in_user") or {}).get("id")
+                        if _uid == _me:
+                            st.toast("自分自身は削除できません", icon="⚠️")
+                        else:
+                            ok, msg = _ua_delete_user(_uid)
+                            st.toast(msg, icon="✅" if ok else "⚠️")
+                            if ok:
+                                st.rerun()
+
+                # 変更検知 → 保存
+                _changed = (
+                    _pw_val != _u.get("password", "")
+                    or _name_val != _u.get("display_name", "")
+                    or _active_val != _u.get("active", True)
+                )
+                if _changed:
+                    _changes_for_user = st.session_state.setdefault("_ua_pending_changes", {})
+                    _changes_for_user[_uid] = {
+                        "password": _pw_val,
+                        "display_name": _name_val,
+                        "active": _active_val,
+                    }
+
+            # まとめて保存ボタン
+            _pending = st.session_state.get("_ua_pending_changes", {})
+            if _pending:
+                st.warning(f"未保存の変更: {len(_pending)}件")
+                if st.button("💾 変更を保存", key="ua_save_changes", type="primary"):
+                    _any_fail = False
+                    for _uid, _ch in _pending.items():
+                        ok1, _ = _ua_update_password(_uid, _ch["password"])
+                        ok2, _ = _ua_update_display_name(_uid, _ch["display_name"])
+                        ok3, _ = _ua_set_active(_uid, _ch["active"])
+                        if not (ok1 and ok2 and ok3):
+                            _any_fail = True
+                    st.session_state.pop("_ua_pending_changes", None)
+                    st.toast(
+                        "変更を保存しました" if not _any_fail else "一部保存に失敗しました",
+                        icon="✅" if not _any_fail else "⚠️",
+                    )
+                    st.rerun()
 
     st.divider()
 

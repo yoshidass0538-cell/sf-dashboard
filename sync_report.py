@@ -224,6 +224,21 @@ def fetch_report(sf: Salesforce) -> tuple[list[str], list[list[str]]]:
     return headers, all_rows
 
 
+def _retry_sheets(fn, *, what: str, max_attempts: int = 5):
+    """Google Sheets APIの一時障害(5xx/429)に指数バックオフでリトライ。"""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except gspread.exceptions.APIError as e:
+            msg = str(e)
+            transient = any(code in msg for code in ["[500]", "[502]", "[503]", "[504]", "[429]"])
+            if not transient or attempt == max_attempts:
+                raise
+            wait = min(60, 2 ** attempt)
+            print(f"  WARN: {what} 失敗(attempt {attempt}/{max_attempts}) → {wait}s 待機して再試行: {msg.splitlines()[0]}")
+            time.sleep(wait)
+
+
 def write_to_sheet(client, sheet_id: str, tab_name: str, headers: list[str], rows: list[list[str]]):
     """スプレッドシートのタブに全量上書き。"""
     sh = client.open_by_key(sheet_id)
@@ -232,7 +247,7 @@ def write_to_sheet(client, sheet_id: str, tab_name: str, headers: list[str], row
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title=tab_name, rows=max(len(rows) + 1, 100), cols=max(len(headers), 30))
 
-    ws.clear()
+    _retry_sheets(lambda: ws.clear(), what=f"{tab_name} clear")
 
     needed_rows = max(len(rows) + 1, 100)
     needed_cols = max(len(headers), 1)
@@ -241,16 +256,16 @@ def write_to_sheet(client, sheet_id: str, tab_name: str, headers: list[str], row
     # cols は基本縮む方向 → 先に縮めて空きセルを稼いでから rows を確保する
     if ws.col_count != needed_cols:
         try:
-            ws.resize(cols=needed_cols)
+            _retry_sheets(lambda: ws.resize(cols=needed_cols), what=f"{tab_name} cols resize")
         except gspread.exceptions.APIError as e:
             if "10000000 cells" not in str(e):
                 raise
             print(f"  WARN: cols resize失敗: {e}")
     if ws.row_count != needed_rows:
-        ws.resize(rows=needed_rows)
+        _retry_sheets(lambda: ws.resize(rows=needed_rows), what=f"{tab_name} rows resize")
 
     # ヘッダー
-    ws.update(range_name="A1", values=[headers])
+    _retry_sheets(lambda: ws.update(range_name="A1", values=[headers]), what=f"{tab_name} header update")
 
     # データ本体はチャンク分割（Sheets API のリクエストサイズ制限を回避）
     CHUNK = 1000
@@ -258,7 +273,10 @@ def write_to_sheet(client, sheet_id: str, tab_name: str, headers: list[str], row
     for start in range(0, total, CHUNK):
         chunk = rows[start:start + CHUNK]
         cell_row = start + 2  # 1行目はヘッダー
-        ws.update(range_name=f"A{cell_row}", values=chunk)
+        _retry_sheets(
+            lambda c=chunk, r=cell_row: ws.update(range_name=f"A{r}", values=c),
+            what=f"{tab_name} rows {cell_row}-",
+        )
         print(f"  {tab_name}: {start + len(chunk)}/{total} 行書込")
 
     print(f"  {tab_name}: {len(rows)}行 x {len(headers)}列 書込完了")

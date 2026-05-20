@@ -35,7 +35,9 @@ body {
   border-radius: 18px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.4);
   padding: 16px 20px 18px;
-  margin: 0;
+  margin: 0 auto;
+  max-width: 380px;
+  width: 100%;
   animation: cardIn 0.6s cubic-bezier(0.2,0.9,0.3,1.2) both;
 }
 @keyframes cardIn {
@@ -632,9 +634,9 @@ __BASE_STYLE__
 # ローテーション
 # ============================================================
 _GAMES = [
-    {"key": "reaction", "html": _GAME_REACTION_HTML, "height": 470, "label": "⚡ リアクションタイム"},
-    {"key": "mogura",   "html": _GAME_MOGURA_HTML,   "height": 510, "label": "🐹 モグラ叩き"},
-    {"key": "calc",     "html": _GAME_CALC_HTML,     "height": 500, "label": "🧮 1分間計算"},
+    {"key": "reaction", "html": _GAME_REACTION_HTML, "height": 530, "label": "⚡ リアクションタイム"},
+    {"key": "mogura",   "html": _GAME_MOGURA_HTML,   "height": 580, "label": "🐹 モグラ叩き"},
+    {"key": "calc",     "html": _GAME_CALC_HTML,     "height": 560, "label": "🧮 1分間計算"},
 ]
 
 

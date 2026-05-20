@@ -133,6 +133,19 @@ __BASE_STYLE__
   transition: transform 0.08s ease;
 }
 .hole:active { transform: scale(0.96); }
+.keyhint {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0;
+  z-index: 2;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
 .mole {
   position: absolute; left: 10%; right: 10%; bottom: -100%; height: 80%;
   background: linear-gradient(180deg, #c08457 0%, #8b5a2b 70%, #6b4423 100%);
@@ -176,7 +189,7 @@ __BASE_STYLE__
   </div>
   <div class="grid" id="grid"></div>
   <button class="btn" id="startBtn">▶ スタート</button>
-  <div class="result" id="result">クリック / タップで叩く！</div>
+  <div class="result" id="result">クリック / タップ / テンキー(1-9)で叩く！</div>
 </div>
 <script>
 (function(){
@@ -188,24 +201,57 @@ __BASE_STYLE__
   const startBtn = document.getElementById('startBtn');
   const resultEl = document.getElementById('result');
   const holes = [];
+  // テンキー配列: 7=上左, 8=上中, 9=上右, 4=中左, 5=中央, 6=中右, 1=下左, 2=下中, 3=下右
+  const KEY_TO_INDEX = {
+    '7': 0, '8': 1, '9': 2,
+    '4': 3, '5': 4, '6': 5,
+    '1': 6, '2': 7, '3': 8,
+  };
+  function hitIndex(i) {
+    if (!running) return;
+    const h = holes[i];
+    if (!h) return;
+    if (h.alive && !h.mole.classList.contains('hit')) {
+      h.mole.classList.add('hit'); score++; scoreEl.textContent = score;
+      setTimeout(() => { h.mole.classList.remove('up','hit'); h.alive = false; }, 180);
+    } else {
+      // 空振りフィードバック（穴を一瞬光らせる）
+      h.hole.style.boxShadow = 'inset 0 6px 12px rgba(0,0,0,0.6), 0 0 18px rgba(244,67,54,0.5)';
+      setTimeout(() => {
+        h.hole.style.boxShadow = 'inset 0 6px 12px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.3)';
+      }, 150);
+    }
+  }
   for (let i = 0; i < HOLES; i++) {
     const hole = document.createElement('div'); hole.className = 'hole';
+    // テンキー数字をうっすら表示
+    const keyLabel = document.createElement('div');
+    keyLabel.className = 'keyhint';
+    const keyForIndex = Object.keys(KEY_TO_INDEX).find(k => KEY_TO_INDEX[k] === i);
+    keyLabel.textContent = keyForIndex || '';
+    hole.appendChild(keyLabel);
     const mole = document.createElement('div'); mole.className = 'mole';
     mole.innerHTML = '<div class="face"><div class="eyes"><div class="eye"></div><div class="eye"></div></div><div class="nose"></div></div>';
     hole.appendChild(mole); grid.appendChild(hole);
     holes.push({hole, mole, alive: false});
-    const hit = (e) => {
-      e.preventDefault();
-      if (!running) return;
-      const h = holes[i];
-      if (h.alive && !h.mole.classList.contains('hit')) {
-        h.mole.classList.add('hit'); score++; scoreEl.textContent = score;
-        setTimeout(() => { h.mole.classList.remove('up','hit'); h.alive = false; }, 180);
-      }
-    };
+    const hit = (e) => { e.preventDefault(); hitIndex(i); };
     hole.addEventListener('click', hit);
     hole.addEventListener('touchstart', hit, {passive:false});
   }
+  // テンキー入力（NumLock ON/OFF 両対応）
+  document.addEventListener('keydown', (e) => {
+    // 1-9 (メイン行) または Numpad1-9 (テンキー) を受ける
+    let idx = -1;
+    if (e.key && KEY_TO_INDEX.hasOwnProperty(e.key)) {
+      idx = KEY_TO_INDEX[e.key];
+    } else if (e.code && /^Numpad[1-9]$/.test(e.code)) {
+      idx = KEY_TO_INDEX[e.code.slice(-1)];
+    }
+    if (idx !== undefined && idx >= 0) {
+      e.preventDefault();
+      hitIndex(idx);
+    }
+  });
   let running = false, score = 0, timeLeft = DURATION;
   let timerId = null, popTimerId = null;
   let best = parseInt(localStorage.getItem('cs_mole_best') || '0', 10);

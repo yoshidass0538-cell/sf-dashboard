@@ -335,6 +335,17 @@ if not st.session_state.get("logged_in_user"):
             _login_id = st.text_input("ID", key="login_id_input", placeholder="例: s-yoshida")
             _login_pw = st.text_input("パスワード", type="password", key="login_pw_input", placeholder="••••••••")
             _submitted = st.form_submit_button("🔓 ログイン", type="primary", use_container_width=True)
+
+        # --- 🎮 日替わりミニゲーム（A:リアクション / B:モグラ叩き / C:1分間計算）---
+        import streamlit.components.v1 as _login_components
+        from login_games import pick_today_game as _pick_game
+        _today_game = _pick_game()
+        _login_components.html(
+            _today_game["html"],
+            height=_today_game["height"],
+            scrolling=False,
+        )
+
         st.markdown(
             '<div class="login-foot">© CS促進 - 認証が必要です</div>',
             unsafe_allow_html=True,

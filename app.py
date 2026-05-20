@@ -124,28 +124,221 @@ from user_auth_store import (
 
 if not st.session_state.get("logged_in_user"):
     _auth_ensure_seeded()
+    # ロゴをbase64で読み込み（既にトップで読み込まれているがログイン時は別経路なので個別に）
+    import base64 as _b64_login
+    try:
+        with open("gcs_logo.png", "rb") as _f:
+            _login_logo_b64 = _b64_login.b64encode(_f.read()).decode()
+    except Exception:
+        _login_logo_b64 = ""
+
     st.markdown(
         """
         <style>
-        [data-testid="stSidebar"] { display: none !important; }
-        .login-box { max-width: 420px; margin: 6vh auto 0 auto; padding: 32px 36px;
-                     background: rgba(255,255,255,0.92); border-radius: 16px;
-                     box-shadow: 0 8px 24px rgba(0,0,0,0.18); }
-        .login-box h2 { margin: 0 0 4px 0; font-size: 1.6rem; color: #1a1a2e; }
-        .login-box p  { margin: 0 0 18px 0; color: #555; font-size: 0.9rem; }
+        /* サイドバー・ヘッダー・ツールバーを非表示 */
+        [data-testid="stSidebar"], [data-testid="collapsedControl"],
+        [data-testid="stHeader"], [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="stAppViewContainer"] { padding-top: 0 !important; }
+
+        /* 全画面アニメーション背景 */
+        [data-testid="stAppViewContainer"] {
+            background:
+                radial-gradient(1200px 600px at 10% 0%, rgba(179, 157, 219, 0.55), transparent 60%),
+                radial-gradient(900px 500px at 90% 10%, rgba(83, 52, 131, 0.55), transparent 55%),
+                radial-gradient(1000px 700px at 50% 100%, rgba(15, 52, 96, 0.65), transparent 60%),
+                linear-gradient(135deg, #1a1a2e 0%, #16213e 35%, #0f3460 70%, #533483 100%) !important;
+            background-size: 200% 200%, 200% 200%, 200% 200%, 100% 100% !important;
+            animation: loginBgShift 18s ease-in-out infinite !important;
+            min-height: 100vh !important;
+        }
+        @keyframes loginBgShift {
+            0%, 100% { background-position: 0% 0%, 100% 0%, 50% 100%, 0 0; }
+            50%      { background-position: 30% 30%, 70% 40%, 40% 70%, 0 0; }
+        }
+
+        /* 浮遊するグロー粒子 */
+        [data-testid="stAppViewContainer"]::before,
+        [data-testid="stAppViewContainer"]::after {
+            content: "";
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(60px);
+            opacity: 0.55;
+            pointer-events: none;
+            z-index: 0;
+        }
+        [data-testid="stAppViewContainer"]::before {
+            width: 380px; height: 380px;
+            background: radial-gradient(circle, #b39ddb 0%, transparent 70%);
+            top: -80px; left: -80px;
+            animation: floatA 14s ease-in-out infinite;
+        }
+        [data-testid="stAppViewContainer"]::after {
+            width: 460px; height: 460px;
+            background: radial-gradient(circle, #533483 0%, transparent 70%);
+            bottom: -120px; right: -120px;
+            animation: floatB 16s ease-in-out infinite;
+        }
+        @keyframes floatA { 0%,100%{transform:translate(0,0)} 50%{transform:translate(60px,40px)} }
+        @keyframes floatB { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-50px,-30px)} }
+
+        /* 本体カード */
+        .login-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 92vh;
+            padding-top: 7vh;
+            position: relative;
+            z-index: 1;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 440px;
+            padding: 40px 42px 32px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 22px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45),
+                        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            animation: cardIn 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+        }
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(24px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .login-logo {
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 18px;
+        }
+        .login-logo img {
+            width: 110px; height: auto;
+            filter: drop-shadow(0 6px 14px rgba(0,0,0,0.4));
+            animation: logoBounce 1.1s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+        }
+        @keyframes logoBounce {
+            0%   { opacity: 0; transform: scale(0.6) rotate(-8deg); }
+            60%  { opacity: 1; transform: scale(1.08) rotate(3deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0); }
+        }
+        .login-title {
+            text-align: center;
+            font-size: 1.7rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            background: linear-gradient(90deg, #fff 0%, #d1c4e9 50%, #b39ddb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0 0 6px 0;
+        }
+        .login-subtitle {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 0.92rem;
+            margin: 0 0 26px 0;
+            letter-spacing: 0.02em;
+        }
+
+        /* 入力欄を白背景＋ガラス風に */
+        [data-testid="stForm"] {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+        [data-testid="stForm"] label {
+            color: #ffffff !important;
+            font-size: 0.88rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.03em;
+        }
+        [data-testid="stForm"] input {
+            background: rgba(255, 255, 255, 0.92) !important;
+            color: #1a1a2e !important;
+            border: 1px solid rgba(255, 255, 255, 0.4) !important;
+            border-radius: 10px !important;
+            padding: 12px 14px !important;
+            font-size: 1rem !important;
+            transition: all 0.25s ease !important;
+        }
+        [data-testid="stForm"] input:focus {
+            border-color: #b39ddb !important;
+            box-shadow: 0 0 0 4px rgba(179, 157, 219, 0.25) !important;
+            background: #ffffff !important;
+        }
+
+        /* ログインボタン */
+        [data-testid="stForm"] button[kind="primary"] {
+            background: linear-gradient(135deg, #7e57c2 0%, #5e35b1 60%, #4527a0 100%) !important;
+            color: #fff !important;
+            border: none !important;
+            border-radius: 12px !important;
+            padding: 12px !important;
+            font-size: 1.05rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.06em !important;
+            box-shadow: 0 10px 25px rgba(81, 45, 168, 0.45) !important;
+            transition: all 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2) !important;
+            margin-top: 6px !important;
+        }
+        [data-testid="stForm"] button[kind="primary"]:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 14px 32px rgba(81, 45, 168, 0.6),
+                        0 0 30px rgba(179, 157, 219, 0.35) !important;
+            filter: brightness(1.1) !important;
+        }
+        [data-testid="stForm"] button[kind="primary"]:active {
+            transform: translateY(0) !important;
+        }
+
+        /* エラーメッセージ */
+        [data-testid="stAlert"] {
+            background: rgba(220, 38, 38, 0.18) !important;
+            border: 1px solid rgba(220, 38, 38, 0.45) !important;
+            color: #ffe0e0 !important;
+            border-radius: 10px !important;
+            backdrop-filter: blur(10px) !important;
+        }
+        [data-testid="stAlert"] * { color: #ffe0e0 !important; }
+
+        .login-foot {
+            text-align: center;
+            color: rgba(255,255,255,0.45);
+            font-size: 0.75rem;
+            margin-top: 22px;
+            letter-spacing: 0.05em;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+    _logo_html = (
+        f'<div class="login-logo"><img src="data:image/png;base64,{_login_logo_b64}" alt="logo"></div>'
+        if _login_logo_b64 else ""
+    )
     st.markdown(
-        '<div class="login-box"><h2>🔐 ログイン</h2>'
-        '<p>IDとパスワードを入力してください。</p></div>',
+        '<div class="login-wrap"><div class="login-card">'
+        f'{_logo_html}'
+        '<div class="login-title">CS促進ダッシュボード</div>'
+        '<div class="login-subtitle">IDとパスワードを入力してください</div>'
+        '</div></div>',
         unsafe_allow_html=True,
     )
-    with st.form("login_form", clear_on_submit=False):
-        _login_id = st.text_input("ID", key="login_id_input", autocomplete="username")
-        _login_pw = st.text_input("パスワード", type="password", key="login_pw_input", autocomplete="current-password")
-        _submitted = st.form_submit_button("ログイン", type="primary", use_container_width=True)
+
+    # フォームをカード内っぽく見せるためのラッパ（実態は別divだがスタイルで揃える）
+    _form_col = st.columns([1, 2, 1])[1]
+    with _form_col:
+        with st.form("login_form", clear_on_submit=False):
+            _login_id = st.text_input("ID", key="login_id_input", placeholder="例: s-yoshida")
+            _login_pw = st.text_input("パスワード", type="password", key="login_pw_input", placeholder="••••••••")
+            _submitted = st.form_submit_button("🔓 ログイン", type="primary", use_container_width=True)
+        st.markdown(
+            '<div class="login-foot">© CS促進 - 認証が必要です</div>',
+            unsafe_allow_html=True,
+        )
     if _submitted:
         _ok, _msg, _user = _auth_verify(_login_id, _login_pw)
         if _ok and _user is not None:
@@ -156,7 +349,8 @@ if not st.session_state.get("logged_in_user"):
             _auth_record_login(_user["id"])
             st.rerun()
         else:
-            st.error(_msg)
+            with _form_col:
+                st.error(_msg)
     st.stop()
 
 
@@ -648,6 +842,7 @@ if selected_key == "_master":
         st.caption(
             "ボードへのログインに使うID／パスワードを管理します。"
             "「有効」のチェックを外すと、そのユーザーはログイン不可になります（削除しなくても締め出せます）。"
+            "変更後は **画面下部の「💾 変更を保存」ボタンを必ず押してください**（自動保存ではありません）。"
         )
 
         # --- 新規追加 ---
@@ -690,17 +885,17 @@ if selected_key == "_master":
                         disabled=True, label_visibility="collapsed",
                     )
                 with c2:
-                    _pw_val = st.text_input(
+                    st.text_input(
                         "パスワード", value=_u.get("password", ""),
                         key=f"ua_pw_{_ui}", label_visibility="collapsed",
                     )
                 with c3:
-                    _name_val = st.text_input(
+                    st.text_input(
                         "表示名", value=_u.get("display_name", ""),
                         key=f"ua_name_{_ui}", label_visibility="collapsed",
                     )
                 with c4:
-                    _active_val = st.checkbox(
+                    st.checkbox(
                         "有効", value=_u.get("active", True),
                         key=f"ua_active_{_ui}", label_visibility="collapsed",
                     )
@@ -711,7 +906,6 @@ if selected_key == "_master":
                     )
                 with c6:
                     if st.button("🗑", key=f"ua_del_{_ui}", help=f"{_u.get('display_name', _uid)} を削除"):
-                        # 自分自身は削除させない
                         _me = (st.session_state.get("logged_in_user") or {}).get("id")
                         if _uid == _me:
                             st.toast("自分自身は削除できません", icon="⚠️")
@@ -721,38 +915,51 @@ if selected_key == "_master":
                             if ok:
                                 st.rerun()
 
-                # 変更検知 → 保存
-                _changed = (
-                    _pw_val != _u.get("password", "")
-                    or _name_val != _u.get("display_name", "")
-                    or _active_val != _u.get("active", True)
-                )
-                if _changed:
-                    _changes_for_user = st.session_state.setdefault("_ua_pending_changes", {})
-                    _changes_for_user[_uid] = {
-                        "password": _pw_val,
-                        "display_name": _name_val,
-                        "active": _active_val,
-                    }
-
-            # まとめて保存ボタン
-            _pending = st.session_state.get("_ua_pending_changes", {})
-            if _pending:
-                st.warning(f"未保存の変更: {len(_pending)}件")
-                if st.button("💾 変更を保存", key="ua_save_changes", type="primary"):
-                    _any_fail = False
-                    for _uid, _ch in _pending.items():
-                        ok1, _ = _ua_update_password(_uid, _ch["password"])
-                        ok2, _ = _ua_update_display_name(_uid, _ch["display_name"])
-                        ok3, _ = _ua_set_active(_uid, _ch["active"])
-                        if not (ok1 and ok2 and ok3):
+            # --- 常時表示の保存ボタン ---
+            st.markdown("")  # 余白
+            _save_col_l, _save_col_c, _save_col_r = st.columns([1, 2, 1])
+            if _save_col_c.button(
+                "💾 変更を保存",
+                key="ua_save_changes",
+                type="primary",
+                use_container_width=True,
+            ):
+                _any_fail = False
+                _changed_count = 0
+                for _ui, _u in enumerate(_users):
+                    _uid = _u.get("id", "")
+                    _pw_cur = st.session_state.get(f"ua_pw_{_ui}", _u.get("password", ""))
+                    _name_cur = st.session_state.get(f"ua_name_{_ui}", _u.get("display_name", ""))
+                    _active_cur = st.session_state.get(f"ua_active_{_ui}", _u.get("active", True))
+                    if _pw_cur != _u.get("password", ""):
+                        ok1, _ = _ua_update_password(_uid, _pw_cur)
+                        if not ok1:
                             _any_fail = True
-                    st.session_state.pop("_ua_pending_changes", None)
+                        else:
+                            _changed_count += 1
+                    if _name_cur != _u.get("display_name", ""):
+                        ok2, _ = _ua_update_display_name(_uid, _name_cur)
+                        if not ok2:
+                            _any_fail = True
+                        else:
+                            _changed_count += 1
+                    if _active_cur != _u.get("active", True):
+                        ok3, _ = _ua_set_active(_uid, _active_cur)
+                        if not ok3:
+                            _any_fail = True
+                        else:
+                            _changed_count += 1
+                if _changed_count == 0 and not _any_fail:
+                    st.toast("変更はありませんでした", icon="ℹ️")
+                else:
                     st.toast(
-                        "変更を保存しました" if not _any_fail else "一部保存に失敗しました",
+                        f"{_changed_count}件の変更を保存しました" if not _any_fail else "一部保存に失敗しました",
                         icon="✅" if not _any_fail else "⚠️",
                     )
-                    st.rerun()
+                st.rerun()
+            _save_col_c.caption(
+                "🔁 保存後はキャッシュが更新され、次回ログインから新しいパスワードが有効になります。"
+            )
 
     st.divider()
 

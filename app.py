@@ -331,12 +331,7 @@ if not st.session_state.get("logged_in_user"):
     # フォームをカード内っぽく見せるためのラッパ（実態は別divだがスタイルで揃える）
     _form_col = st.columns([1, 2, 1])[1]
     with _form_col:
-        with st.form("login_form", clear_on_submit=False):
-            _login_id = st.text_input("ID", key="login_id_input", placeholder="例: s-yoshida")
-            _login_pw = st.text_input("パスワード", type="password", key="login_pw_input", placeholder="••••••••")
-            _submitted = st.form_submit_button("🔓 ログイン", type="primary", use_container_width=True)
-
-        # --- 🎮 日替わりミニゲーム（A:リアクション / B:モグラ叩き / C:1分間計算）---
+        # --- 🎮 日替わりミニゲーム（タイトル直下、ログイン欄の上）---
         import streamlit.components.v1 as _login_components
         from login_games import pick_today_game as _pick_game
         _today_game = _pick_game()
@@ -345,6 +340,11 @@ if not st.session_state.get("logged_in_user"):
             height=_today_game["height"],
             scrolling=False,
         )
+
+        with st.form("login_form", clear_on_submit=False):
+            _login_id = st.text_input("ID", key="login_id_input", placeholder="例: s-yoshida")
+            _login_pw = st.text_input("パスワード", type="password", key="login_pw_input", placeholder="••••••••")
+            _submitted = st.form_submit_button("🔓 ログイン", type="primary", use_container_width=True)
 
         st.markdown(
             '<div class="login-foot">© CS促進 - 認証が必要です</div>',

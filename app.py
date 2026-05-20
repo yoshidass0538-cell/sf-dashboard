@@ -244,8 +244,8 @@ if not st.session_state.get("logged_in_user"):
             letter-spacing: 0.02em;
         }
         /* タイトルカード直後の Streamlit ブロック余白を詰める */
-        .login-wrap + div [data-testid="stVerticalBlock"] > div:first-child > div:first-child,
-        [data-testid="stIFrame"] { margin-top: -8px !important; }
+        .login-wrap + div [data-testid="stVerticalBlock"] > div:first-child > div:first-child { margin-top: 0 !important; }
+        [data-testid="stIFrame"] { margin-top: 18px !important; }
         [data-testid="stMainBlockContainer"] {
             padding-top: 0 !important;
             padding-bottom: 0 !important;

@@ -1,0 +1,28 @@
+name: Timee Worker Texts Backup
+
+# cron-job.org から workflow_dispatch で発火(1日1回想定)
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: timee-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install gspread google-auth
+
+      - name: Run backup
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: python timee_backup.py backup

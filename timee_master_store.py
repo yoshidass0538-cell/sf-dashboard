@@ -234,12 +234,13 @@ def _get_worker_text_ws():
 
 
 def load_worker_texts() -> dict[str, dict]:
-    """{wid: {"メモ": str, "キャンセル履歴": list[dict]}} を返す。"""
-    try:
-        ws = _get_worker_text_ws()
-        records = ws.get_all_records()
-    except Exception:
-        return {}
+    """{wid: {"メモ": str, "キャンセル履歴": list[dict]}} を返す。
+
+    Sheets読込に失敗した場合は例外を伝播する(silently {} を返すと
+    上位の save 経路が全置換で過去履歴を全消ししてしまう実害があったため)。
+    """
+    ws = _get_worker_text_ws()
+    records = ws.get_all_records()
     out = {}
     for r in records:
         wid = r.get("id")
@@ -361,12 +362,54 @@ def _save_workers_table(workers: dict[str, dict]) -> None:
 
 
 def save_worker_texts(texts: dict[str, dict]) -> None:
-    """{wid: {"メモ", "キャンセル履歴"}} を全置換保存。空エントリは保存しない。"""
+    """{wid: {"メモ", "キャンセル履歴"}} を保存。
+
+    重要: キャンセル履歴は append-only。一度シートに書かれたエントリは
+    本関数では絶対に消さない(UI からの明示削除のみ許可)。
+
+    戦略:
+      1. 既存シート内容を読み込む(失敗したら例外を投げて保存中止)
+      2. キャンセル履歴 = (既存 ∪ 渡された分) を「検知日+元就業日」で重複排除
+      3. メモ = 渡された側で上書き(本人編集の反映。空文字を渡せば消える)
+      4. 渡された texts に含まれない wid も、既存シート分は維持(union save)
+    """
+    # 1. 既存読込 — 失敗時は例外伝播(空マージで上書き事故を起こさない)
+    existing = load_worker_texts()
+
+    # 2. マージ
+    merged: dict[str, dict] = {}
+    all_wids = set(existing) | set(texts)
+    for wid in all_wids:
+        ex = existing.get(wid, {})
+        new = texts.get(wid, {})
+
+        # メモ: 新規呼び出し側に wid が含まれていれば渡された値で置換(空文字なら明示削除)。
+        #       texts に wid が無い場合は既存維持。
+        if wid in texts:
+            memo = str(new.get("メモ", "") or "")
+        else:
+            memo = str(ex.get("メモ", "") or "")
+
+        # キャンセル履歴: union (検知日+元就業日 で重複排除、append-only)
+        seen: set[tuple[str, str]] = set()
+        ch_merged: list[dict] = []
+        for h in (ex.get("キャンセル履歴") or []) + (new.get("キャンセル履歴") or []):
+            if not isinstance(h, dict):
+                continue
+            key = (str(h.get("検知日", "")), str(h.get("元就業日", "")))
+            if key in seen:
+                continue
+            seen.add(key)
+            ch_merged.append(h)
+
+        if memo or ch_merged:
+            merged[wid] = {"メモ": memo, "キャンセル履歴": ch_merged}
+
+    # 3. シート全置換 (マージ済みなので過去履歴は失われない)
     rows = [WORKER_TEXT_HEADERS]
-    for wid, t in texts.items():
+    for wid, t in merged.items():
         memo = str(t.get("メモ", "") or "")
         ch = t.get("キャンセル履歴") or []
-        # 全部空なら保存しない
         if not memo and not ch:
             continue
         ch_json = json.dumps(ch, ensure_ascii=False) if ch else ""

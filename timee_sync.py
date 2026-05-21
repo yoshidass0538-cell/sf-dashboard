@@ -252,8 +252,13 @@ def run_sync() -> None:
     print(f"[Timee Sync] current month records: {len(records)}")
 
     meta = store.load_meta()
+    # 翌月取得が失敗した場合、prev_snapshotに残っている翌月分が
+    # diff_snapshots で全員「キャンセル」誤検知されるため、
+    # 「今回のcurr_snapshotが翌月分を含むか」を厳密に追跡する。
+    ny, nm = _next_month(today)
+    next_month_prefix = f"{ny}-{nm:02d}"
+    next_month_in_curr = False
     if _should_fetch_next_month(meta, today_iso):
-        ny, nm = _next_month(today)
         next_path = f"./tmp/timee_{ny}_{nm:02d}.xlsx"
         try:
             download_month_excel(ny, nm, next_path)
@@ -261,6 +266,7 @@ def run_sync() -> None:
             print(f"[Timee Sync] next month records: {len(next_records)}")
             records.extend(next_records)
             meta["last_next_month_fetch"] = today_iso
+            next_month_in_curr = True
         except Exception as e:
             print(f"[WARN] 翌月分取得に失敗: {e}")
 
@@ -285,15 +291,49 @@ def run_sync() -> None:
 
     # 3. 差分検知
     snapshot_prev = store.load_snapshot()
-    new_matches, cancellations = store.diff_snapshots(snapshot_prev, snapshot_curr, today)
+
+    # 安全装置(1): 今回のrunがcurr_snapshotに翌月分を含まないのに、prevには翌月分がある場合、
+    #   prev側の翌月分エントリを除外してから diff する(翌月人員を全員キャンセル誤検知することを防ぐ)。
+    if not next_month_in_curr:
+        prev_filtered = [r for r in snapshot_prev
+                         if not str(r.get("就業日", "")).startswith(next_month_prefix)]
+        if len(prev_filtered) != len(snapshot_prev):
+            print(f"[Timee Sync][SAFE] 翌月分未取得のため prev から翌月分 "
+                  f"{len(snapshot_prev) - len(prev_filtered)}件 を差分対象から除外")
+        snapshot_prev_for_diff = prev_filtered
+    else:
+        snapshot_prev_for_diff = snapshot_prev
+
+    new_matches, cancellations = store.diff_snapshots(snapshot_prev_for_diff, snapshot_curr, today)
+
+    # 安全装置(2): 急激な縮小はスナップショット取得トラブルの可能性大なのでキャンセル記録を中止
+    SAFETY_DROP_RATIO = 0.5  # curr が prev の半分未満なら異常扱い
+    if (len(snapshot_prev_for_diff) > 20
+        and len(snapshot_curr) < len(snapshot_prev_for_diff) * SAFETY_DROP_RATIO):
+        print(f"[Timee Sync][SAFE] snapshot 縮小検知 "
+              f"prev={len(snapshot_prev_for_diff)} curr={len(snapshot_curr)} "
+              f"→ cancellations 記録を skip (誤検知防止)")
+        cancellations = []
+
     print(f"[Timee Sync] new={len(new_matches)} cancel={len(cancellations)} new_workers={len(new_worker_ids)}")
 
     if cancellations:
         store.record_cancellations(workers, cancellations, today_iso)
 
     # 4. 保存（マスタ → スナップショット → メタ）
-    store.save_workers(workers)
-    store.save_snapshot(snapshot_curr)
+    # 翌月未取得 run では snapshot を上書きしない(prev に残っている翌月分を維持して
+    # 次回キャンセル誤検知を防ぐ)。当月分だけマージして書き戻す。
+    if next_month_in_curr:
+        store.save_workers(workers)
+        store.save_snapshot(snapshot_curr)
+    else:
+        cur_month_prefix = f"{today.year}-{today.month:02d}"
+        # prev から翌月以降を維持、当月分は curr で置換
+        merged_snap = [r for r in snapshot_prev
+                       if not str(r.get("就業日", "")).startswith(cur_month_prefix)]
+        merged_snap.extend(snapshot_curr)
+        store.save_workers(workers)
+        store.save_snapshot(merged_snap)
     store.save_meta(meta)
 
     # 4.4. ワーカー詳細(平均Good率/直前キャンセル率/管理用メモ)の継続ローテ更新

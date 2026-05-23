@@ -5245,12 +5245,6 @@ if selected_key == "cs_shift_calendar":
                         unsafe_allow_html=True,
                     )
 
-    _render_shift_calendar(_by_day, ns="cur")
-
-    st.caption(
-        f"📆 {_cs_y}年{_cs_m}月　CS促進全員シフト　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
-    )
-
     # ── 変更希望シフト（毎月自動表示）──
     from shift_proposer import propose_moves as _propose_shift
 
@@ -5267,7 +5261,10 @@ if selected_key == "cs_shift_calendar":
     if _bl_key not in st.session_state:
         st.session_state[_bl_key] = set()
     if _cf_key not in st.session_state:
-        st.session_state[_cf_key] = set()
+        st.session_state[_cf_key] = {}  # {(person, frm, to): "YYYY-MM-DD HH:MM"}
+    elif isinstance(st.session_state[_cf_key], set):
+        # 旧形式(set)を辞書に変換
+        st.session_state[_cf_key] = {k: "" for k in st.session_state[_cf_key]}
     if _fb_key not in st.session_state:
         # 6月限定の既知NG日(ユーザヒアリング済)。他月は空辞書からスタート。
         if _cs_y == 2026 and _cs_m == 6:
@@ -5309,63 +5306,102 @@ if selected_key == "cs_shift_calendar":
 
     _proposed_by_day, _changed_days = _apply_moves_local(_by_day, _all_moves)
 
-    st.markdown("---")
-    st.markdown(
-        "<div style='font-size:18px;font-weight:700;padding:12px 0 4px;'>"
-        "📝 変更希望シフト（自動提案）"
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    # タブ: 通常はシフト表のみ表示。 変更希望シフトはタブ2クリックで表示
+    _tab_main, _tab_prop = st.tabs([
+        f"📅 シフト表",
+        f"📝 変更希望シフト（自動提案 {len(_all_moves)}件）",
+    ])
 
-    if not _all_moves:
-        st.info("制約を満たす自動提案は現時点でありません（既に最適化済みか、不可リストで全候補が除外されています）。")
-    else:
+    with _tab_main:
+        _render_shift_calendar(_by_day, ns="cur")
         st.caption(
-            f"📋 {len(_all_moves)}件の候補。「不可」にチェックすると除外して再計算、"
-            "「可能」 はSF反映済 or 反映予定として一覧から消えます。"
+            f"📆 {_cs_y}年{_cs_m}月　CS促進全員シフト　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
         )
-        # ヘッダ
-        _hh = st.columns([3, 1.2, 1.2, 3])
-        _hh[0].markdown("**移動**")
-        _hh[1].markdown("**可能**")
-        _hh[2].markdown("**不可**")
-        _hh[3].markdown("**理由**")
-        for _i, _mv in enumerate(_all_moves):
-            _row_cols = st.columns([3, 1.2, 1.2, 3])
-            _row_cols[0].markdown(f"{_mv.person}　6/{_mv.frm} → 6/{_mv.to}")
-            _key_tup = (_mv.person, _mv.frm, _mv.to)
-            _ck_ok = _row_cols[1].checkbox(
-                "可", key=f"mv_ok_{_cs_y}_{_cs_m}_{_i}_{_mv.person}_{_mv.frm}_{_mv.to}",
-                value=False,
-            )
-            _ck_ng = _row_cols[2].checkbox(
-                "不可", key=f"mv_ng_{_cs_y}_{_cs_m}_{_i}_{_mv.person}_{_mv.frm}_{_mv.to}",
-                value=False,
-            )
-            _row_cols[3].markdown(f"<span style='color:#888;font-size:12px;'>{_mv.reason}</span>",
-                                  unsafe_allow_html=True)
-            if _ck_ok and _key_tup not in _confirmed:
-                _confirmed.add(_key_tup)
-                st.session_state[_cf_key] = _confirmed
-                st.rerun()
-            if _ck_ng and _key_tup not in _blacklist:
-                _blacklist.add(_key_tup)
-                st.session_state[_bl_key] = _blacklist
-                st.rerun()
 
-        # 不可リストのリセットボタン
-        _bl_size = len(_blacklist)
-        if _bl_size > 0:
-            if st.button(f"🔄 不可リスト ({_bl_size}件) をリセット", key=f"bl_reset_{_cs_y}_{_cs_m}"):
-                st.session_state[_bl_key] = set()
-                st.rerun()
+    with _tab_prop:
+        if not _all_moves:
+            st.info("制約を満たす自動提案は現時点でありません（既に最適化済みか、不可リストで全候補が除外されています）。")
+        else:
+            st.caption(
+                f"📋 {len(_all_moves)}件の候補。「不可」にチェックすると除外して再計算、"
+                "「可能」はSF反映済 or 反映予定として下部の履歴に保存されます。"
+            )
+            _hh = st.columns([3, 1.2, 1.2, 3])
+            _hh[0].markdown("**移動**")
+            _hh[1].markdown("**可能**")
+            _hh[2].markdown("**不可**")
+            _hh[3].markdown("**理由**")
+            for _i, _mv in enumerate(_all_moves):
+                _row_cols = st.columns([3, 1.2, 1.2, 3])
+                _row_cols[0].markdown(f"{_mv.person}　{_cs_m}/{_mv.frm} → {_cs_m}/{_mv.to}")
+                _key_tup = (_mv.person, _mv.frm, _mv.to)
+                _ck_ok = _row_cols[1].checkbox(
+                    "可", key=f"mv_ok_{_cs_y}_{_cs_m}_{_i}_{_mv.person}_{_mv.frm}_{_mv.to}",
+                    value=False,
+                )
+                _ck_ng = _row_cols[2].checkbox(
+                    "不可", key=f"mv_ng_{_cs_y}_{_cs_m}_{_i}_{_mv.person}_{_mv.frm}_{_mv.to}",
+                    value=False,
+                )
+                _row_cols[3].markdown(
+                    f"<span style='color:#888;font-size:12px;'>{_mv.reason}</span>",
+                    unsafe_allow_html=True,
+                )
+                if _ck_ok and _key_tup not in _confirmed:
+                    from datetime import datetime as _dt
+                    _confirmed[_key_tup] = _dt.now().strftime("%Y-%m-%d %H:%M")
+                    st.session_state[_cf_key] = _confirmed
+                    st.rerun()
+                if _ck_ng and _key_tup not in _blacklist:
+                    _blacklist.add(_key_tup)
+                    st.session_state[_bl_key] = _blacklist
+                    st.rerun()
 
-    _render_shift_calendar(_proposed_by_day, ns=f"prop_{_cs_y}_{_cs_m}",
-                           highlight_changes=_changed_days)
-    st.caption(
-        "📝 変更希望シフト　|　黄色背景＝移動で追加された人　"
-        "💣 6名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
-    )
+            _bl_size = len(_blacklist)
+            if _bl_size > 0:
+                if st.button(f"🔄 不可リスト ({_bl_size}件) をリセット", key=f"bl_reset_{_cs_y}_{_cs_m}"):
+                    st.session_state[_bl_key] = set()
+                    st.rerun()
+
+        _render_shift_calendar(_proposed_by_day, ns=f"prop_{_cs_y}_{_cs_m}",
+                               highlight_changes=_changed_days)
+        st.caption(
+            "📝 変更希望シフト　|　黄色背景＝移動で追加された人　"
+            "💣 6名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
+        )
+
+        # ── 「可」 にした履歴 (反映予定/反映済の記録) ──
+        if _confirmed:
+            st.markdown("---")
+            st.markdown(
+                "<div style='font-size:15px;font-weight:700;padding:8px 0 4px;'>"
+                f"✅ 「可」 にした移動の記録 ({len(_confirmed)}件)"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            _rows_html = "".join(
+                f"<tr>"
+                f"<td style='padding:3px 10px;border-bottom:1px solid #eee;'>{i+1}</td>"
+                f"<td style='padding:3px 10px;border-bottom:1px solid #eee;'>{p}</td>"
+                f"<td style='padding:3px 10px;border-bottom:1px solid #eee;'>{_cs_m}/{f} → {_cs_m}/{t}</td>"
+                f"<td style='padding:3px 10px;border-bottom:1px solid #eee;color:#888;font-size:11px;'>{ts}</td>"
+                f"</tr>"
+                for i, ((p, f, t), ts) in enumerate(sorted(_confirmed.items(), key=lambda kv: kv[1]))
+            )
+            st.markdown(
+                "<table style='font-size:13px;border-collapse:collapse;width:100%;max-width:600px;'>"
+                "<thead><tr style='background:#f0f0f0;'>"
+                "<th style='padding:5px 10px;text-align:left;'>#</th>"
+                "<th style='padding:5px 10px;text-align:left;'>対象</th>"
+                "<th style='padding:5px 10px;text-align:left;'>移動</th>"
+                "<th style='padding:5px 10px;text-align:left;'>チェック日時</th>"
+                "</tr></thead>"
+                f"<tbody>{_rows_html}</tbody></table>",
+                unsafe_allow_html=True,
+            )
+            if st.button(f"🗑 履歴をクリア", key=f"cf_clear_{_cs_y}_{_cs_m}"):
+                st.session_state[_cf_key] = {}
+                st.rerun()
 
     st.stop()
 

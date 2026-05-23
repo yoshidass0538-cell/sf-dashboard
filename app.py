@@ -5251,59 +5251,121 @@ if selected_key == "cs_shift_calendar":
         f"📆 {_cs_y}年{_cs_m}月　CS促進全員シフト　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
     )
 
-    # ── 2026年6月 専用: 変更希望シフトを下に併記 ──
-    if _cs_y == 2026 and _cs_m == 6:
-        # (氏名キー, 移動元日, 移動先日) — 前回までの可能分はSFに反映済み。残るのは未反映の提案のみ。
-        _PROPOSED_MOVES = [
-            ("吉本", 4, 1),     # 6/1 補強 (未反映) / 吉本 [2-4]3連→[2-3]2連
-            ("栗田", 2, 1),     # 6/1 補強 (未反映) / 栗田 [2-4]3連→[3-4]2連
-        ]
+    # ── 変更希望シフト（毎月自動表示）──
+    from shift_proposer import propose_moves as _propose_shift
 
-        def _apply_moves(src: dict, moves: list) -> tuple[dict, dict]:
-            import copy
-            res = {d: list(v) for d, v in src.items()}
-            changed = {}
-            for who, frm, to in moves:
-                pool = res.get(frm, [])
-                hit = next((t for t in pool if who in (t[0] or "")), None)
-                if not hit:
-                    continue
-                res[frm].remove(hit)
-                res.setdefault(to, []).append(hit)
-                changed.setdefault(to, set()).add(who)
-                changed.setdefault(frm, set())  # 移動元も記録（差分把握）
-            return res, changed
+    import calendar as _cs_cal2
+    _cs_last_day = _cs_cal2.monthrange(_cs_y, _cs_m)[1]
 
-        _proposed_by_day, _changed_days = _apply_moves(_by_day, _PROPOSED_MOVES)
+    # 各日の氏名リスト (時刻付きタプル → 氏名のみ)
+    _by_day_names = {d: [n for (n, _s, _e) in _by_day.get(d, [])] for d in range(1, _cs_last_day + 1)}
 
-        st.markdown("---")
-        st.markdown(
-            "<div style='font-size:18px;font-weight:700;padding:12px 0 4px;'>"
-            "📝 変更希望シフト（提案）"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        with st.expander("変更内容（全12件）を見る", expanded=False):
-            _move_rows = "".join(
-                f"<tr><td style='padding:2px 8px;'>{i+1}</td>"
-                f"<td style='padding:2px 8px;'>{w}</td>"
-                f"<td style='padding:2px 8px;'>6/{f} → 6/{t}</td></tr>"
-                for i, (w, f, t) in enumerate(_PROPOSED_MOVES)
-            )
-            st.markdown(
-                "<table style='font-size:12px;border-collapse:collapse;'>"
-                f"<thead><tr><th style='padding:2px 8px;border-bottom:1px solid #ccc;'>#</th>"
-                "<th style='padding:2px 8px;border-bottom:1px solid #ccc;'>対象</th>"
-                "<th style='padding:2px 8px;border-bottom:1px solid #ccc;'>移動</th></tr></thead>"
-                f"<tbody>{_move_rows}</tbody></table>",
-                unsafe_allow_html=True,
-            )
+    # blacklist / confirmed の session_state キー (月別に分ける)
+    _bl_key = f"shift_blacklist_{_cs_y}_{_cs_m}"
+    _cf_key = f"shift_confirmed_{_cs_y}_{_cs_m}"
+    _fb_key = f"shift_forbidden_{_cs_y}_{_cs_m}"
+    if _bl_key not in st.session_state:
+        st.session_state[_bl_key] = set()
+    if _cf_key not in st.session_state:
+        st.session_state[_cf_key] = set()
+    if _fb_key not in st.session_state:
+        # 6月限定の既知NG日(ユーザヒアリング済)。他月は空辞書からスタート。
+        if _cs_y == 2026 and _cs_m == 6:
+            st.session_state[_fb_key] = {
+                "原田": {19, 23, 25},
+                "佐々木": {15, 24, 30},
+                "堀田": {11},
+                "室谷": {1, 19},
+                "雨貝": {1, 7},
+                "葛西": {1},
+                "角田": {1, 14, 15},
+            }
+        else:
+            st.session_state[_fb_key] = {}
 
-        _render_shift_calendar(_proposed_by_day, ns="prop", highlight_changes=_changed_days)
+    _blacklist = st.session_state[_bl_key]
+    _confirmed = st.session_state[_cf_key]
+    _forbidden = st.session_state[_fb_key]
+
+    _all_moves = _propose_shift(_by_day_names, _cs_last_day,
+                                blacklist=_blacklist, confirmed=_confirmed,
+                                forbidden_days=_forbidden)
+
+    # 提案後のシフト state を作るためのヘルパー
+    def _apply_moves_local(src: dict, moves: list) -> tuple[dict, dict]:
+        res = {d: list(v) for d, v in src.items()}
+        changed = {}
+        for mv in moves:
+            who, frm, to = mv.person, mv.frm, mv.to
+            pool = res.get(frm, [])
+            hit = next((t for t in pool if who in (t[0] or "")), None)
+            if not hit:
+                continue
+            res[frm].remove(hit)
+            res.setdefault(to, []).append(hit)
+            changed.setdefault(to, set()).add(who)
+            changed.setdefault(frm, set())
+        return res, changed
+
+    _proposed_by_day, _changed_days = _apply_moves_local(_by_day, _all_moves)
+
+    st.markdown("---")
+    st.markdown(
+        "<div style='font-size:18px;font-weight:700;padding:12px 0 4px;'>"
+        "📝 変更希望シフト（自動提案）"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if not _all_moves:
+        st.info("制約を満たす自動提案は現時点でありません（既に最適化済みか、不可リストで全候補が除外されています）。")
+    else:
         st.caption(
-            "📝 変更希望シフト　|　黄色背景＝移動で追加された人　"
-            "💣 6名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
+            f"📋 {len(_all_moves)}件の候補。「不可」にチェックすると除外して再計算、"
+            "「可能」 はSF反映済 or 反映予定として一覧から消えます。"
         )
+        # ヘッダ
+        _hh = st.columns([3, 1.2, 1.2, 3])
+        _hh[0].markdown("**移動**")
+        _hh[1].markdown("**可能**")
+        _hh[2].markdown("**不可**")
+        _hh[3].markdown("**理由**")
+        for _i, _mv in enumerate(_all_moves):
+            _row_cols = st.columns([3, 1.2, 1.2, 3])
+            _row_cols[0].markdown(f"{_mv.person}　6/{_mv.frm} → 6/{_mv.to}")
+            _key_tup = (_mv.person, _mv.frm, _mv.to)
+            _ck_ok = _row_cols[1].checkbox(
+                "可", key=f"mv_ok_{_cs_y}_{_cs_m}_{_i}_{_mv.person}_{_mv.frm}_{_mv.to}",
+                value=False,
+            )
+            _ck_ng = _row_cols[2].checkbox(
+                "不可", key=f"mv_ng_{_cs_y}_{_cs_m}_{_i}_{_mv.person}_{_mv.frm}_{_mv.to}",
+                value=False,
+            )
+            _row_cols[3].markdown(f"<span style='color:#888;font-size:12px;'>{_mv.reason}</span>",
+                                  unsafe_allow_html=True)
+            if _ck_ok and _key_tup not in _confirmed:
+                _confirmed.add(_key_tup)
+                st.session_state[_cf_key] = _confirmed
+                st.rerun()
+            if _ck_ng and _key_tup not in _blacklist:
+                _blacklist.add(_key_tup)
+                st.session_state[_bl_key] = _blacklist
+                st.rerun()
+
+        # 不可リストのリセットボタン
+        _bl_size = len(_blacklist)
+        if _bl_size > 0:
+            if st.button(f"🔄 不可リスト ({_bl_size}件) をリセット", key=f"bl_reset_{_cs_y}_{_cs_m}"):
+                st.session_state[_bl_key] = set()
+                st.rerun()
+
+    _render_shift_calendar(_proposed_by_day, ns=f"prop_{_cs_y}_{_cs_m}",
+                           highlight_changes=_changed_days)
+    st.caption(
+        "📝 変更希望シフト　|　黄色背景＝移動で追加された人　"
+        "💣 6名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
+    )
 
     st.stop()
 

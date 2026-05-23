@@ -5153,94 +5153,168 @@ if selected_key == "cs_shift_calendar":
         st.error(f"取得に失敗しました: {e}")
         st.stop()
 
-    # 曜日ヘッダー（月始まり）
-    _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]
-    _hcols = st.columns(7)
-    for _i, _wd in enumerate(_wd_labels):
-        _wd_color = "#4a90e2" if _i == 5 else ("#e74c3c" if _i == 6 else "#444")
-        _hcols[_i].markdown(
-            f"<div style='text-align:center;font-weight:700;color:{_wd_color};"
-            f"padding:6px 0;border-bottom:2px solid #ddd;'>{_wd}</div>",
-            unsafe_allow_html=True,
-        )
+    def _render_shift_calendar(by_day: dict, ns: str, highlight_changes: dict | None = None):
+        """カレンダー1枚をレンダリング。highlight_changes={day:set(name_key)} で移動先セル内の該当者を強調。"""
+        _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]
+        _hcols = st.columns(7)
+        for _i, _wd in enumerate(_wd_labels):
+            _wd_color = "#4a90e2" if _i == 5 else ("#e74c3c" if _i == 6 else "#444")
+            _hcols[_i].markdown(
+                f"<div style='text-align:center;font-weight:700;color:{_wd_color};"
+                f"padding:6px 0;border-bottom:2px solid #ddd;'>{_wd}</div>",
+                unsafe_allow_html=True,
+            )
 
-    _cs_cal.setfirstweekday(_cs_cal.MONDAY)
-    _weeks = _cs_cal.monthcalendar(_cs_y, _cs_m)
-    for _week in _weeks:
-        _cols = st.columns(7)
-        for _i, _day in enumerate(_week):
-            with _cols[_i]:
-                if _day == 0:
-                    st.markdown("<div style='min-height:90px;'></div>", unsafe_allow_html=True)
-                    continue
-                _d_obj = _cs_date(_cs_y, _cs_m, _day)
-                _is_past = _d_obj < _today_cs
-                _is_today = (_d_obj == _today_cs)
-                _is_sat = _i == 5
-                _is_sun = _i == 6
+        _cs_cal.setfirstweekday(_cs_cal.MONDAY)
+        _weeks = _cs_cal.monthcalendar(_cs_y, _cs_m)
+        for _week in _weeks:
+            _cols = st.columns(7)
+            for _i, _day in enumerate(_week):
+                with _cols[_i]:
+                    if _day == 0:
+                        st.markdown("<div style='min-height:90px;'></div>", unsafe_allow_html=True)
+                        continue
+                    _d_obj = _cs_date(_cs_y, _cs_m, _day)
+                    _is_past = _d_obj < _today_cs
+                    _is_today = (_d_obj == _today_cs)
+                    _is_sat = _i == 5
+                    _is_sun = _i == 6
 
-                if _is_today:
-                    _bg, _fg, _bd = "#fff3cd", "#664d03", "2px solid #f0c000"
-                elif _is_past:
-                    _bg, _fg, _bd = "#f5f5f5", "#aaa", "1px solid #e0e0e0"
-                elif _is_sat:
-                    _bg, _fg, _bd = "#e7f0fb", "#2c5fa0", "1px solid #c5d8ee"
-                elif _is_sun:
-                    _bg, _fg, _bd = "#fde8ec", "#a5364c", "1px solid #f0c5cf"
-                else:
-                    _bg, _fg, _bd = "#ffffff", "#222", "1px solid #d8dee5"
+                    if _is_today:
+                        _bg, _fg, _bd = "#fff3cd", "#664d03", "2px solid #f0c000"
+                    elif _is_past:
+                        _bg, _fg, _bd = "#f5f5f5", "#aaa", "1px solid #e0e0e0"
+                    elif _is_sat:
+                        _bg, _fg, _bd = "#e7f0fb", "#2c5fa0", "1px solid #c5d8ee"
+                    elif _is_sun:
+                        _bg, _fg, _bd = "#fde8ec", "#a5364c", "1px solid #f0c5cf"
+                    else:
+                        _bg, _fg, _bd = "#ffffff", "#222", "1px solid #d8dee5"
 
-                _list = _by_day.get(_day, [])
-                if _list:
-                    _txt_color = "#bbb" if _is_past else "#333"
-                    _time_color = "#aaa" if _is_past else "#888"
-                    _highlight_surnames = ("佐々木", "室谷", "原田", "堀田", "金澤")
-                    _red_surnames = ("佐々木", "堀田")
-                    def _is_hi(nm: str) -> bool:
-                        return any(s in (nm or "") for s in _highlight_surnames)
-                    def _is_red(nm: str) -> bool:
-                        return any(s in (nm or "") for s in _red_surnames)
-                    _lines = []
-                    for _name, _s, _e in sorted(
-                        _list,
-                        key=lambda t: (0 if _is_hi(t[0]) else 1, t[1], t[0]),
-                    ):
-                        _t = f"{_s}-{_e}" if _s and _e else (_s or _e)
-                        if _is_red(_name):
-                            _mark = "🔴🟡 "
-                        elif _is_hi(_name):
-                            _mark = "🟡 "
-                        else:
-                            _mark = ""
-                        _lines.append(
-                            f"<div style='font-size:11px;color:{_txt_color};line-height:1.4;text-align:left;'>"
-                            f"{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
+                    _list = by_day.get(_day, [])
+                    _changed_keys = (highlight_changes or {}).get(_day, set())
+                    if _list:
+                        _txt_color = "#bbb" if _is_past else "#333"
+                        _time_color = "#aaa" if _is_past else "#888"
+                        _highlight_surnames = ("佐々木", "室谷", "原田", "堀田", "金澤")
+                        _red_surnames = ("佐々木", "堀田")
+                        def _is_hi(nm: str) -> bool:
+                            return any(s in (nm or "") for s in _highlight_surnames)
+                        def _is_red(nm: str) -> bool:
+                            return any(s in (nm or "") for s in _red_surnames)
+                        def _is_changed(nm: str) -> bool:
+                            return any(k in (nm or "") for k in _changed_keys)
+                        _lines = []
+                        for _name, _s, _e in sorted(
+                            _list,
+                            key=lambda t: (0 if _is_hi(t[0]) else 1, t[1], t[0]),
+                        ):
+                            _t = f"{_s}-{_e}" if _s and _e else (_s or _e)
+                            if _is_red(_name):
+                                _mark = "🔴🟡 "
+                            elif _is_hi(_name):
+                                _mark = "🟡 "
+                            else:
+                                _mark = ""
+                            _row_style = f"font-size:11px;color:{_txt_color};line-height:1.4;text-align:left;"
+                            if _is_changed(_name):
+                                _row_style += "background:#fff3b0;border-radius:3px;padding:0 2px;"
+                            _lines.append(
+                                f"<div style='{_row_style}'>"
+                                f"{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
+                            )
+                        _names_html = "".join(_lines)
+                        _bomb = "💣 " if len(_list) <= 6 else ""
+                        _cnt_html = (
+                            f"<div style='font-size:13px;font-weight:700;margin-top:2px;"
+                            f"color:{'#888' if _is_past else '#1565c0'};'>"
+                            f"{_bomb}{len(_list)}<span style='font-size:10px;'>名</span></div>"
                         )
-                    _names_html = "".join(_lines)
-                    _bomb = "💣 " if len(_list) <= 6 else ""
-                    _cnt_html = (
-                        f"<div style='font-size:13px;font-weight:700;margin-top:2px;"
-                        f"color:{'#888' if _is_past else '#1565c0'};'>"
-                        f"{_bomb}{len(_list)}<span style='font-size:10px;'>名</span></div>"
-                    )
-                else:
-                    _names_html = ""
-                    _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:6px;'>—</div>"
+                    else:
+                        _names_html = ""
+                        _cnt_html = "<div style='font-size:11px;color:#ccc;margin-top:6px;'>—</div>"
 
-                st.markdown(
-                    f"<div style='background:{_bg};color:{_fg};border:{_bd};"
-                    f"border-radius:8px;padding:6px 6px;min-height:120px;text-align:center;"
-                    f"margin-bottom:4px;overflow-wrap:break-word;'>"
-                    f"<div style='font-size:14px;font-weight:700;'>{_day}</div>"
-                    f"{_cnt_html}"
-                    f"<div style='margin-top:4px;'>{_names_html}</div>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
+                    st.markdown(
+                        f"<div style='background:{_bg};color:{_fg};border:{_bd};"
+                        f"border-radius:8px;padding:6px 6px;min-height:120px;text-align:center;"
+                        f"margin-bottom:4px;overflow-wrap:break-word;'>"
+                        f"<div style='font-size:14px;font-weight:700;'>{_day}</div>"
+                        f"{_cnt_html}"
+                        f"<div style='margin-top:4px;'>{_names_html}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+    _render_shift_calendar(_by_day, ns="cur")
 
     st.caption(
         f"📆 {_cs_y}年{_cs_m}月　CS促進全員シフト　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
     )
+
+    # ── 2026年6月 専用: 変更希望シフトを下に併記 ──
+    if _cs_y == 2026 and _cs_m == 6:
+        # (氏名キー, 移動元日, 移動先日)
+        _PROPOSED_MOVES = [
+            ("室谷", 4, 30),
+            ("堀田", 9, 30),
+            ("原田", 28, 30),
+            ("室谷", 3, 1),
+            ("金澤", 22, 20),
+            ("原田", 11, 10),
+            ("室谷", 16, 19),
+            ("金澤", 18, 17),
+            ("堀田", 22, 11),
+            ("堀田", 16, 15),
+            ("原田", 23, 25),
+            ("金澤", 29, 23),
+        ]
+
+        def _apply_moves(src: dict, moves: list) -> tuple[dict, dict]:
+            import copy
+            res = {d: list(v) for d, v in src.items()}
+            changed = {}
+            for who, frm, to in moves:
+                pool = res.get(frm, [])
+                hit = next((t for t in pool if who in (t[0] or "")), None)
+                if not hit:
+                    continue
+                res[frm].remove(hit)
+                res.setdefault(to, []).append(hit)
+                changed.setdefault(to, set()).add(who)
+                changed.setdefault(frm, set())  # 移動元も記録（差分把握）
+            return res, changed
+
+        _proposed_by_day, _changed_days = _apply_moves(_by_day, _PROPOSED_MOVES)
+
+        st.markdown("---")
+        st.markdown(
+            "<div style='font-size:18px;font-weight:700;padding:12px 0 4px;'>"
+            "📝 変更希望シフト（提案）"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        with st.expander("変更内容（全12件）を見る", expanded=False):
+            _move_rows = "".join(
+                f"<tr><td style='padding:2px 8px;'>{i+1}</td>"
+                f"<td style='padding:2px 8px;'>{w}</td>"
+                f"<td style='padding:2px 8px;'>6/{f} → 6/{t}</td></tr>"
+                for i, (w, f, t) in enumerate(_PROPOSED_MOVES)
+            )
+            st.markdown(
+                "<table style='font-size:12px;border-collapse:collapse;'>"
+                f"<thead><tr><th style='padding:2px 8px;border-bottom:1px solid #ccc;'>#</th>"
+                "<th style='padding:2px 8px;border-bottom:1px solid #ccc;'>対象</th>"
+                "<th style='padding:2px 8px;border-bottom:1px solid #ccc;'>移動</th></tr></thead>"
+                f"<tbody>{_move_rows}</tbody></table>",
+                unsafe_allow_html=True,
+            )
+
+        _render_shift_calendar(_proposed_by_day, ns="prop", highlight_changes=_changed_days)
+        st.caption(
+            "📝 変更希望シフト　|　黄色背景＝移動で追加された人　"
+            "💣 6名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
+        )
+
     st.stop()
 
 

@@ -5217,10 +5217,11 @@ if selected_key == "cs_shift_calendar":
                             f"{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
                         )
                     _names_html = "".join(_lines)
+                    _bomb = "💣 " if len(_list) <= 6 else ""
                     _cnt_html = (
                         f"<div style='font-size:13px;font-weight:700;margin-top:2px;"
                         f"color:{'#888' if _is_past else '#1565c0'};'>"
-                        f"{len(_list)}<span style='font-size:10px;'>名</span></div>"
+                        f"{_bomb}{len(_list)}<span style='font-size:10px;'>名</span></div>"
                     )
                 else:
                     _names_html = ""

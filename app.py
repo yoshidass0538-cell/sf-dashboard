@@ -5256,6 +5256,7 @@ if selected_key == "cs_shift_calendar":
         # (氏名キー, 移動元日, 移動先日) — 前回までの可能分はSFに反映済み。残るのは未反映の提案のみ。
         _PROPOSED_MOVES = [
             ("吉本", 4, 1),     # 6/1 補強 (未反映) / 吉本 [2-4]3連→[2-3]2連
+            ("栗田", 2, 1),     # 6/1 補強 (未反映) / 栗田 [2-4]3連→[3-4]2連
         ]
 
         def _apply_moves(src: dict, moves: list) -> tuple[dict, dict]:

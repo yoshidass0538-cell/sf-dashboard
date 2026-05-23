@@ -97,6 +97,17 @@ def _can_move(by_day, person_days, full_name, who_key, frm, to, last_day, forbid
         return False
     if _long_run_count(new) > _long_run_count(old):
         return False
+    # 新規発生する連勤の最大長が、消失する連勤の最大長を超えないこと
+    # 例: [5連]が消えて[6連]が新発生 はNG
+    old_runs_set = {tuple(r) for r in _runs(old)}
+    new_runs_set = {tuple(r) for r in _runs(new)}
+    added = new_runs_set - old_runs_set
+    removed = old_runs_set - new_runs_set
+    if added:
+        added_max = max(len(r) for r in added)
+        removed_max = max((len(r) for r in removed), default=0)
+        if added_max > removed_max:
+            return False
     # 制約: frm を抜くことで新規違反を起こさない
     new_frm_names = [n for n in by_day.get(frm, []) if n != full_name]
     if not _violates_3cond(by_day.get(frm, [])) and _violates_3cond(new_frm_names):
@@ -190,32 +201,41 @@ def propose_moves(by_day: dict[int, list[str]], last_day: int,
     def cur_counts():
         return {d: len(set(work.get(d, []))) for d in range(1, last_day + 1)}
 
-    for _ in range(50):  # 上限ループ
+    move_count = defaultdict(int)  # 同一人物の提案上限制御
+    PER_PERSON_LIMIT = 2
+    for m in moves:  # 既に提案済(条件解消で)の人をカウント
+        move_count[m.person] += 1
+
+    for _ in range(50):
         cnt = cur_counts()
         avg = sum(cnt.values()) / last_day
-        over = [d for d, c in cnt.items() if c >= avg + 1.5]
-        under = [d for d, c in cnt.items() if c <= avg - 1.5]
+        over = [d for d, c in cnt.items() if c >= avg + 1.0]
+        under = [d for d, c in cnt.items() if c <= avg - 1.0]
         if not over or not under:
             break
         over.sort(key=lambda d: -cnt[d])
         under.sort(key=lambda d: cnt[d])
         moved = False
         for od in over:
-            for nm in list(work.get(od, [])):
+            # 動かし回数の少ない人を優先
+            members = sorted(list(work.get(od, [])), key=lambda nm: move_count[_short(nm)])
+            for nm in members:
                 who_short = _short(nm)
-                # 3条件キー or 2条件キーの人は注意
+                if move_count[who_short] >= PER_PERSON_LIMIT:
+                    continue
                 for ud in under:
-                    if cnt[ud] >= avg - 0.5:
+                    if cnt[ud] >= avg:
                         continue
-                    # 制約悪化チェック
                     test_from = [n for n in work[od] if n != nm]
                     if _short(nm) in THREE_TEAM and _violates_3cond(test_from) and not _violates_3cond(work[od]):
                         continue
                     if _short(nm) in TWO_TEAM and _violates_2cond(test_from) and not _violates_2cond(work[od]):
                         continue
-                    if try_move(who_short, od, ud, f"人数調整 6/{od}→6/{ud}"):
+                    reason = f"人数調整 6/{od}({cnt[od]}名) → 6/{ud}({cnt[ud]}名)"
+                    if try_move(who_short, od, ud, reason):
                         cnt[od] -= 1
                         cnt[ud] += 1
+                        move_count[who_short] += 1
                         moved = True
                         break
                 if moved:
@@ -225,34 +245,7 @@ def propose_moves(by_day: dict[int, list[str]], last_day: int,
         if not moved:
             break
 
-    # 4. 5連勤以上の塊を分割 (1人1回まで)
-    moved_persons_streak = set()
-    for _ in range(20):
-        moved = False
-        for full in list(pd.keys()):
-            short_name = _short(full)
-            if short_name in moved_persons_streak:
-                continue
-            days = sorted(pd[full])
-            long = [r for r in _runs(days) if len(r) >= 5]
-            if not long:
-                continue
-            for run in long:
-                src = run[len(run)//2]
-                holidays = [d for d in range(1, last_day+1) if d not in pd[full]]
-                placed = False
-                for tgt in holidays:
-                    if try_move(short_name, src, tgt, f"連勤短縮 {short_name}"):
-                        moved_persons_streak.add(short_name)
-                        moved = True
-                        placed = True
-                        break
-                if placed:
-                    break
-            if moved:
-                break
-        if not moved:
-            break
+    # ※連勤短縮のみの Move は提案しない (ユーザ方針: 人数調整に伴う連勤緩和のみ許容)
 
     # confirmed 済みの move は提案から除外
     return [m for m in moves if (m.person, m.frm, m.to) not in confirmed]

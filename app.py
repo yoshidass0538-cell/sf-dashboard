@@ -5427,10 +5427,14 @@ if selected_key == "cs_shift_calendar":
             )
             import pandas as _fb_pd
             _fb_wd_lbl = ["月", "火", "水", "木", "金", "土", "日"]
-            _fb_day_cols = []
-            for _d in range(1, _cs_last_day + 1):
-                _wd = _fb_wd_lbl[_cs_date(_cs_y, _cs_m, _d).weekday()]
-                _fb_day_cols.append(f"{_d} {_wd}")
+            # DataFrame の列名は ASCII で一意 (d1, d2, ...) にし、
+            # AgGrid 側で headerName="日\n曜" を別途指定（同一日の列名衝突を回避＋多行表示）
+            _fb_day_cols = [f"d{_d}" for _d in range(1, _cs_last_day + 1)]
+            _fb_header_labels = {
+                _fb_day_cols[_d - 1]:
+                    f"{_d}\n{_fb_wd_lbl[_cs_date(_cs_y, _cs_m, _d).weekday()]}"
+                for _d in range(1, _cs_last_day + 1)
+            }
 
             _fb_rows = []
             for _full in _fb_all_names:
@@ -5485,14 +5489,18 @@ if selected_key == "cs_shift_calendar":
                 elif _wd_idx == 6:
                     _hdr_cls = "fb-hdr-sun"
                 _fb_gb.configure_column(
-                    _col, width=52, minWidth=52, suppressSizeToFit=True,
+                    _col,
+                    headerName=_fb_header_labels[_col],
+                    width=60, minWidth=60, suppressSizeToFit=True,
                     headerClass=_hdr_cls,
+                    wrapHeaderText=True,
+                    autoHeaderHeight=True,
                 )
             _fb_gb.configure_grid_options(
                 rowDragManaged=True,
                 animateRows=True,
                 rowHeight=36,
-                headerHeight=44,
+                headerHeight=60,
                 suppressMovableColumns=True,
             )
 
@@ -5500,8 +5508,21 @@ if selected_key == "cs_shift_calendar":
                 ".ag-header-cell": {
                     "background-color": "#555", "color": "#fff",
                     "font-weight": "bold", "text-align": "center",
+                    "padding": "2px 0 !important",
                 },
-                ".ag-header-cell-label": {"justify-content": "center"},
+                ".ag-header-cell-label": {
+                    "justify-content": "center",
+                    "white-space": "pre-wrap !important",
+                    "text-align": "center",
+                    "line-height": "1.15",
+                    "font-size": "13px",
+                },
+                ".ag-header-cell-text": {
+                    "white-space": "pre-wrap !important",
+                    "text-align": "center",
+                    "overflow": "visible !important",
+                    "text-overflow": "clip !important",
+                },
                 ".fb-hdr-sat": {
                     "background-color": "#4A6FA5 !important",
                     "color": "#fff !important",

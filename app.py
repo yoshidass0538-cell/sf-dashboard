@@ -5251,6 +5251,9 @@ if selected_key == "cs_shift_calendar":
         get_forbidden as _shift_get_forbidden,
         save_forbidden as _shift_save_forbidden,
         clear_forbidden_cache as _shift_clear_forbidden_cache,
+        get_staff_order as _shift_get_staff_order,
+        save_staff_order as _shift_save_staff_order,
+        merge_staff_order as _shift_merge_staff_order,
     )
 
     import calendar as _cs_cal2
@@ -5396,14 +5399,51 @@ if selected_key == "cs_shift_calendar":
             "変更は即時保存・全ユーザーで共有されます。"
         )
 
-        # その月のシフトに登場するスタッフ全員を抽出（出現順）
+        # その月のシフトに登場するスタッフ全員を抽出（初期は出現順）
         _fb_seen_set: set[str] = set()
-        _fb_all_names: list[str] = []
+        _fb_current_staff: list[str] = []
         for _d in range(1, _cs_last_day + 1):
             for _nm, _, _ in _by_day.get(_d, []):
                 if _nm and _nm not in _fb_seen_set:
                     _fb_seen_set.add(_nm)
-                    _fb_all_names.append(_nm)
+                    _fb_current_staff.append(_nm)
+
+        # 保存済み順序とマージ（保存順優先・新顔は末尾）
+        try:
+            _fb_saved_order = _shift_get_staff_order()
+        except Exception:
+            _fb_saved_order = []
+        _fb_all_names = _shift_merge_staff_order(_fb_saved_order, _fb_current_staff)
+
+        # --- 🔀 スタッフ並び替え（トグル：sort_itemsはexpander非対応） ---
+        if "shift_fb_sort_open" not in st.session_state:
+            st.session_state["shift_fb_sort_open"] = False
+        _sort_arrow = "▼" if st.session_state["shift_fb_sort_open"] else "▶"
+        if st.button(
+            f"{_sort_arrow}  🔀 スタッフ並び替え",
+            key="toggle_shift_fb_sort",
+            use_container_width=False,
+        ):
+            st.session_state["shift_fb_sort_open"] = not st.session_state["shift_fb_sort_open"]
+            st.rerun()
+        if st.session_state["shift_fb_sort_open"]:
+            st.caption("ドラッグ＆ドロップで並び替え後、「💾 並び順を保存」で全ユーザーに反映されます。")
+            _sort_sig = "_".join(_fb_all_names)
+            _fb_new_order = sort_items(
+                _fb_all_names,
+                direction="vertical",
+                key=f"shift_fb_sort_{_sort_sig}",
+            )
+            if st.button("💾 並び順を保存", key="shift_fb_save_order", type="primary"):
+                try:
+                    _shift_save_staff_order(_fb_new_order)
+                    st.toast("スタッフ並び順を保存しました", icon="✅")
+                    st.session_state["shift_fb_sort_open"] = False
+                    st.rerun()
+                except Exception as _ord_e:
+                    st.error(f"並び順の保存に失敗しました: {_ord_e}")
+            # 編集中はテーブルも仮の新順で表示
+            _fb_all_names = _fb_new_order
 
         def _fb_last_key(full: str) -> str:
             """姓キーを抽出: 室谷 慧 → 室谷 / 佐々木 彩乃 → 佐々木"""

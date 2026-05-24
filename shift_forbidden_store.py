@@ -19,6 +19,7 @@ from talk_template_store import (
 
 WORKSHEET_NAME = "shift_forbidden_data"
 CELL = "A1"
+STAFF_ORDER_CELL = "A2"
 
 
 def _get_ws():
@@ -41,9 +42,12 @@ def _shared_forbidden_cache() -> dict:
     """
     ws = _get_ws()
     raw = ws.acell(CELL).value
-    if raw:
-        return {"data": json.loads(raw)}
-    return {"data": {}}
+    order_raw = ws.acell(STAFF_ORDER_CELL).value
+    data = json.loads(raw) if raw else {}
+    order = json.loads(order_raw) if order_raw else []
+    if not isinstance(order, list):
+        order = []
+    return {"data": data, "staff_order": [str(x) for x in order]}
 
 
 def _month_key(year: int, month: int) -> str:
@@ -70,6 +74,40 @@ def save_forbidden(year: int, month: int, data: dict[str, set[int]]) -> None:
     ws = _get_ws()
     ws.update_acell(CELL, json.dumps(store, ensure_ascii=False))
     cache["data"] = store
+
+
+def get_staff_order() -> list[str]:
+    """保存済みのスタッフ並び順を返す（無ければ空リスト）。"""
+    cache = _shared_forbidden_cache()
+    return list(cache.get("staff_order", []))
+
+
+def save_staff_order(order: list[str]) -> None:
+    """スタッフ並び順を保存。失敗時は例外を伝播。"""
+    cache = _shared_forbidden_cache()
+    clean = [str(x).strip() for x in order if str(x).strip()]
+    # 重複除去（先勝ち）
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for n in clean:
+        if n not in seen:
+            seen.add(n)
+            uniq.append(n)
+    ws = _get_ws()
+    ws.update_acell(STAFF_ORDER_CELL, json.dumps(uniq, ensure_ascii=False))
+    cache["staff_order"] = uniq
+
+
+def merge_staff_order(saved_order: list[str], current_staff: list[str]) -> list[str]:
+    """保存済み順を current_staff で絞り、未掲載の人を末尾に追加した一覧を返す。"""
+    cur_set = set(current_staff)
+    out: list[str] = [n for n in saved_order if n in cur_set]
+    seen = set(out)
+    for n in current_staff:
+        if n not in seen:
+            out.append(n)
+            seen.add(n)
+    return out
 
 
 def clear_forbidden_cache():

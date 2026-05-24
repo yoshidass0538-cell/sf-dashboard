@@ -5415,36 +5415,6 @@ if selected_key == "cs_shift_calendar":
             _fb_saved_order = []
         _fb_all_names = _shift_merge_staff_order(_fb_saved_order, _fb_current_staff)
 
-        # --- 🔀 スタッフ並び替え（トグル：sort_itemsはexpander非対応） ---
-        if "shift_fb_sort_open" not in st.session_state:
-            st.session_state["shift_fb_sort_open"] = False
-        _sort_arrow = "▼" if st.session_state["shift_fb_sort_open"] else "▶"
-        if st.button(
-            f"{_sort_arrow}  🔀 スタッフ並び替え",
-            key="toggle_shift_fb_sort",
-            use_container_width=False,
-        ):
-            st.session_state["shift_fb_sort_open"] = not st.session_state["shift_fb_sort_open"]
-            st.rerun()
-        if st.session_state["shift_fb_sort_open"]:
-            st.caption("ドラッグ＆ドロップで並び替え後、「💾 並び順を保存」で全ユーザーに反映されます。")
-            _sort_sig = "_".join(_fb_all_names)
-            _fb_new_order = sort_items(
-                _fb_all_names,
-                direction="vertical",
-                key=f"shift_fb_sort_{_sort_sig}",
-            )
-            if st.button("💾 並び順を保存", key="shift_fb_save_order", type="primary"):
-                try:
-                    _shift_save_staff_order(_fb_new_order)
-                    st.toast("スタッフ並び順を保存しました", icon="✅")
-                    st.session_state["shift_fb_sort_open"] = False
-                    st.rerun()
-                except Exception as _ord_e:
-                    st.error(f"並び順の保存に失敗しました: {_ord_e}")
-            # 編集中はテーブルも仮の新順で表示
-            _fb_all_names = _fb_new_order
-
         def _fb_last_key(full: str) -> str:
             """姓キーを抽出: 室谷 慧 → 室谷 / 佐々木 彩乃 → 佐々木"""
             return (full or "").split(" ")[0].split("　")[0].strip()
@@ -5452,6 +5422,9 @@ if selected_key == "cs_shift_calendar":
         if not _fb_all_names:
             st.info("当月のシフトデータが空のため、変更不可日テーブルを表示できません。")
         else:
+            st.caption(
+                "💡 行先頭の ⋮⋮ ハンドルをドラッグするとスタッフの並び替えができます。"
+            )
             import pandas as _fb_pd
             _fb_wd_lbl = ["月", "火", "水", "木", "金", "土", "日"]
             _fb_day_cols = []
@@ -5465,50 +5438,134 @@ if selected_key == "cs_shift_calendar":
                 _ng = _forbidden.get(_key, set())
                 _row = {"スタッフ": _full}
                 for _d in range(1, _cs_last_day + 1):
-                    _row[_fb_day_cols[_d - 1]] = (_d in _ng)
+                    _row[_fb_day_cols[_d - 1]] = bool(_d in _ng)
                 _fb_rows.append(_row)
             _df_fb = _fb_pd.DataFrame(_fb_rows)
 
-            _fb_editor_key = f"shift_forbidden_editor_{_cs_y}_{_cs_m}"
-            _fb_col_cfg = {
-                "スタッフ": st.column_config.TextColumn("スタッフ", disabled=True, width="small"),
+            # チェックボックスレンダラー
+            _fb_cb_renderer = JsCode("""
+            class FbCb{
+                init(p){
+                    this.p=p;
+                    this.g=document.createElement('input');
+                    this.g.type='checkbox';
+                    this.g.checked=p.value===true;
+                    this.g.style.cursor='pointer';
+                    this.g.style.width='18px';
+                    this.g.style.height='18px';
+                    this.h=e=>{p.node.setDataValue(p.column.colId,e.target.checked);};
+                    this.g.addEventListener('click',this.h);
+                }
+                getGui(){return this.g;}
+                refresh(p){this.g.checked=p.value===true;return true;}
+                destroy(){this.g.removeEventListener('click',this.h);}
             }
-            for _c in _fb_day_cols:
-                _fb_col_cfg[_c] = st.column_config.CheckboxColumn(_c, width="small")
+            """)
 
-            _fb_edited = st.data_editor(
-                _df_fb,
-                key=_fb_editor_key,
-                hide_index=True,
-                column_config=_fb_col_cfg,
-                use_container_width=True,
+            _fb_gb = GridOptionsBuilder.from_dataframe(_df_fb)
+            _fb_gb.configure_default_column(
+                resizable=False, sortable=False, filter=False,
+                editable=True, cellRenderer=_fb_cb_renderer,
+                cellStyle={"display": "flex", "alignItems": "center", "justifyContent": "center"},
+            )
+            _fb_gb.configure_column(
+                "スタッフ",
+                rowDrag=True, pinned="left", editable=False, cellRenderer=None,
+                width=160, minWidth=140, suppressSizeToFit=True,
+                cellStyle={"display": "flex", "alignItems": "center",
+                           "justifyContent": "flex-start", "fontWeight": "bold"},
+            )
+            # 土日ヘッダーに色を付ける
+            for _d in range(1, _cs_last_day + 1):
+                _col = _fb_day_cols[_d - 1]
+                _wd_idx = _cs_date(_cs_y, _cs_m, _d).weekday()
+                _hdr_cls = None
+                if _wd_idx == 5:
+                    _hdr_cls = "fb-hdr-sat"
+                elif _wd_idx == 6:
+                    _hdr_cls = "fb-hdr-sun"
+                _fb_gb.configure_column(
+                    _col, width=52, minWidth=52, suppressSizeToFit=True,
+                    headerClass=_hdr_cls,
+                )
+            _fb_gb.configure_grid_options(
+                rowDragManaged=True,
+                animateRows=True,
+                rowHeight=36,
+                headerHeight=44,
+                suppressMovableColumns=True,
             )
 
-            def _fb_df_to_dict(df) -> dict[str, set[int]]:
-                out: dict[str, set[int]] = {}
-                for _, _r in df.iterrows():
-                    _k = _fb_last_key(_r["スタッフ"])
+            _fb_css = {
+                ".ag-header-cell": {
+                    "background-color": "#555", "color": "#fff",
+                    "font-weight": "bold", "text-align": "center",
+                },
+                ".ag-header-cell-label": {"justify-content": "center"},
+                ".fb-hdr-sat": {
+                    "background-color": "#4A6FA5 !important",
+                    "color": "#fff !important",
+                },
+                ".fb-hdr-sun": {
+                    "background-color": "#C0392B !important",
+                    "color": "#fff !important",
+                },
+                ".ag-row-odd": {"background-color": "#ffffff"},
+                ".ag-row-even": {"background-color": "#f7f9fc"},
+                ".ag-row-dragging": {"background-color": "#fff3b0 !important"},
+            }
+
+            _fb_grid_key = f"shift_fb_aggrid_{_cs_y}_{_cs_m}"
+            _fb_grid = AgGrid(
+                _df_fb,
+                gridOptions=_fb_gb.build(),
+                height=max(160, 60 + 36 * len(_df_fb)),
+                theme="balham",
+                allow_unsafe_jscode=True,
+                custom_css=_fb_css,
+                update_mode="MODEL_CHANGED",
+                key=_fb_grid_key,
+            )
+
+            def _fb_df_to_dict(_df) -> dict[str, set[int]]:
+                _out: dict[str, set[int]] = {}
+                for _, _r in _df.iterrows():
+                    _k = _fb_last_key(str(_r["スタッフ"]))
                     if not _k:
                         continue
                     for _d in range(1, _cs_last_day + 1):
                         if bool(_r[_fb_day_cols[_d - 1]]):
-                            out.setdefault(_k, set()).add(_d)
-                return out
+                            _out.setdefault(_k, set()).add(_d)
+                return _out
 
-            _fb_new = _fb_df_to_dict(_fb_edited)
-            # 同一姓が複数人いる場合、_forbidden には1キーしか入らないので
-            # 比較は新規ステートのキー集合に対して同等性を見る
-            _fb_old = {k: set(v) for k, v in _forbidden.items() if v}
-            if _fb_new != _fb_old:
-                try:
-                    _shift_save_forbidden(_cs_y, _cs_m, _fb_new)
-                    # data_editor の差分が残ると次回rerunで再保存ループになるのでキーを破棄
-                    if _fb_editor_key in st.session_state:
-                        del st.session_state[_fb_editor_key]
-                    st.toast("変更不可日を保存しました", icon="✅")
+            if _fb_grid and _fb_grid.data is not None:
+                _fb_after = _fb_grid.data
+                # 並び順の差分
+                _new_order = [str(n) for n in _fb_after["スタッフ"].tolist()]
+                _order_changed = (_new_order != _fb_all_names)
+                # チェック状態の差分
+                _fb_new = _fb_df_to_dict(_fb_after)
+                _fb_old = {k: set(v) for k, v in _forbidden.items() if v}
+                _state_changed = (_fb_new != _fb_old)
+
+                if _order_changed:
+                    try:
+                        _shift_save_staff_order(_new_order)
+                    except Exception as _ord_e:
+                        st.error(f"並び順の保存に失敗しました: {_ord_e}")
+                        _order_changed = False
+                if _state_changed:
+                    try:
+                        _shift_save_forbidden(_cs_y, _cs_m, _fb_new)
+                    except Exception as _save_e:
+                        st.error(f"変更不可日の保存に失敗しました: {_save_e}")
+                        _state_changed = False
+
+                if _order_changed or _state_changed:
+                    if _fb_grid_key in st.session_state:
+                        del st.session_state[_fb_grid_key]
+                    st.toast("保存しました", icon="✅")
                     st.rerun()
-                except Exception as _save_e:
-                    st.error(f"保存に失敗しました: {_save_e}")
 
         # ── 「可」 にした履歴 (反映予定/反映済の記録) ──
         if _confirmed:

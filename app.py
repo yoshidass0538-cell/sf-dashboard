@@ -5247,6 +5247,11 @@ if selected_key == "cs_shift_calendar":
 
     # ── 変更希望シフト（毎月自動表示）──
     from shift_proposer import propose_moves as _propose_shift
+    from shift_forbidden_store import (
+        get_forbidden as _shift_get_forbidden,
+        save_forbidden as _shift_save_forbidden,
+        clear_forbidden_cache as _shift_clear_forbidden_cache,
+    )
 
     import calendar as _cs_cal2
     _cs_last_day = _cs_cal2.monthrange(_cs_y, _cs_m)[1]
@@ -5257,7 +5262,6 @@ if selected_key == "cs_shift_calendar":
     # blacklist / confirmed の session_state キー (月別に分ける)
     _bl_key = f"shift_blacklist_{_cs_y}_{_cs_m}"
     _cf_key = f"shift_confirmed_{_cs_y}_{_cs_m}"
-    _fb_key = f"shift_forbidden_{_cs_y}_{_cs_m}"
     if _bl_key not in st.session_state:
         st.session_state[_bl_key] = set()
     if _cf_key not in st.session_state:
@@ -5265,10 +5269,18 @@ if selected_key == "cs_shift_calendar":
     elif isinstance(st.session_state[_cf_key], set):
         # 旧形式(set)を辞書に変換
         st.session_state[_cf_key] = {k: "" for k in st.session_state[_cf_key]}
-    if _fb_key not in st.session_state:
-        # 6月限定の既知NG日(ユーザヒアリング済)。他月は空辞書からスタート。
-        if _cs_y == 2026 and _cs_m == 6:
-            st.session_state[_fb_key] = {
+
+    # 変更不可日: Google Sheets からロード（全ユーザー共有）
+    try:
+        _forbidden = _shift_get_forbidden(_cs_y, _cs_m)
+    except Exception as _e:
+        st.error(f"変更不可日データの読込に失敗しました: {_e}")
+        st.stop()
+
+    # 2026-06 既知NG日のシード（保存済データが無い場合のみ・一回限り）
+    if not _forbidden and _cs_y == 2026 and _cs_m == 6:
+        try:
+            _shift_save_forbidden(_cs_y, _cs_m, {
                 "原田": {19, 23, 25},
                 "佐々木": {15, 24, 30},
                 "堀田": {11},
@@ -5276,13 +5288,14 @@ if selected_key == "cs_shift_calendar":
                 "雨貝": {1, 7},
                 "葛西": {1},
                 "角田": {1, 14, 15},
-            }
-        else:
-            st.session_state[_fb_key] = {}
+            })
+            _shift_clear_forbidden_cache()
+            _forbidden = _shift_get_forbidden(_cs_y, _cs_m)
+        except Exception:
+            pass
 
     _blacklist = st.session_state[_bl_key]
     _confirmed = st.session_state[_cf_key]
-    _forbidden = st.session_state[_fb_key]
 
     _all_moves = _propose_shift(_by_day_names, _cs_last_day,
                                 blacklist=_blacklist, confirmed=_confirmed,
@@ -5369,6 +5382,93 @@ if selected_key == "cs_shift_calendar":
             "📝 変更希望シフト　|　黄色背景＝移動で追加された人　"
             "💣 6名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
         )
+
+        # ── 🚫 変更不可日（チェック＝この日への移動を禁止） ──
+        st.markdown("---")
+        st.markdown(
+            "<div style='font-size:15px;font-weight:700;padding:8px 0 4px;'>"
+            "🚫 変更不可日"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "各スタッフの「動かせない日」をチェックすると、その日への移動提案を除外します。"
+            "変更は即時保存・全ユーザーで共有されます。"
+        )
+
+        # その月のシフトに登場するスタッフ全員を抽出（出現順）
+        _fb_seen_set: set[str] = set()
+        _fb_all_names: list[str] = []
+        for _d in range(1, _cs_last_day + 1):
+            for _nm, _, _ in _by_day.get(_d, []):
+                if _nm and _nm not in _fb_seen_set:
+                    _fb_seen_set.add(_nm)
+                    _fb_all_names.append(_nm)
+
+        def _fb_last_key(full: str) -> str:
+            """姓キーを抽出: 室谷 慧 → 室谷 / 佐々木 彩乃 → 佐々木"""
+            return (full or "").split(" ")[0].split("　")[0].strip()
+
+        if not _fb_all_names:
+            st.info("当月のシフトデータが空のため、変更不可日テーブルを表示できません。")
+        else:
+            import pandas as _fb_pd
+            _fb_wd_lbl = ["月", "火", "水", "木", "金", "土", "日"]
+            _fb_day_cols = []
+            for _d in range(1, _cs_last_day + 1):
+                _wd = _fb_wd_lbl[_cs_date(_cs_y, _cs_m, _d).weekday()]
+                _fb_day_cols.append(f"{_d} {_wd}")
+
+            _fb_rows = []
+            for _full in _fb_all_names:
+                _key = _fb_last_key(_full)
+                _ng = _forbidden.get(_key, set())
+                _row = {"スタッフ": _full}
+                for _d in range(1, _cs_last_day + 1):
+                    _row[_fb_day_cols[_d - 1]] = (_d in _ng)
+                _fb_rows.append(_row)
+            _df_fb = _fb_pd.DataFrame(_fb_rows)
+
+            _fb_editor_key = f"shift_forbidden_editor_{_cs_y}_{_cs_m}"
+            _fb_col_cfg = {
+                "スタッフ": st.column_config.TextColumn("スタッフ", disabled=True, width="small"),
+            }
+            for _c in _fb_day_cols:
+                _fb_col_cfg[_c] = st.column_config.CheckboxColumn(_c, width="small")
+
+            _fb_edited = st.data_editor(
+                _df_fb,
+                key=_fb_editor_key,
+                hide_index=True,
+                column_config=_fb_col_cfg,
+                use_container_width=True,
+            )
+
+            def _fb_df_to_dict(df) -> dict[str, set[int]]:
+                out: dict[str, set[int]] = {}
+                for _, _r in df.iterrows():
+                    _k = _fb_last_key(_r["スタッフ"])
+                    if not _k:
+                        continue
+                    for _d in range(1, _cs_last_day + 1):
+                        if bool(_r[_fb_day_cols[_d - 1]]):
+                            out.setdefault(_k, set()).add(_d)
+                return out
+
+            _fb_new = _fb_df_to_dict(_fb_edited)
+            # 同一姓が複数人いる場合、_forbidden には1キーしか入らないので
+            # 比較は新規ステートのキー集合に対して同等性を見る
+            _fb_old = {k: set(v) for k, v in _forbidden.items() if v}
+            if _fb_new != _fb_old:
+                try:
+                    _shift_save_forbidden(_cs_y, _cs_m, _fb_new)
+                    # data_editor の差分が残ると次回rerunで再保存ループになるのでキーを破棄
+                    if _fb_editor_key in st.session_state:
+                        del st.session_state[_fb_editor_key]
+                    st.toast("変更不可日を保存しました", icon="✅")
+                    st.rerun()
+                except Exception as _save_e:
+                    st.error(f"保存に失敗しました: {_save_e}")
 
         # ── 「可」 にした履歴 (反映予定/反映済の記録) ──
         if _confirmed:

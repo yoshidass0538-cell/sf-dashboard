@@ -4118,7 +4118,13 @@ if selected_key == "orikaeshi_kensu":
                 cat = row["種別"]
                 for tc in check_time_cols:
                     key = f"{date_str}|{cat}|{tc}"
-                    val = bool(row[tc])
+                    # AgGridは値を文字列 "false" で返すことがあり bool("false")==True
+                    # となるため、文字列も明示的に判定する（チェック解除が保存されない不具合対策）
+                    _rawv = row[tc]
+                    if isinstance(_rawv, str):
+                        val = _rawv.strip().lower() in ("true", "1", "yes")
+                    else:
+                        val = bool(_rawv)
                     # 入力時に流した値（user_intent優先のcheck_df基準）と比較
                     expected = user_intent.get(key, checks.get(key, False))
                     if val != expected:

@@ -435,7 +435,8 @@ def _load_daily(metric_key: str, cache_day: str, v: int = 19) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=86400, show_spinner="開通前対応を集計中...")
-def _load_kaitsu_mae_taiou(cache_day: str):
+def _load_kaitsu_mae_taiou(cache_day: str, v: int = 2):
+    # v は集計仕様変更時にキャッシュを無効化するためのバージョン番号
     import kaitsu_mae_taiou as _kmt
     return _kmt.compute(_sf())
 
@@ -4284,7 +4285,7 @@ if selected_key == "kaitsu_mae_taiou":
         d = res["data"][prod]
         ec = d["entry_counts"]
         coeff_all = _calc_coeff(ec, d["matrix"])
-        coeff_eff = _calc_coeff(ec, d["matrix_eff"])
+        coeff_eff = _calc_coeff(ec, d.get("matrix_eff", {}))
         _, tn_all, tn_eff = _forecast(ec, coeff_all, coeff_eff, _current)
         _, tx_all, tx_eff = _forecast(ec, coeff_all, coeff_eff, _next_ym)
         _calc[prod] = {

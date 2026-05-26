@@ -33,6 +33,8 @@ TAIOU_FILTER = (
 
 # コール結果(Field4_del__c)がこの値＝不在。有効対話数の集計では除外する
 EXCLUDE_RESULTS = {"留守"}
+# コール結果(Field4_del__c)＝対応完了とみなす値
+KANRYO_RESULTS = {"完了"}
 
 N_HANDLING = 4   # 対応月の表示数（当月含む直近4ヶ月）
 MAX_OFFSET = 3   # エントリ月オフセット（当月=0 〜 3ヶ月前）
@@ -113,9 +115,10 @@ def compute(sf, now: datetime | None = None) -> dict:
             f"WHERE {TAIOU_FILTER} AND Account.Field76__r.Name {like} "
             f"AND Field1_del__c >= {handling_min_z}"
         )
-        matrix: dict[tuple[str, str], int] = {}       # 対応架電回数（留守込み）
-        matrix_eff: dict[tuple[str, str], int] = {}   # 有効対話数（留守を除外）
-        matrix_rusu: dict[tuple[str, str], int] = {}  # 無効対話数（留守のみ）
+        matrix: dict[tuple[str, str], int] = {}        # 対応架電回数（留守込み）
+        matrix_eff: dict[tuple[str, str], int] = {}    # 有効対話数（留守を除外）
+        matrix_rusu: dict[tuple[str, str], int] = {}   # 無効対話数（留守のみ）
+        matrix_kanryo: dict[tuple[str, str], int] = {}  # 完了対話数（コール結果=完了のみ）
         for t in sf.query_all(tq)["records"]:
             hd = _to_jst_date(t.get("Field1_del__c"))
             if hd is None:
@@ -132,15 +135,19 @@ def compute(sf, now: datetime | None = None) -> dict:
             if kd is not None and hd >= kd:
                 continue
             eym = _ym(ed.year, ed.month)
+            result = t.get("Field4_del__c") or ""
             matrix[(eym, hym)] = matrix.get((eym, hym), 0) + 1
-            if (t.get("Field4_del__c") or "") in EXCLUDE_RESULTS:
+            if result in EXCLUDE_RESULTS:
                 matrix_rusu[(eym, hym)] = matrix_rusu.get((eym, hym), 0) + 1
             else:
                 matrix_eff[(eym, hym)] = matrix_eff.get((eym, hym), 0) + 1
+            if result in KANRYO_RESULTS:
+                matrix_kanryo[(eym, hym)] = matrix_kanryo.get((eym, hym), 0) + 1
 
         data[prod] = {
             "entry_counts": entry_counts, "matrix": matrix,
             "matrix_eff": matrix_eff, "matrix_rusu": matrix_rusu,
+            "matrix_kanryo": matrix_kanryo,
         }
 
     return {

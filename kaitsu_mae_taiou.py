@@ -31,6 +31,9 @@ TAIOU_FILTER = (
     "OR (Field3_del__c='架電' AND Field2_del__c IN ('対応','キャンセル対応')))"
 )
 
+# コール結果(Field4_del__c)がこの値＝不在。有効対話数の集計では除外する
+EXCLUDE_RESULTS = {"留守"}
+
 N_HANDLING = 4   # 対応月の表示数（当月含む直近4ヶ月）
 MAX_OFFSET = 3   # エントリ月オフセット（当月=0 〜 3ヶ月前）
 
@@ -102,13 +105,16 @@ def compute(sf, now: datetime | None = None) -> dict:
             entry_counts[_ym(int(r["y"]), int(r["m"]))] = int(r["c"])
 
         # 2. 開通前対応のカウント（対応月×エントリ月）
+        #    matrix     = 対応架電回数（留守込み）
+        #    matrix_eff = 有効対話数（留守を除外）
         tq = (
-            "SELECT AccountId, Field1_del__c, Account.Field130__c, Account.Field156__c "
+            "SELECT AccountId, Field1_del__c, Field4_del__c, Account.Field130__c, Account.Field156__c "
             "FROM Task "
             f"WHERE {TAIOU_FILTER} AND Account.Field76__r.Name {like} "
             f"AND Field1_del__c >= {handling_min_z}"
         )
         matrix: dict[tuple[str, str], int] = {}
+        matrix_eff: dict[tuple[str, str], int] = {}
         for t in sf.query_all(tq)["records"]:
             hd = _to_jst_date(t.get("Field1_del__c"))
             if hd is None:
@@ -126,8 +132,10 @@ def compute(sf, now: datetime | None = None) -> dict:
                 continue
             eym = _ym(ed.year, ed.month)
             matrix[(eym, hym)] = matrix.get((eym, hym), 0) + 1
+            if (t.get("Field4_del__c") or "") not in EXCLUDE_RESULTS:
+                matrix_eff[(eym, hym)] = matrix_eff.get((eym, hym), 0) + 1
 
-        data[prod] = {"entry_counts": entry_counts, "matrix": matrix}
+        data[prod] = {"entry_counts": entry_counts, "matrix": matrix, "matrix_eff": matrix_eff}
 
     return {
         "products": PRODUCTS,

@@ -2350,6 +2350,13 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
+        key="kaitsu_mae_taiou",
+        label="開通前対応",
+        description="商材別・エントリ月×対応月の開通前対応発生率。エントリ件数から月次の必要対応数を見積もる指標",
+        fetch=lambda sf: pd.DataFrame(),
+        category="TOTAL",
+    ),
+    Metric(
         key="total_calls",
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",

@@ -434,6 +434,12 @@ def _load_daily(metric_key: str, cache_day: str, v: int = 19) -> pd.DataFrame:
     return get_metric(metric_key).fetch(_sf())
 
 
+@st.cache_data(ttl=86400, show_spinner="開通前対応を集計中...")
+def _load_kaitsu_mae_taiou(cache_day: str):
+    import kaitsu_mae_taiou as _kmt
+    return _kmt.compute(_sf())
+
+
 def _load(metric_key: str):
     if metric_key in _CACHE_5MIN_KEYS:
         return _load_5min(metric_key)
@@ -3239,6 +3245,9 @@ elif selected_key == "timee_management":
 elif selected_key == "cs_shift_calendar":
     # シフト表(CS促進全員、月カレンダー) — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "kaitsu_mae_taiou":
+    # 開通前対応 — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -4205,6 +4214,102 @@ if selected_key == "orikaeshi_check_log":
             mime="text/csv",
             key="dl_orikaeshi_log",
         )
+
+    st.stop()
+
+# 開通前対応ボード（商材別・エントリ月×対応月の発生率＋月次見込み）
+if selected_key == "kaitsu_mae_taiou":
+    import kaitsu_mae_taiou as _kmt
+
+    st.title("開通前対応")
+    st.caption(
+        "「開通前の対応」= 対応日が開通日より過去 もしくは 開通日が空欄 で、"
+        "（区分=FC × ステータス=フォローコール(代コン)）または"
+        "（区分=架電 × ステータス=対応/キャンセル対応）の活動（件数ベース・1顧客複数回もカウント）。"
+        " エントリ月×対応月で『エントリ件数あたりの開通前対応件数（発生率）』を商材別に集計します。"
+    )
+
+    _kc1, _kc2 = st.columns([1, 5])
+    if _kc1.button("🔄 再集計", key="kmt_reload"):
+        _load_kaitsu_mae_taiou.clear()
+        st.rerun()
+
+    res = _load_kaitsu_mae_taiou(_daily_cache_key())
+    st.caption(
+        f"集計時点: {res['asof']}　対応月 {res['handling_ym'][0]}〜{res['handling_ym'][-1]}"
+        f"（{res['current_ym']} は進行中）"
+    )
+
+    _OFF_LABELS = ["当月", "1ヶ月前", "2ヶ月前", "3ヶ月前"]
+    _max_off = res["max_offset"]
+    _handling = res["handling_ym"]
+    _current = res["current_ym"]
+    _completed = [h for h in _handling if h != _current]  # 係数は完了した対応月のみで平均
+
+    _ny, _nm = _kmt._add_months(int(_current[:4]), int(_current[5:7]), 1)
+    _next_ym = _kmt._ym(_ny, _nm)
+
+    for prod in res["products"]:
+        d = res["data"][prod]
+        ec = d["entry_counts"]
+        mat = d["matrix"]
+        st.subheader(prod)
+
+        # --- 発生率マトリクス（行=対応月／列=エントリ月オフセット）---
+        rows = []
+        for h in _handling:
+            label = f"{h}（進行中）" if h == _current else h
+            row = {"対応月＼エントリ月": label}
+            for o in range(_max_off + 1):
+                eym = _kmt.offset_entry_ym(h, o)
+                cnt = mat.get((eym, h), 0)
+                e = ec.get(eym, 0)
+                rate = (cnt / e * 100) if e else 0.0
+                row[_OFF_LABELS[o]] = f"{rate:.1f}% ({cnt}/{e})"
+            rows.append(row)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        # --- 発生率係数（完了対応月の平均）---
+        coeff = []
+        for o in range(_max_off + 1):
+            vals = []
+            for h in _completed:
+                eym = _kmt.offset_entry_ym(h, o)
+                e = ec.get(eym, 0)
+                if e:
+                    vals.append(mat.get((eym, h), 0) / e)
+            coeff.append(sum(vals) / len(vals) if vals else 0.0)
+        st.markdown(
+            f"**発生率係数（{'／'.join(_completed)} の平均）**　"
+            + "　".join(f"{_OFF_LABELS[o]}={coeff[o] * 100:.1f}%" for o in range(_max_off + 1))
+        )
+
+        # --- 月次見込み（係数 × エントリ件数）---
+        def _forecast(target_ym):
+            parts, total = [], 0.0
+            for o in range(_max_off + 1):
+                eym = _kmt.offset_entry_ym(target_ym, o)
+                e = ec.get(eym, 0)
+                pred = e * coeff[o]
+                total += pred
+                parts.append({
+                    "エントリ月": eym, "区分": _OFF_LABELS[o],
+                    "エントリ件数": e, "係数": f"{coeff[o] * 100:.1f}%",
+                    "見込対応件数": round(pred),
+                })
+            return pd.DataFrame(parts), total
+
+        _fc_now, _tot_now = _forecast(_current)
+        _fc_next, _tot_next = _forecast(_next_ym)
+        _col_now, _col_next = st.columns(2)
+        with _col_now:
+            st.markdown(f"**{_current} の開通前対応 見込：約 {round(_tot_now)} 件**　_（当月エントリは進行中のため過小）_")
+            st.dataframe(_fc_now, use_container_width=True, hide_index=True)
+        with _col_next:
+            st.markdown(f"**{_next_ym} の開通前対応 見込：約 {round(_tot_next)} 件**　_（翌月の当月エントリは未発生）_")
+            st.dataframe(_fc_next, use_container_width=True, hide_index=True)
+
+        st.divider()
 
     st.stop()
 

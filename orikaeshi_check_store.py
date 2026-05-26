@@ -93,3 +93,60 @@ def save_checks(checks: dict) -> tuple[bool, str]:
 def clear_check_cache():
     """共有キャッシュをクリア（次回読み込みで再取得）。"""
     _shared_check_cache.clear()
+
+
+# --- 操作ログ（誰が・いつ・どのセルをチェック/解除したか）---
+# 追記専用。既存行は絶対に消さない（履歴系の方針）。
+LOG_WORKSHEET_NAME = "orikaeshi_check_log"
+_LOG_HEADER = ["日時", "操作", "ユーザー", "対象"]
+
+
+def _get_log_ws():
+    client = _get_writable_client()
+    try:
+        sheet_id = st.secrets["ikusei"]["spreadsheet_id"]
+    except Exception:
+        sheet_id = _IKUSEI_SHEET_ID_FALLBACK
+    sh = client.open_by_key(sheet_id)
+    try:
+        return sh.worksheet(LOG_WORKSHEET_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=LOG_WORKSHEET_NAME, rows=1000, cols=4)
+        ws.update("A1:D1", [_LOG_HEADER])
+        return ws
+
+
+def append_log(entries: list[dict]) -> tuple[bool, str]:
+    """操作ログを追記。entries: [{"at","action","by","key"}]。既存行は保持。"""
+    if not entries:
+        return True, ""
+    try:
+        ws = _get_log_ws()
+        rows = [
+            [e.get("at", ""), e.get("action", ""), e.get("by", ""), e.get("key", "")]
+            for e in entries
+        ]
+        ws.append_rows(rows, value_input_option="USER_ENTERED")
+        return True, "OK"
+    except Exception as e:
+        return False, f"ログ保存エラー: {e}"
+
+
+def get_log(limit: int = 500) -> list[dict]:
+    """操作ログを新しい順で返す（表示専用）。読込失敗時は空list。"""
+    try:
+        ws = _get_log_ws()
+        vals = ws.get_all_values()
+        if len(vals) <= 1:
+            return []
+        out = []
+        for r in vals[1:]:
+            out.append({
+                "at": r[0] if len(r) > 0 else "",
+                "action": r[1] if len(r) > 1 else "",
+                "by": r[2] if len(r) > 2 else "",
+                "key": r[3] if len(r) > 3 else "",
+            })
+        return out[-limit:][::-1]
+    except Exception:
+        return []

@@ -2371,6 +2371,13 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
+        key="orikaeshi_check_log",
+        label="折返しチェック操作ログ",
+        description="折返し件数チェックを誰がいつチェック/解除したかの操作履歴（追記専用）",
+        fetch=lambda sf: pd.DataFrame(),
+        category="SECRET",
+    ),
+    Metric(
         key="1week_cx_check",
         label="１週間後CXチェック",
         description="過去3ヶ月で1週間後FC完了→キャンセルになった案件一覧（活動完了日で絞り込み可）",

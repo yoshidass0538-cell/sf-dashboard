@@ -3875,7 +3875,12 @@ if selected_key == "shuchi":
 
 # 折返し件数: 件数テーブル＋セルごとチェックボックス
 if selected_key == "orikaeshi_kensu":
-    from orikaeshi_check_store import get_checks, save_checks
+    from orikaeshi_check_store import get_checks, save_checks, append_log
+
+    # 操作ログ用: 現在のログインユーザーと時刻
+    _lu = st.session_state.get("logged_in_user") or {}
+    _current_user = _lu.get("display_name") or _lu.get("id") or "不明"
+    log_entries: list[dict] = []
 
     # 10分ごとに自動更新（キャッシュ更新ボタンを押さなくてもデータが新しくなる）
     try:
@@ -4109,6 +4114,7 @@ if selected_key == "orikaeshi_kensu":
             custom_css=_ag_css,
             fit_columns_on_grid_load=True,
             update_mode="VALUE_CHANGED",
+            reload_data=True,  # 自動更新時に古いグリッド状態が残り勝手に再チェックされるのを防ぐ
             key=f"orikaeshi_chk_{i}",
         )
 
@@ -4135,6 +4141,12 @@ if selected_key == "orikaeshi_kensu":
                         else:
                             checks.pop(key, None)
                         changed = True
+                        log_entries.append({
+                            "at": _now_jst.strftime("%Y/%m/%d %H:%M:%S"),
+                            "action": "チェック" if val else "解除",
+                            "by": _current_user,
+                            "key": key,
+                        })
 
         st.download_button(
             "CSV ダウンロード",
@@ -4149,6 +4161,41 @@ if selected_key == "orikaeshi_kensu":
         ok, msg = save_checks(checks)
         if not ok:
             st.error(f"⚠️ チェック状態の保存に失敗しました: {msg}")
+        if log_entries:
+            _lok, _lmsg = append_log(log_entries)
+            if not _lok:
+                st.warning(f"操作ログの記録に失敗: {_lmsg}")
+
+    st.stop()
+
+# 折返しチェック操作ログ（SECRETカテゴリ・非表示タブ）
+if selected_key == "orikaeshi_check_log":
+    from orikaeshi_check_store import get_log
+
+    st.title("📋 折返しチェック操作ログ")
+    st.caption("折返し件数ボードのチェック/解除を「誰が・いつ・どのセル」操作したかの履歴（新しい順・追記専用）")
+
+    _log = get_log(limit=1000)
+    if not _log:
+        st.info("操作ログはまだありません。")
+    else:
+        _log_df = pd.DataFrame(_log)
+        # key（日付|種別|時間帯）を読みやすい列に分解
+        _parts = _log_df["key"].str.split("|", n=2, expand=True)
+        _log_df["対象日"] = _parts[0]
+        _log_df["種別"] = _parts[1] if _parts.shape[1] > 1 else ""
+        _log_df["時間帯"] = _parts[2] if _parts.shape[1] > 2 else ""
+        _disp = _log_df[["at", "action", "by", "対象日", "種別", "時間帯"]].rename(
+            columns={"at": "日時", "action": "操作", "by": "ユーザー"}
+        )
+        st.dataframe(_disp, use_container_width=True, hide_index=True)
+        st.download_button(
+            "CSV ダウンロード",
+            _disp.to_csv(index=False).encode("utf-8-sig"),
+            file_name="orikaeshi_check_log.csv",
+            mime="text/csv",
+            key="dl_orikaeshi_log",
+        )
 
     st.stop()
 

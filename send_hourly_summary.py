@@ -44,6 +44,14 @@ TARGET_CATEGORIES = {
 
 JST = timezone(timedelta(hours=9))
 
+# 18:00・18:30配信時のみ (開通前) の上に挿入する定型文
+NOTICE_1840 = "【18：40以降は翌日以降の折り返し案内をお願いいたします】"
+
+
+def _show_1840_notice(now) -> bool:
+    """18:00・18:30配信のときだけTrue（cron発火のずれを考慮し18時台の45分未満）。"""
+    return now.hour == 18 and now.minute < 45
+
 
 def get_gspread_client():
     """環境変数 GCP_SERVICE_ACCOUNT_JSON からgspreadクライアントを作成（Base64対応）。"""
@@ -164,7 +172,12 @@ def build_summary(checks, date_str, time_slots, categories, counts):
         except (ValueError, IndexError):
             return True
 
+    _show_notice = _show_1840_notice(now)
+
     for cat in categories:
+        if _show_notice and cat == "(開通前)":
+            lines.append(f"{NOTICE_1840}\n")
+
         checked = []
         unchecked = []
         for ts in time_slots:
@@ -219,7 +232,13 @@ def build_summary_compact(checks, date_str, time_slots, categories, counts):
         except (ValueError, IndexError):
             return True
 
+    _show_notice = _show_1840_notice(now)
+
     for cat in categories:
+        if _show_notice and cat == "(開通前)":
+            lines.append(NOTICE_1840)
+            lines.append("")
+
         checked = []
         unchecked = []
         for ts in time_slots:

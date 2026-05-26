@@ -3883,9 +3883,17 @@ if selected_key == "orikaeshi_kensu":
     log_entries: list[dict] = []
 
     # 10分ごとに自動更新（キャッシュ更新ボタンを押さなくてもデータが新しくなる）
+    # 自動更新起因の再描画では、ユーザーが触っていないのにグリッドの古い状態が
+    # 差分検知され「勝手にチェック＆そのセッションのユーザー名でログ記録」される。
+    # autorefreshのカウンタ増加でタイマー起因の再描画を判定し、変更検知をスキップする。
+    _is_autorefresh_run = False
     try:
         from streamlit_autorefresh import st_autorefresh as _ok_autorefresh
-        _ok_autorefresh(interval=600000, key="orikaeshi_autorefresh")
+        _ar_count = _ok_autorefresh(interval=600000, key="orikaeshi_autorefresh")
+        _prev_ar = st.session_state.get("_orikaeshi_ar_prev")
+        if _prev_ar is not None and _ar_count != _prev_ar:
+            _is_autorefresh_run = True
+        st.session_state["_orikaeshi_ar_prev"] = _ar_count
     except ImportError:
         pass
 
@@ -4119,7 +4127,8 @@ if selected_key == "orikaeshi_kensu":
         )
 
         # 変更検知 → 共有ストアに反映
-        if ag_result and ag_result.data is not None:
+        # 自動更新起因の再描画では、グリッドの古い状態を誤って「操作」と扱わない
+        if not _is_autorefresh_run and ag_result and ag_result.data is not None:
             for _, row in ag_result.data.iterrows():
                 cat = row["種別"]
                 for tc in check_time_cols:

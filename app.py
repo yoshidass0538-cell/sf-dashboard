@@ -435,7 +435,7 @@ def _load_daily(metric_key: str, cache_day: str, v: int = 19) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=86400, show_spinner="開通前対応を集計中...")
-def _load_kaitsu_mae_taiou(cache_day: str, v: int = 2):
+def _load_kaitsu_mae_taiou(cache_day: str, v: int = 3):
     # v は集計仕様変更時にキャッシュを無効化するためのバージョン番号
     import kaitsu_mae_taiou as _kmt
     return _kmt.compute(_sf())
@@ -4262,58 +4262,65 @@ if selected_key == "kaitsu_mae_taiou":
             c.append(sum(vals) / len(vals) if vals else 0.0)
         return c
 
-    def _forecast(ec, coeff_all, coeff_eff, target_ym):
-        parts, tot_all, tot_eff = [], 0.0, 0.0
+    def _forecast(ec, coeff_all, coeff_eff, coeff_rusu, target_ym):
+        parts, tot_all, tot_eff, tot_rusu = [], 0.0, 0.0, 0.0
         for o in range(_max_off + 1):
             eym = _kmt.offset_entry_ym(target_ym, o)
             e = ec.get(eym, 0)
             p_all = e * coeff_all[o]
             p_eff = e * coeff_eff[o]
+            p_rusu = e * coeff_rusu[o]
             tot_all += p_all
             tot_eff += p_eff
+            tot_rusu += p_rusu
             parts.append({
                 "エントリ月": eym, "区分": _OFF_LABELS[o],
                 "エントリ件数": e, "係数": f"{coeff_all[o] * 100:.1f}%",
                 "対応架電回数": round(p_all),
                 "有効対話数": round(p_eff),
+                "無効対話数": round(p_rusu),
             })
-        return pd.DataFrame(parts), tot_all, tot_eff
+        return pd.DataFrame(parts), tot_all, tot_eff, tot_rusu
 
-    # 全商材の係数・見込みを先に計算（対応架電回数=留守込み / 有効対話数=留守抜き）
+    # 全商材の係数・見込みを先に計算（架電回数=留守込み / 有効対話数=留守抜き / 無効対話数=留守のみ）
     _calc = {}
     for prod in res["products"]:
         d = res["data"][prod]
         ec = d["entry_counts"]
         coeff_all = _calc_coeff(ec, d["matrix"])
         coeff_eff = _calc_coeff(ec, d.get("matrix_eff", {}))
-        _, tn_all, tn_eff = _forecast(ec, coeff_all, coeff_eff, _current)
-        _, tx_all, tx_eff = _forecast(ec, coeff_all, coeff_eff, _next_ym)
+        coeff_rusu = _calc_coeff(ec, d.get("matrix_rusu", {}))
+        _, tn_all, tn_eff, tn_rusu = _forecast(ec, coeff_all, coeff_eff, coeff_rusu, _current)
+        _, tx_all, tx_eff, tx_rusu = _forecast(ec, coeff_all, coeff_eff, coeff_rusu, _next_ym)
         _calc[prod] = {
-            "coeff_all": coeff_all, "coeff_eff": coeff_eff,
-            "tn_all": tn_all, "tn_eff": tn_eff, "tx_all": tx_all, "tx_eff": tx_eff,
+            "coeff_all": coeff_all, "coeff_eff": coeff_eff, "coeff_rusu": coeff_rusu,
+            "tn_all": tn_all, "tn_eff": tn_eff, "tn_rusu": tn_rusu,
+            "tx_all": tx_all, "tx_eff": tx_eff, "tx_rusu": tx_rusu,
         }
 
     # --- サマリー表（最上部・商材別 今月/来月の見込み）---
-    _cn_call, _cn_eff = f"{_current} 対応架電回数", f"{_current} 有効対話数"
-    _nx_call, _nx_eff = f"{_next_ym} 対応架電回数", f"{_next_ym} 有効対話数"
+    _cn_call, _cn_eff, _cn_rusu = f"{_current} 架電回数", f"{_current} 有効対話", f"{_current} 無効対話"
+    _nx_call, _nx_eff, _nx_rusu = f"{_next_ym} 架電回数", f"{_next_ym} 有効対話", f"{_next_ym} 無効対話"
     _summary_order = [p for p in ["ソネット", "AU光", "NURO"] if p in _calc] + \
                      [p for p in res["products"] if p not in ("ソネット", "AU光", "NURO")]
     _sum_rows = [{
         "商材": p,
-        _cn_call: round(_calc[p]["tn_all"]), _cn_eff: round(_calc[p]["tn_eff"]),
-        _nx_call: round(_calc[p]["tx_all"]), _nx_eff: round(_calc[p]["tx_eff"]),
+        _cn_call: round(_calc[p]["tn_all"]), _cn_eff: round(_calc[p]["tn_eff"]), _cn_rusu: round(_calc[p]["tn_rusu"]),
+        _nx_call: round(_calc[p]["tx_all"]), _nx_eff: round(_calc[p]["tx_eff"]), _nx_rusu: round(_calc[p]["tx_rusu"]),
     } for p in _summary_order]
     _sum_rows.append({
         "商材": "合計",
         _cn_call: round(sum(_calc[p]["tn_all"] for p in _summary_order)),
         _cn_eff: round(sum(_calc[p]["tn_eff"] for p in _summary_order)),
+        _cn_rusu: round(sum(_calc[p]["tn_rusu"] for p in _summary_order)),
         _nx_call: round(sum(_calc[p]["tx_all"] for p in _summary_order)),
         _nx_eff: round(sum(_calc[p]["tx_eff"] for p in _summary_order)),
+        _nx_rusu: round(sum(_calc[p]["tx_rusu"] for p in _summary_order)),
     })
     st.markdown("### 📊 今月・来月の開通前対応 発生見込み（商材別）")
     st.dataframe(pd.DataFrame(_sum_rows), use_container_width=True, hide_index=True)
     st.caption(
-        "※対応架電回数＝留守込みの架電回数／有効対話数＝留守を除いた数。"
+        "※架電回数＝留守込みの架電回数／有効対話＝留守を除いた数／無効対話＝留守のみ（架電回数＝有効対話＋無効対話）。"
         f"今月（{_current}）は当月エントリが進行中のため過小、来月（{_next_ym}）は当月エントリ未発生分を含みません。"
     )
     st.divider()
@@ -4325,6 +4332,7 @@ if selected_key == "kaitsu_mae_taiou":
         mat = d["matrix"]
         coeff_all = _calc[prod]["coeff_all"]
         coeff_eff = _calc[prod]["coeff_eff"]
+        coeff_rusu = _calc[prod]["coeff_rusu"]
         st.subheader(prod)
 
         # 発生率マトリクス（行=対応月／列=エントリ月オフセット・対応架電回数ベース）
@@ -4348,14 +4356,14 @@ if selected_key == "kaitsu_mae_taiou":
         )
 
         # 月次見込み（係数 × エントリ件数）
-        _fc_now, _tn_all, _tn_eff = _forecast(ec, coeff_all, coeff_eff, _current)
-        _fc_next, _tx_all, _tx_eff = _forecast(ec, coeff_all, coeff_eff, _next_ym)
+        _fc_now, _tn_all, _tn_eff, _tn_rusu = _forecast(ec, coeff_all, coeff_eff, coeff_rusu, _current)
+        _fc_next, _tx_all, _tx_eff, _tx_rusu = _forecast(ec, coeff_all, coeff_eff, coeff_rusu, _next_ym)
         _col_now, _col_next = st.columns(2)
         with _col_now:
-            st.markdown(f"**{_current}** 対応架電回数：約 {round(_tn_all)} 件／有効対話数：約 {round(_tn_eff)} 件　_（当月進行中）_")
+            st.markdown(f"**{_current}** 架電回数：約 {round(_tn_all)} 件／有効対話：約 {round(_tn_eff)} 件／無効対話：約 {round(_tn_rusu)} 件　_（当月進行中）_")
             st.dataframe(_fc_now, use_container_width=True, hide_index=True)
         with _col_next:
-            st.markdown(f"**{_next_ym}** 対応架電回数：約 {round(_tx_all)} 件／有効対話数：約 {round(_tx_eff)} 件")
+            st.markdown(f"**{_next_ym}** 架電回数：約 {round(_tx_all)} 件／有効対話：約 {round(_tx_eff)} 件／無効対話：約 {round(_tx_rusu)} 件")
             st.dataframe(_fc_next, use_container_width=True, hide_index=True)
 
         st.divider()

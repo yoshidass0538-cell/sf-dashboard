@@ -113,8 +113,9 @@ def compute(sf, now: datetime | None = None) -> dict:
             f"WHERE {TAIOU_FILTER} AND Account.Field76__r.Name {like} "
             f"AND Field1_del__c >= {handling_min_z}"
         )
-        matrix: dict[tuple[str, str], int] = {}
-        matrix_eff: dict[tuple[str, str], int] = {}
+        matrix: dict[tuple[str, str], int] = {}       # 対応架電回数（留守込み）
+        matrix_eff: dict[tuple[str, str], int] = {}   # 有効対話数（留守を除外）
+        matrix_rusu: dict[tuple[str, str], int] = {}  # 無効対話数（留守のみ）
         for t in sf.query_all(tq)["records"]:
             hd = _to_jst_date(t.get("Field1_del__c"))
             if hd is None:
@@ -132,10 +133,15 @@ def compute(sf, now: datetime | None = None) -> dict:
                 continue
             eym = _ym(ed.year, ed.month)
             matrix[(eym, hym)] = matrix.get((eym, hym), 0) + 1
-            if (t.get("Field4_del__c") or "") not in EXCLUDE_RESULTS:
+            if (t.get("Field4_del__c") or "") in EXCLUDE_RESULTS:
+                matrix_rusu[(eym, hym)] = matrix_rusu.get((eym, hym), 0) + 1
+            else:
                 matrix_eff[(eym, hym)] = matrix_eff.get((eym, hym), 0) + 1
 
-        data[prod] = {"entry_counts": entry_counts, "matrix": matrix, "matrix_eff": matrix_eff}
+        data[prod] = {
+            "entry_counts": entry_counts, "matrix": matrix,
+            "matrix_eff": matrix_eff, "matrix_rusu": matrix_rusu,
+        }
 
     return {
         "products": PRODUCTS,

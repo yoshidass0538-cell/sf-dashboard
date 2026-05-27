@@ -4270,9 +4270,11 @@ if selected_key == "kaitsu_mae_taiou":
         _html = df.to_html(index=False, escape=False).replace("<table", '<table class="kmt-tbl"', 1)
         st.markdown(
             "<style>"
-            ".kmt-tbl{width:100%;border-collapse:collapse;font-size:0.95rem;}"
-            ".kmt-tbl th,.kmt-tbl td{text-align:center!important;padding:6px 10px;border:1px solid #555;color:inherit;}"
-            ".kmt-tbl th{background:rgba(212,133,10,0.25);font-weight:700;}"
+            ".kmt-tbl{width:100%;border-collapse:collapse;font-size:0.95rem;"
+            "background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.18);}"
+            ".kmt-tbl th,.kmt-tbl td{text-align:center!important;padding:6px 10px;border:1px solid #e0e0e0;color:#222!important;}"
+            ".kmt-tbl th{background:rgba(212,133,10,0.18);color:#5a3a00!important;font-weight:700;}"
+            ".kmt-tbl tr:nth-child(even) td{background:#faf9f5;}"
             "</style>"
             f'<div style="overflow-x:auto">{_html}</div>',
             unsafe_allow_html=True,

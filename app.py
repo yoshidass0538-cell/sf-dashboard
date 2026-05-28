@@ -471,6 +471,24 @@ def _load_fubitaitai_kirisute_nishi(cache_day: str, v: int = 1):
     return _fk.compute(_sf(), area="西")
 
 
+@st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(AUリスト)を集計中...")
+def _load_fubitaitai_kirisute_au(cache_day: str, v: int = 1):
+    import fubitaitai_kirisute as _fk
+    return _fk.compute(_sf(), list_type="AU")
+
+
+@st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(ドコモリスト)を集計中...")
+def _load_fubitaitai_kirisute_docomo(cache_day: str, v: int = 1):
+    import fubitaitai_kirisute as _fk
+    return _fk.compute(_sf(), list_type="docomo")
+
+
+@st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(SBリスト)を集計中...")
+def _load_fubitaitai_kirisute_sb(cache_day: str, v: int = 1):
+    import fubitaitai_kirisute as _fk
+    return _fk.compute(_sf(), list_type="SB")
+
+
 def _load(metric_key: str):
     if metric_key in _CACHE_5MIN_KEYS:
         return _load_5min(metric_key)
@@ -3331,8 +3349,11 @@ elif selected_key == "kouji_shutoku_fc":
 elif selected_key == "daikon_riyu_au_sonet":
     # ソネット光AU・UQ 1次停滞理由 — 後の専用ブロックで表示
     fetched = None
-elif selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubitaitai_kirisute_nishi"):
-    # 不備停滞 切り捨て判定資料(全件/東/西) — 後の専用ブロックで表示
+elif selected_key in (
+    "fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubitaitai_kirisute_nishi",
+    "fubitaitai_kirisute_au", "fubitaitai_kirisute_docomo", "fubitaitai_kirisute_sb",
+):
+    # 不備停滞 切り捨て判定資料(全6種) — 後の専用ブロックで表示
     fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
@@ -5089,25 +5110,28 @@ if selected_key == "daikon_riyu_au_sonet":
 
     st.stop()
 
-# 不備停滞 切り捨て判定資料（全件 / 東のみ / 西のみ 共通）
-if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubitaitai_kirisute_nishi"):
+# 不備停滞 切り捨て判定資料（全6種共通: 全件/東/西/AU/ドコモ/SB）
+if selected_key in (
+    "fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubitaitai_kirisute_nishi",
+    "fubitaitai_kirisute_au", "fubitaitai_kirisute_docomo", "fubitaitai_kirisute_sb",
+):
     import fubitaitai_kirisute as _fk
 
-    # エリア別ローダー・ラベル分岐
-    if selected_key == "fubitaitai_kirisute_higashi":
-        _area_label = "東日本"
-        _area_loader = _load_fubitaitai_kirisute_higashi
-    elif selected_key == "fubitaitai_kirisute_nishi":
-        _area_label = "西日本"
-        _area_loader = _load_fubitaitai_kirisute_nishi
-    else:
-        _area_label = "全件（東+西）"
-        _area_loader = _load_fubitaitai_kirisute
+    # ボード別ローダー・ラベル分岐
+    _LOADER_MAP = {
+        "fubitaitai_kirisute":           ("全件（東+西）",         _load_fubitaitai_kirisute),
+        "fubitaitai_kirisute_higashi":   ("東日本",                _load_fubitaitai_kirisute_higashi),
+        "fubitaitai_kirisute_nishi":     ("西日本",                _load_fubitaitai_kirisute_nishi),
+        "fubitaitai_kirisute_au":        ("AUリスト（KDDI/UQ）",   _load_fubitaitai_kirisute_au),
+        "fubitaitai_kirisute_docomo":    ("ドコモリスト",          _load_fubitaitai_kirisute_docomo),
+        "fubitaitai_kirisute_sb":        ("SBリスト（Softbank/Y!mobile）", _load_fubitaitai_kirisute_sb),
+    }
+    _area_label, _area_loader = _LOADER_MAP[selected_key]
 
     st.title(f"不備停滞 切り捨て判定資料 — {_area_label}")
     st.caption(
-        f"ソネット光・エリア「{_area_label}」・経験ベース集計（1次〜10次のいずれかに該当理由を含む案件）の発生率・開通率から、"
-        "切り捨て可否を判定する資料。直近180日と365日の両期間を提示。"
+        f"ソネット光・対象「{_area_label}」・経験ベース集計（1次〜10次のいずれかに該当理由を含む案件）の発生率・開通率から、"
+        "切り捨て可否を判定する資料。直近180日と365日の両期間を提示（直近3ヶ月のエントリは除外）。"
     )
 
     # 印刷用CSS
@@ -5164,8 +5188,9 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
 
     res = _area_loader(_daily_cache_key())
     st.caption(
-        f"集計時点: {res['asof']}　エリア: {_area_label}　"
-        f"集計期間: 直近180日 / 直近365日（並列表示）"
+        f"集計時点: {res['asof']}　対象: {_area_label}　"
+        f"集計期間: 直近180日 / 直近365日（並列表示・直近{res.get('exclude_recent_days', 90)}日除外、"
+        f"カットオフ {res.get('cutoff_iso', '')} 以前のエントリ）"
     )
 
     def _fk_table(df):
@@ -5239,7 +5264,8 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
     st.markdown("## 🧩 第1章 母集団・指標定義")
     defn = [
         {"項目": "取次商材", "条件": "Field76__r.Name LIKE '%So-net%'（ソネット光）"},
-        {"項目": "エントリ期間", "条件": "Field156__c が直近180日 / 直近365日（両方並列）"},
+        {"項目": "エントリ期間", "条件": f"Field156__c が直近180日 / 直近365日（両方並列）かつ {res.get('cutoff_iso', '')} 以前（直近3ヶ月除外＝結果未確定の案件を弾く）"},
+        {"項目": "対象", "条件": f"{_area_label}"},
         {"項目": "経験ベース", "条件": "1次〜10次のダイコン理由(Field242〜246/341〜345)のいずれかに該当理由を含む案件"},
         {"項目": "経験数 N", "条件": "その理由を1度でも経験した案件数（同一案件は1件としてカウント）"},
         {"項目": "発生率", "条件": "N ÷ その期間の母集団全件数（理由ごとの構成比）"},

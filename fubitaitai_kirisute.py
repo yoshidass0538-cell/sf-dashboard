@@ -3,11 +3,17 @@
 母集団:
   - 取次商材: ソネット光 (Field76__r.Name LIKE '%So-net%')
   - エントリ日: 直近180日 と 直近365日 の両期間
+  - ⚠️ 直近 EXCLUDE_RECENT_DAYS 日(=3ヶ月)の案件は除外（進行中で結果未確定の案件を弾く）
 
 集計方式: 経験ベース
   - 1次〜10次のいずれかのダイコン理由(Field242〜246/341〜345)に該当理由を含む案件をカウント
   - ⚠️ CX率は使わない (CX完了後にも追記される運用のため因果分析に使えない)
   - 開通率(Field130__c IS NOT NULL)のみを切り捨て判断指標として使用
+
+リスト分類（利用携帯Ⅰ=Field12__c / Ⅱ=Field13__c のpicklist）:
+  - AUリスト    : いずれかに 'KDDI' or 'UQモバイル'
+  - ドコモリスト: いずれかに 'ドコモ'
+  - SBリスト    : いずれかに 'Softbank' or 'Y!mobile'
 
 判定基準:
   - 切り捨て推奨: 開通率 < 20%
@@ -24,6 +30,7 @@ JST = timezone(timedelta(hours=9))
 PRODUCT_LIKE = "LIKE '%So-net%'"
 PERIODS = [180, 365]  # 直近半年 / 直近1年
 MIN_OCCURRENCES = 30  # 母数のカットオフ
+EXCLUDE_RECENT_DAYS = 90  # 直近この日数以内のエントリは除外（進行中除外）
 
 # 1次〜10次のダイコン理由フィールド
 DAIKON_FIELDS = [
@@ -38,6 +45,22 @@ DAIKON_FIELDS = [
     "Field344__c",  # 9次
     "Field345__c",  # 10次
 ]
+
+# リスト別のpicklist値（Field12__c=利用携帯Ⅰ / Field13__c=利用携帯Ⅱ）
+LIST_VALUES = {
+    "AU":     ("KDDI", "UQモバイル"),
+    "docomo": ("ドコモ",),
+    "SB":     ("Softbank", "Y!mobile"),
+}
+
+
+def _list_filter_soql(list_type: str | None) -> str:
+    """SOQL用のリストフィルタ句を返す（先頭にAND付き）。Noneなら空文字。"""
+    if list_type not in LIST_VALUES:
+        return ""
+    vals = LIST_VALUES[list_type]
+    val_list = ", ".join(f"'{v}'" for v in vals)
+    return f" AND (Field12__c IN ({val_list}) OR Field13__c IN ({val_list}))"
 
 
 def _analyze(records: list, fc_count_map: dict[str, int] | None = None) -> dict:
@@ -90,14 +113,27 @@ def _analyze(records: list, fc_count_map: dict[str, int] | None = None) -> dict:
     return {"total": total, "total_open": total_open, "rows": rows}
 
 
-def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
-    """area: None=全件, '東' / '西' でエリア(Field43__c)絞り込み"""
+def compute(
+    sf,
+    now: datetime | None = None,
+    area: str | None = None,
+    list_type: str | None = None,
+) -> dict:
+    """
+    area:       None=全件 / '東' / '西'
+    list_type:  None=全件 / 'AU' / 'docomo' / 'SB'
+    直近 EXCLUDE_RECENT_DAYS 日のエントリは常に除外（結果未確定のため）。
+    """
     now = now or datetime.now(JST)
+    cutoff_iso = (now - timedelta(days=EXCLUDE_RECENT_DAYS)).date().isoformat()
 
-    select_cols = "Id, Field130__c, Field119__c, Field43__c, " + ", ".join(DAIKON_FIELDS)
-    area_filter = ""
-    if area in ("東", "西"):
-        area_filter = f" AND Field43__c = '{area}'"
+    select_cols = (
+        "Id, Field130__c, Field119__c, Field43__c, "
+        "Field12__c, Field13__c, " + ", ".join(DAIKON_FIELDS)
+    )
+    area_filter = f" AND Field43__c = '{area}'" if area in ("東", "西") else ""
+    list_filter = _list_filter_soql(list_type)
+    extra_filter = f" AND Field156__c <= {cutoff_iso}"
 
     # 代コン系FC（不備停滞対応の架電群）
     DAICON_FC_LABELS = (
@@ -113,13 +149,13 @@ def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
             "FROM Account "
             f"WHERE Field76__r.Name {PRODUCT_LIKE} "
             f"AND Field156__c = LAST_N_DAYS:{days}"
+            f"{extra_filter}"
             f"{area_filter}"
+            f"{list_filter}"
         )
         rec = sf.query_all(soql)["records"]
 
-        # 同じ母集団に対する代コン系FCの回数を案件IDごとに集計
-        # ※ GROUP BY 付きクエリは query_all() ページング不可のため、WhatId だけ
-        #   取得して Python 側でカウントする。
+        # 同じ母集団に対する代コン系FCを案件IDごとにカウント
         soql_task = (
             "SELECT WhatId FROM Task "
             f"WHERE Field2_del__c IN ({', '.join(DAICON_FC_LABELS)}) "
@@ -127,7 +163,9 @@ def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
             "  SELECT Id FROM Account "
             f"  WHERE Field76__r.Name {PRODUCT_LIKE} "
             f"  AND Field156__c = LAST_N_DAYS:{days}"
+            f"  {extra_filter}"
             f"  {area_filter}"
+            f"  {list_filter}"
             ")"
         )
         fc_count_map: dict[str, int] = defaultdict(int)
@@ -138,7 +176,7 @@ def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
 
         by_period[days] = _analyze(rec, fc_count_map)
 
-    # 全理由の和集合（両期間に出てくるもの）
+    # 全理由の和集合
     all_reasons = set()
     for d in PERIODS:
         for row in by_period[d]["rows"]:
@@ -158,7 +196,10 @@ def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
         "by_period": by_period,
         "reasons_order": reasons_order,
         "min_occurrences": MIN_OCCURRENCES,
-        "area": area,  # None / '東' / '西'
+        "exclude_recent_days": EXCLUDE_RECENT_DAYS,
+        "cutoff_iso": cutoff_iso,
+        "area": area,
+        "list_type": list_type,
     }
 
 

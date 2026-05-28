@@ -2392,6 +2392,27 @@ METRICS: list[Metric] = [
         category="資料",
     ),
     Metric(
+        key="fubitaitai_kirisute_au",
+        label="不備停滞 切り捨て判定資料(AUリスト)",
+        description="ソネット光・AUリスト(利用携帯ⅠⅡにKDDIまたはUQモバイル)の不備停滞理由別集計。直近3ヶ月除外",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
+        key="fubitaitai_kirisute_docomo",
+        label="不備停滞 切り捨て判定資料(ドコモリスト)",
+        description="ソネット光・ドコモリスト(利用携帯ⅠⅡにドコモ)の不備停滞理由別集計。直近3ヶ月除外",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
+        key="fubitaitai_kirisute_sb",
+        label="不備停滞 切り捨て判定資料(SBリスト)",
+        description="ソネット光・SBリスト(利用携帯ⅠⅡにSoftbankまたはY!mobile)の不備停滞理由別集計。直近3ヶ月除外",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
         key="total_calls",
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",

@@ -4419,13 +4419,86 @@ if selected_key == "kouji_shutoku_fc":
         "適正な架電回数の目安を可視化する資料。"
     )
 
-    _kfc1, _kfc2 = st.columns([1, 5])
-    if _kfc1.button("🔄 再集計", key="ksf_reload"):
-        _load_kouji_shutoku_fc.clear()
-        st.rerun()
+    # 印刷用CSS — Streamlit UI を隠してA4縦に最適化
+    st.markdown("""
+<style>
+@media print {
+  /* Streamlit本体のUIを非表示 */
+  section[data-testid="stSidebar"],
+  header[data-testid="stHeader"],
+  div[data-testid="stToolbar"],
+  div[data-testid="stDecoration"],
+  footer,
+  .ksf-no-print { display: none !important; }
+
+  /* メインを全幅に */
+  .main .block-container,
+  section.main > div,
+  div[data-testid="stAppViewContainer"] > section,
+  div.block-container { max-width: 100% !important; padding: 6mm 8mm !important; }
+
+  /* 背景色・影も印刷 */
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* テーブル: 影は不要・字を少し詰める */
+  .ksf-tbl { box-shadow: none !important; font-size: 9pt !important;
+             page-break-inside: avoid; }
+  .ksf-tbl th, .ksf-tbl td { padding: 3px 6px !important; }
+
+  /* 章間の改ページ */
+  .ksf-page-break { page-break-before: always; }
+
+  /* KPIカードのボックスシャドウを軽く */
+  div[style*="box-shadow"] { box-shadow: none !important; border: 1px solid #ccc !important; }
+
+  /* 見出しの色は残す */
+  h1, h2, h3 { color: #222 !important; }
+
+  /* リンクの下線色 */
+  a { color: #222 !important; text-decoration: none !important; }
+
+  @page { size: A4 portrait; margin: 8mm; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+    _kfc1, _kfc2, _kfc3 = st.columns([1, 1, 4])
+    with _kfc1:
+        st.markdown('<div class="ksf-no-print">', unsafe_allow_html=True)
+        if st.button("🔄 再集計", key="ksf_reload"):
+            _load_kouji_shutoku_fc.clear()
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+    with _kfc2:
+        # ブラウザの印刷ダイアログを開くボタン（iframeから親windowに対して実行）
+        import streamlit.components.v1 as _components
+        _components.html(
+            """
+            <div class="ksf-no-print">
+              <button onclick="window.parent.print()"
+                style="background:#5a3a00;color:#fff;border:none;padding:8px 18px;
+                       border-radius:6px;cursor:pointer;font-weight:700;font-size:0.95rem;
+                       box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+                🖨️ PDFに保存
+              </button>
+            </div>
+            """,
+            height=46,
+        )
 
     res = _load_kouji_shutoku_fc(_daily_cache_key())
     st.caption(f"集計時点: {res['asof']}　集計期間: 直近{res['lookback_days']}日")
+    st.markdown(
+        '<div class="ksf-no-print" style="background:#fef3e0;border-left:4px solid #d4860a;'
+        'padding:6px 12px;border-radius:4px;font-size:0.85rem;color:#5a3a00;margin:6px 0;">'
+        '💡 「🖨️ PDFに保存」を押し、印刷ダイアログの<b>送り先で「PDFに保存」を選択</b>、'
+        '<b>用紙=A4縦・余白=なし(または小)・背景のグラフィック=ON</b>にすると綺麗に出力されます。'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     # 共通テーブル描画
     def _ksf_table(df):
@@ -4507,6 +4580,7 @@ if selected_key == "kouji_shutoku_fc":
     # =============================================
     # 第4章: 回数別バケット開通率（事後集計）
     # =============================================
+    st.markdown('<div class="ksf-page-break"></div>', unsafe_allow_html=True)
     st.markdown("## 📈 第3章 工事取得FC回数別 開通率")
     st.caption(
         "工事取得FC回数で案件を分類し、その群の開通率を比較。0回群＝自動進行で開通する案件群（74%）と、"
@@ -4534,6 +4608,7 @@ if selected_key == "kouji_shutoku_fc":
     # =============================================
     # 第5章: N回目の限界効用
     # =============================================
+    st.markdown('<div class="ksf-page-break"></div>', unsafe_allow_html=True)
     st.markdown("## 🎯 第4章 N回目の限界効用（適正回数の核心）")
     st.caption(
         "「N回到達群のうち、ちょうどN回で開通した案件の割合」= N回目の架電を打って意味があったかを示す指標。"
@@ -4569,6 +4644,7 @@ if selected_key == "kouji_shutoku_fc":
     # =============================================
     # 第6章: 累積開通率（FC実施群を1とした場合の回収度合い）
     # =============================================
+    st.markdown('<div class="ksf-page-break"></div>', unsafe_allow_html=True)
     st.markdown("## 📉 第5章 累積開通率（何回まで打てば何%回収できるか）")
     st.caption(
         f"工事取得FCを1回以上実施した{res['pos_total']:,}件を母数として、N回までに開通した累計件数の割合。"
@@ -4634,6 +4710,7 @@ if selected_key == "kouji_shutoku_fc":
     # =============================================
     # 第8章: 結論・提言
     # =============================================
+    st.markdown('<div class="ksf-page-break"></div>', unsafe_allow_html=True)
     st.markdown("## 🏁 第7章 結論・提言")
     st.markdown("""
 <div style='background:#fff;border-radius:10px;padding:16px 22px;box-shadow:0 2px 8px rgba(0,0,0,0.15);line-height:1.8;'>

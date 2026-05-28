@@ -2354,14 +2354,14 @@ METRICS: list[Metric] = [
         label="開通前対応",
         description="商材別・エントリ月×対応月の開通前対応発生率。エントリ件数から月次の必要対応数を見積もる指標",
         fetch=lambda sf: pd.DataFrame(),
-        category="プレゼン資料",
+        category="資料",
     ),
     Metric(
         key="kouji_shutoku_fc",
         label="工事取得FC資料",
         description="ソネット光・直近180日の工事取得FC架電回数と開通率の関係。適正架電回数の根拠資料",
         fetch=lambda sf: pd.DataFrame(),
-        category="プレゼン資料",
+        category="資料",
     ),
     Metric(
         key="total_calls",

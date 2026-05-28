@@ -23,13 +23,13 @@ UI_ORDER_WORKSHEET = "ui_order_data"
 UI_ORDER_CELL = "A1"
 
 # デフォルトのカテゴリ表示順
-DEFAULT_CATEGORY_ORDER = ["TOTAL", "1週間後FC", "促進", "ツール", "タイミー", "責任者用", "SECRET", "プレゼン資料"]
+DEFAULT_CATEGORY_ORDER = ["TOTAL", "1週間後FC", "促進", "ツール", "タイミー", "責任者用", "SECRET", "資料"]
 
 # 保存済み order を読む際に、特定アイテムを強制的に指定カテゴリへ移すマイグレーション
 # (key=item ラベル, value=移動先カテゴリ)
 FORCED_CATEGORY = {
-    "開通前対応": "プレゼン資料",
-    "工事取得FC資料": "プレゼン資料",
+    "開通前対応": "資料",
+    "工事取得FC資料": "資料",
 }
 
 

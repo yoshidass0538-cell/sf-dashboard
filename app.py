@@ -522,14 +522,14 @@ _CAT_COLORS = {
     "ツール":    {"bg": "#D4850A", "fg": "#ffffff"},
     "タイミー":  {"bg": "#FFC107", "fg": "#222222"},
     "SECRET":    {"bg": "#DC2626", "fg": "#ffffff"},
-    "プレゼン資料": {"bg": "#6B46C1", "fg": "#ffffff"},
+    "資料": {"bg": "#6B46C1", "fg": "#ffffff"},
 }
 
 # サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
-# SECRET / プレゼン資料 は「マスタ」ボタンの下に表示するためここではスキップ
+# SECRET / 資料 は「マスタ」ボタンの下に表示するためここではスキップ
 for container in st.session_state["board_order"]:
     cat = container["header"]
-    if cat in ("SECRET", "プレゼン資料"):
+    if cat in ("SECRET", "資料"):
         continue
     if cat == "TOTAL":
         st.sidebar.subheader(cat)
@@ -761,19 +761,19 @@ if _secret_container:
             if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                 st.session_state["selected"] = mkey
 
-# --- プレゼン資料カテゴリ（SECRETの直下、パスワード保護）---
+# --- 資料カテゴリ（SECRETの直下、パスワード保護）---
 _presen_container = next(
-    (c for c in st.session_state["board_order"] if c.get("header") == "プレゼン資料"),
+    (c for c in st.session_state["board_order"] if c.get("header") == "資料"),
     None,
 )
 if _presen_container:
-    _presen_toggle_key = "cat_open_プレゼン資料"
+    _presen_toggle_key = "cat_open_資料"
     if _presen_toggle_key not in st.session_state:
         st.session_state[_presen_toggle_key] = False
     _presen_open = st.session_state[_presen_toggle_key]
     _presen_arrow = "▼" if _presen_open else "▶"
-    with st.sidebar.container(key="cat-プレゼン資料"):
-        if st.button(f"{_presen_arrow}  プレゼン資料", key="toggle_プレゼン資料", use_container_width=True):
+    with st.sidebar.container(key="cat-資料"):
+        if st.button(f"{_presen_arrow}  資料", key="toggle_資料", use_container_width=True):
             if not st.session_state.get("presen_auth"):
                 st.session_state["selected"] = "_presen_auth"
                 st.rerun()
@@ -853,15 +853,15 @@ if selected_key == "_secret_auth":
     st.stop()
 
 if selected_key == "_presen_auth":
-    st.title("🔒 プレゼン資料")
+    st.title("🔒 資料")
     pw = st.text_input("パスワードを入力してください", type="password", key="presen_pw")
     if pw:
         if pw == "pokipoki":
             st.session_state["presen_auth"] = True
-            st.session_state["cat_open_プレゼン資料"] = True
-            # プレゼン資料 1番上のボードを開く
+            st.session_state["cat_open_資料"] = True
+            # 資料 1番上のボードを開く
             _presen_c = next(
-                (c for c in st.session_state["board_order"] if c.get("header") == "プレゼン資料"),
+                (c for c in st.session_state["board_order"] if c.get("header") == "資料"),
                 None,
             )
             _first_label = (_presen_c.get("items") or [None])[0] if _presen_c else None

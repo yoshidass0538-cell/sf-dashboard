@@ -23,7 +23,14 @@ UI_ORDER_WORKSHEET = "ui_order_data"
 UI_ORDER_CELL = "A1"
 
 # デフォルトのカテゴリ表示順
-DEFAULT_CATEGORY_ORDER = ["TOTAL", "1週間後FC", "促進", "ツール", "タイミー", "責任者用", "SECRET"]
+DEFAULT_CATEGORY_ORDER = ["TOTAL", "1週間後FC", "促進", "ツール", "タイミー", "責任者用", "SECRET", "プレゼン資料"]
+
+# 保存済み order を読む際に、特定アイテムを強制的に指定カテゴリへ移すマイグレーション
+# (key=item ラベル, value=移動先カテゴリ)
+FORCED_CATEGORY = {
+    "開通前対応": "プレゼン資料",
+    "工事取得FC資料": "プレゼン資料",
+}
 
 
 def _get_ws():
@@ -105,7 +112,12 @@ def build_initial_board_order(metrics_list) -> list:
             continue
         saved_items = entry.get("items", []) or []
         # 全カテゴリ集合に存在し、まだ他カテゴリで配置していないアイテムを採用
-        merged = [i for i in saved_items if i in all_items and i not in placed_items]
+        # ただし FORCED_CATEGORY に登録されたアイテムは、所属が異なる場合スキップ
+        merged = [
+            i for i in saved_items
+            if i in all_items and i not in placed_items
+            and (FORCED_CATEGORY.get(i) is None or FORCED_CATEGORY[i] == cat)
+        ]
         placed_items.update(merged)
         order.append({"header": cat, "items": merged})
         used_cats.add(cat)

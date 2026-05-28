@@ -522,13 +522,14 @@ _CAT_COLORS = {
     "ツール":    {"bg": "#D4850A", "fg": "#ffffff"},
     "タイミー":  {"bg": "#FFC107", "fg": "#222222"},
     "SECRET":    {"bg": "#DC2626", "fg": "#ffffff"},
+    "プレゼン資料": {"bg": "#6B46C1", "fg": "#ffffff"},
 }
 
 # サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
-# SECRET は「マスタ」ボタンの下に表示するためここではスキップ
+# SECRET / プレゼン資料 は「マスタ」ボタンの下に表示するためここではスキップ
 for container in st.session_state["board_order"]:
     cat = container["header"]
-    if cat == "SECRET":
+    if cat in ("SECRET", "プレゼン資料"):
         continue
     if cat == "TOTAL":
         st.sidebar.subheader(cat)
@@ -602,7 +603,7 @@ for container in st.session_state["board_order"]:
                     mkey = label_to_key.get(label)
                     if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                         st.session_state["selected"] = mkey
-valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth", "_timee_auth", "_secret_auth"}
+valid_keys = {m.key for m in METRICS} | {"_master", "_responsible_auth", "_timee_auth", "_secret_auth", "_presen_auth"}
 _sel = st.session_state.get("selected")
 # talk_script_* は動的生成のため、キャッシュ未更新でも有効とみなす
 if _sel not in valid_keys and not (_sel and _sel.startswith("talk_script_")):
@@ -760,6 +761,31 @@ if _secret_container:
             if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                 st.session_state["selected"] = mkey
 
+# --- プレゼン資料カテゴリ（SECRETの直下、パスワード保護）---
+_presen_container = next(
+    (c for c in st.session_state["board_order"] if c.get("header") == "プレゼン資料"),
+    None,
+)
+if _presen_container:
+    _presen_toggle_key = "cat_open_プレゼン資料"
+    if _presen_toggle_key not in st.session_state:
+        st.session_state[_presen_toggle_key] = False
+    _presen_open = st.session_state[_presen_toggle_key]
+    _presen_arrow = "▼" if _presen_open else "▶"
+    with st.sidebar.container(key="cat-プレゼン資料"):
+        if st.button(f"{_presen_arrow}  プレゼン資料", key="toggle_プレゼン資料", use_container_width=True):
+            if not st.session_state.get("presen_auth"):
+                st.session_state["selected"] = "_presen_auth"
+                st.rerun()
+            else:
+                st.session_state[_presen_toggle_key] = not _presen_open
+                st.rerun()
+    if _presen_open and st.session_state.get("presen_auth"):
+        for label in _presen_container.get("items", []):
+            mkey = label_to_key.get(label)
+            if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
+                st.session_state["selected"] = mkey
+
 
 # --- 👤 ログイン情報＋ログアウト（サイドバー最下部）---
 st.sidebar.markdown("---")
@@ -819,6 +845,26 @@ if selected_key == "_secret_auth":
                 None,
             )
             _first_label = (_secret_c.get("items") or [None])[0] if _secret_c else None
+            _first_key = label_to_key.get(_first_label) if _first_label else None
+            st.session_state["selected"] = _first_key or "_master"
+            st.rerun()
+        else:
+            st.error("パスワードが違います")
+    st.stop()
+
+if selected_key == "_presen_auth":
+    st.title("🔒 プレゼン資料")
+    pw = st.text_input("パスワードを入力してください", type="password", key="presen_pw")
+    if pw:
+        if pw == "pokipoki":
+            st.session_state["presen_auth"] = True
+            st.session_state["cat_open_プレゼン資料"] = True
+            # プレゼン資料 1番上のボードを開く
+            _presen_c = next(
+                (c for c in st.session_state["board_order"] if c.get("header") == "プレゼン資料"),
+                None,
+            )
+            _first_label = (_presen_c.get("items") or [None])[0] if _presen_c else None
             _first_key = label_to_key.get(_first_label) if _first_label else None
             st.session_state["selected"] = _first_key or "_master"
             st.rerun()

@@ -2357,6 +2357,13 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
+        key="kouji_shutoku_fc",
+        label="工事取得FC資料",
+        description="ソネット光・直近180日の工事取得FC架電回数と開通率の関係。適正架電回数の根拠資料",
+        fetch=lambda sf: pd.DataFrame(),
+        category="TOTAL",
+    ),
+    Metric(
         key="total_calls",
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",

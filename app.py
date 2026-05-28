@@ -441,6 +441,12 @@ def _load_kaitsu_mae_taiou(cache_day: str, v: int = 4):
     return _kmt.compute(_sf())
 
 
+@st.cache_data(ttl=86400, show_spinner="工事取得FC資料を集計中...")
+def _load_kouji_shutoku_fc(cache_day: str, v: int = 1):
+    import kouji_shutoku_fc as _ksf
+    return _ksf.compute(_sf())
+
+
 def _load(metric_key: str):
     if metric_key in _CACHE_5MIN_KEYS:
         return _load_5min(metric_key)
@@ -3249,6 +3255,9 @@ elif selected_key == "cs_shift_calendar":
 elif selected_key == "kaitsu_mae_taiou":
     # 開通前対応 — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "kouji_shutoku_fc":
+    # 工事取得FC資料 — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -4397,6 +4406,258 @@ if selected_key == "kaitsu_mae_taiou":
         _kmt_table(_fc_next)
 
         st.divider()
+
+    st.stop()
+
+# 工事取得FC資料（ソネット光・架電回数別の開通率と適正回数）
+if selected_key == "kouji_shutoku_fc":
+    import kouji_shutoku_fc as _ksf
+
+    st.title("工事取得FC資料")
+    st.caption(
+        "ソネット光・直近180日の工事取得FC架電回数(Account.Field194__c)と開通率の関係から、"
+        "適正な架電回数の目安を可視化する資料。"
+    )
+
+    _kfc1, _kfc2 = st.columns([1, 5])
+    if _kfc1.button("🔄 再集計", key="ksf_reload"):
+        _load_kouji_shutoku_fc.clear()
+        st.rerun()
+
+    res = _load_kouji_shutoku_fc(_daily_cache_key())
+    st.caption(f"集計時点: {res['asof']}　集計期間: 直近{res['lookback_days']}日")
+
+    # 共通テーブル描画
+    def _ksf_table(df):
+        _html = df.to_html(index=False, escape=False).replace("<table", '<table class="ksf-tbl"', 1)
+        st.markdown(
+            "<style>"
+            ".ksf-tbl{width:100%;border-collapse:collapse;font-size:0.95rem;"
+            "background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.18);margin-bottom:8px;}"
+            ".ksf-tbl th,.ksf-tbl td{text-align:center!important;padding:6px 10px;border:1px solid #e0e0e0;color:#222!important;}"
+            ".ksf-tbl th{background:rgba(212,133,10,0.18);color:#5a3a00!important;font-weight:700;}"
+            ".ksf-tbl tr:nth-child(even) td{background:#faf9f5;}"
+            ".ksf-tbl .row-best td{background:#fff3cd!important;font-weight:700;}"
+            "</style>"
+            f'<div style="overflow-x:auto">{_html}</div>',
+            unsafe_allow_html=True,
+        )
+
+    def _kpi_card(label, value, sub=""):
+        return (
+            f"<div style='background:#fff;border-radius:10px;padding:14px 18px;"
+            f"box-shadow:0 2px 8px rgba(0,0,0,0.15);text-align:center;'>"
+            f"<div style='font-size:0.85rem;color:#555;'>{label}</div>"
+            f"<div style='font-size:2.0rem;font-weight:800;color:#5a3a00;line-height:1.2;'>{value}</div>"
+            f"<div style='font-size:0.78rem;color:#777;'>{sub}</div>"
+            f"</div>"
+        )
+
+    # =============================================
+    # 第1章: KPI 概要
+    # =============================================
+    st.markdown("## 📊 KPI 概要")
+    k = res["kpi"]
+    cols = st.columns(4)
+    cols[0].markdown(_kpi_card(
+        "直近180日 開通件数", f"{k['kaitsu_total']:,}",
+        "ソネット光・開通済み"), unsafe_allow_html=True)
+    cols[1].markdown(_kpi_card(
+        "工事取得FC なしで開通", f"{k['fc_zero_rate']:.1f}%",
+        f"{k['fc_zero_count']:,}件 / 自動進行群"), unsafe_allow_html=True)
+    cols[2].markdown(_kpi_card(
+        "平均架電回数（FC実施群）", f"{k['avg_pos']:.2f}回",
+        f"中央値 {k['median_pos']:.0f}回 / N={k['kaitsu_total']-k['fc_zero_count']:,}"), unsafe_allow_html=True)
+    cols[3].markdown(_kpi_card(
+        "適正打ち切り目安", "5回",
+        "限界効用1桁台に転落するライン"), unsafe_allow_html=True)
+    st.divider()
+
+    # =============================================
+    # 第2章: 枠組み・定義
+    # =============================================
+    st.markdown("## 🧩 第1章 枠組み・定義")
+    defn = [
+        {"用語": "工事取得FC", "定義": "Task.Field2_del__c='フォローコール（工事取得）'。工事日が取れていない案件へ工事日確定を促す架電"},
+        {"用語": "工事取得FC回数", "定義": "Account.Field194__c。1案件あたりの工事取得FC実施回数（SF側で集計済み）"},
+        {"用語": "開通", "定義": "Account.Field130__c（工事完了日）にデータあり"},
+        {"用語": "キャンセル(CX)", "定義": "Account.Field119__c（キャンセル日）にデータあり"},
+        {"用語": "母集団（結果確定群）", "定義": f"直近{res['lookback_days']}日エントリ(Field156__c)のソネット光で開通orCX確定済"},
+        {"用語": "FC実施群", "定義": "工事取得FC回数 > 0 の案件（=工事取得FCを1回以上行った案件）"},
+        {"用語": "N回到達群", "定義": "工事取得FC回数 >= N の案件（N-1回までで結着しなかった案件）"},
+        {"用語": "限界効用", "定義": "N回到達群のうち、ちょうどN回で開通した案件の割合（=N回目の架電を打つ価値）"},
+    ]
+    _ksf_table(pd.DataFrame(defn))
+    st.divider()
+
+    # =============================================
+    # 第3章: 結果確定群サマリ
+    # =============================================
+    st.markdown("## 📞 第2章 結果確定群の全体像")
+    st.markdown(
+        f"<div style='font-size:1.05rem;'>母集団 <b>{res['outcome_total']:,}件</b>　"
+        f"内訳: 開通 <b style='color:#1e7e34;'>{res['outcome_open']:,}件</b>　"
+        f"／ CX <b style='color:#b94a48;'>{res['outcome_cx']:,}件</b>　"
+        f"（全体開通率 <b>{res['outcome_open']/res['outcome_total']*100:.1f}%</b>）</div>",
+        unsafe_allow_html=True
+    )
+    st.caption("以降の章は、この母集団を工事取得FC回数別にスライスして見ていきます。")
+    st.divider()
+
+    # =============================================
+    # 第4章: 回数別バケット開通率（事後集計）
+    # =============================================
+    st.markdown("## 📈 第3章 工事取得FC回数別 開通率")
+    st.caption(
+        "工事取得FC回数で案件を分類し、その群の開通率を比較。0回群＝自動進行で開通する案件群（74%）と、"
+        "FC実施群（1回以上）の振る舞いの差を見る。"
+    )
+    bucket_order = ["0回", "1〜2回", "3〜4回", "5〜6回", "7〜9回", "10回以上"]
+    agg_rows = []
+    for b in bucket_order:
+        if b not in res["agg"]:
+            continue
+        v = res["agg"][b]
+        t = v["開通"] + v["CX"]
+        agg_rows.append({
+            "工事取得FC回数": b,
+            "開通": v["開通"], "CX": v["CX"], "計": t,
+            "開通率": f"{v['開通']/t*100:.1f}%" if t else "-",
+        })
+    _ksf_table(pd.DataFrame(agg_rows))
+    st.caption(
+        "💡 **読み方**: 0回群と1〜2回群が最も開通率が高く、3〜4回も同水準。5〜6回でわずかに減少、"
+        "**7〜9回で42%まで低下、10回以上では26%まで急落**。深追いするほどCX率が高まる構造。"
+    )
+    st.divider()
+
+    # =============================================
+    # 第5章: N回目の限界効用
+    # =============================================
+    st.markdown("## 🎯 第4章 N回目の限界効用（適正回数の核心）")
+    st.caption(
+        "「N回到達群のうち、ちょうどN回で開通した案件の割合」= N回目の架電を打って意味があったかを示す指標。"
+        "母数からは0回案件（自動進行群）を除外している。"
+    )
+    marg_rows = []
+    for m in res["marginal"]:
+        # 評価ラベル
+        if m["rate"] >= 13:
+            ev = "🟢 強い"
+        elif m["rate"] >= 10:
+            ev = "🟡 有効"
+        elif m["rate"] >= 7:
+            ev = "🟠 境界"
+        elif m["rate"] >= 4:
+            ev = "🔴 弱い"
+        else:
+            ev = "⚫ ほぼ無効"
+        marg_rows.append({
+            "N回目": f"{m['N']}回目",
+            "N回到達群": f"{m['reach']:,}",
+            "ちょうどN回で開通": f"{m['exact_open']:,}",
+            "限界効用": f"{m['rate']:.1f}%",
+            "評価": ev,
+        })
+    _ksf_table(pd.DataFrame(marg_rows))
+    st.caption(
+        "💡 **読み方**: 1〜4回目までは限界効用10%以上で十分機能。**5回目で8%台に落ち、6回目以降は1桁前半に急落**。"
+        "つまり「5回」が効率的な打ち切りラインの目安。"
+    )
+    st.divider()
+
+    # =============================================
+    # 第6章: 累積開通率（FC実施群を1とした場合の回収度合い）
+    # =============================================
+    st.markdown("## 📉 第5章 累積開通率（何回まで打てば何%回収できるか）")
+    st.caption(
+        f"工事取得FCを1回以上実施した{res['pos_total']:,}件を母数として、N回までに開通した累計件数の割合。"
+    )
+    cum_rows = []
+    final_rate = res["cumulative"][-1]["rate"] if res["cumulative"] else 0
+    for c in res["cumulative"]:
+        if c["N"] > 15:
+            continue
+        pct_of_final = (c["rate"] / final_rate * 100) if final_rate else 0
+        cum_rows.append({
+            "N回まで": f"{c['N']}回",
+            "累計開通件数": f"{c['cum_open']:,}",
+            "累計開通率": f"{c['rate']:.1f}%",
+            "最終比": f"{pct_of_final:.0f}%",
+        })
+    _ksf_table(pd.DataFrame(cum_rows))
+    st.caption(
+        "💡 **読み方**: 「最終比」= 最終的に開通する全件数のうち、N回までで何%を回収できるか。"
+        "**5回までで開通見込みの約8割を回収**でき、それ以降の上乗せは限定的。"
+    )
+    st.divider()
+
+    # =============================================
+    # 第7章: 開通案件の架電回数分布
+    # =============================================
+    st.markdown("## 📊 第6章 開通案件の工事取得FC回数 分布")
+    st.caption(
+        f"直近{res['lookback_days']}日に開通したソネット光のうち、工事取得FC回数>0の{res['kaitsu_total']-res['kaitsu_zero']:,}件の分布。"
+        "5回までで大半（約8割）が決着している。"
+    )
+    dist = res["dist_pos"]
+    total_pos = sum(dist.values())
+    cum = 0
+    dist_rows = []
+    for n in sorted(dist.keys()):
+        if n > 20:
+            continue  # 20回以上は別行でまとめ
+        cum += dist[n]
+        dist_rows.append({
+            "回数": f"{n}回",
+            "件数": f"{dist[n]:,}",
+            "構成比": f"{dist[n]/total_pos*100:.1f}%",
+            "累積構成比": f"{cum/total_pos*100:.1f}%",
+        })
+    over20_cnt = sum(v for n, v in dist.items() if n > 20)
+    if over20_cnt:
+        cum += over20_cnt
+        dist_rows.append({
+            "回数": "21回以上",
+            "件数": f"{over20_cnt:,}",
+            "構成比": f"{over20_cnt/total_pos*100:.1f}%",
+            "累積構成比": f"{cum/total_pos*100:.1f}%",
+        })
+    _ksf_table(pd.DataFrame(dist_rows))
+    st.caption(
+        f"💡 **読み方**: 1回で開通{dist.get(1,0)}件（{dist.get(1,0)/total_pos*100:.1f}%）が最頻。"
+        f"最大{max(dist.keys()) if dist else 0}回まで散在しているが、6回以上は構成比の少ないテール。"
+        f" 平均{res['avg_pos']:.2f}回は外れ値に引かれた値で、**中央値2回・75%点{res['p75_pos']:.0f}回・90%点{res['p90_pos']:.0f}回**が実態に近い。"
+    )
+    st.divider()
+
+    # =============================================
+    # 第8章: 結論・提言
+    # =============================================
+    st.markdown("## 🏁 第7章 結論・提言")
+    st.markdown("""
+<div style='background:#fff;border-radius:10px;padding:16px 22px;box-shadow:0 2px 8px rgba(0,0,0,0.15);line-height:1.8;'>
+
+**① 適正架電回数 = 5回**
+- 1〜4回目は限界効用10%以上で機能
+- 5回目で8%台に低下、累積回収率は約80%に到達
+- 6回目以降は限界効用1桁前半に急落
+
+**② 6回以上は「Go/No-Go判断」必須**
+- 6〜9回群の開通率は40%台、10回以上では26%まで低下
+- 「とりあえずもう1回」が深追いCXを生んでいる構造
+
+**③ 0回案件74%は「FC不要層」**
+- 工事取得FCを1度も打たずに開通する案件が母集団の3/4を占める
+- FCリソースは「FCしないと進まない案件」へ集中投下すべき
+
+**④ 運用ルール案**
+- **打ち切り: 5回到達時点でSV判断を挟む**
+- **6回目はGo/No-Go明示**（ダイコンステータス/最新コール結果で判断）
+- **10回以上は原則打ち切り** → 別アプローチ（窓口連絡・上長介入等）に切り替え
+
+</div>
+""", unsafe_allow_html=True)
 
     st.stop()
 

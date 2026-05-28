@@ -459,6 +459,18 @@ def _load_fubitaitai_kirisute(cache_day: str, v: int = 1):
     return _fk.compute(_sf())
 
 
+@st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(東)を集計中...")
+def _load_fubitaitai_kirisute_higashi(cache_day: str, v: int = 1):
+    import fubitaitai_kirisute as _fk
+    return _fk.compute(_sf(), area="東")
+
+
+@st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(西)を集計中...")
+def _load_fubitaitai_kirisute_nishi(cache_day: str, v: int = 1):
+    import fubitaitai_kirisute as _fk
+    return _fk.compute(_sf(), area="西")
+
+
 def _load(metric_key: str):
     if metric_key in _CACHE_5MIN_KEYS:
         return _load_5min(metric_key)
@@ -3319,8 +3331,8 @@ elif selected_key == "kouji_shutoku_fc":
 elif selected_key == "daikon_riyu_au_sonet":
     # ソネット光AU・UQ 1次停滞理由 — 後の専用ブロックで表示
     fetched = None
-elif selected_key == "fubitaitai_kirisute":
-    # 不備停滞 切り捨て判定資料 — 後の専用ブロックで表示
+elif selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubitaitai_kirisute_nishi"):
+    # 不備停滞 切り捨て判定資料(全件/東/西) — 後の専用ブロックで表示
     fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
@@ -5077,13 +5089,24 @@ if selected_key == "daikon_riyu_au_sonet":
 
     st.stop()
 
-# 不備停滞 切り捨て判定資料
-if selected_key == "fubitaitai_kirisute":
+# 不備停滞 切り捨て判定資料（全件 / 東のみ / 西のみ 共通）
+if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubitaitai_kirisute_nishi"):
     import fubitaitai_kirisute as _fk
 
-    st.title("不備停滞 切り捨て判定資料")
+    # エリア別ローダー・ラベル分岐
+    if selected_key == "fubitaitai_kirisute_higashi":
+        _area_label = "東日本"
+        _area_loader = _load_fubitaitai_kirisute_higashi
+    elif selected_key == "fubitaitai_kirisute_nishi":
+        _area_label = "西日本"
+        _area_loader = _load_fubitaitai_kirisute_nishi
+    else:
+        _area_label = "全件（東+西）"
+        _area_loader = _load_fubitaitai_kirisute
+
+    st.title(f"不備停滞 切り捨て判定資料 — {_area_label}")
     st.caption(
-        "ソネット光・経験ベース集計（1次〜10次のいずれかに該当理由を含む案件）の発生率・開通率から、"
+        f"ソネット光・エリア「{_area_label}」・経験ベース集計（1次〜10次のいずれかに該当理由を含む案件）の発生率・開通率から、"
         "切り捨て可否を判定する資料。直近180日と365日の両期間を提示。"
     )
 
@@ -5119,8 +5142,8 @@ if selected_key == "fubitaitai_kirisute":
     _fkc1, _fkc2, _fkc3 = st.columns([1, 1, 4])
     with _fkc1:
         st.markdown('<div class="fk-no-print">', unsafe_allow_html=True)
-        if st.button("🔄 再集計", key="fk_reload"):
-            _load_fubitaitai_kirisute.clear()
+        if st.button("🔄 再集計", key=f"fk_reload_{selected_key}"):
+            _area_loader.clear()
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
     with _fkc2:
@@ -5139,8 +5162,11 @@ if selected_key == "fubitaitai_kirisute":
             height=46,
         )
 
-    res = _load_fubitaitai_kirisute(_daily_cache_key())
-    st.caption(f"集計時点: {res['asof']}　集計期間: 直近180日 / 直近365日（並列表示）")
+    res = _area_loader(_daily_cache_key())
+    st.caption(
+        f"集計時点: {res['asof']}　エリア: {_area_label}　"
+        f"集計期間: 直近180日 / 直近365日（並列表示）"
+    )
 
     def _fk_table(df):
         _html = df.to_html(index=False, escape=False).replace("<table", '<table class="fk-tbl"', 1)

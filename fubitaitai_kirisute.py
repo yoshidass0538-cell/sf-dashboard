@@ -77,10 +77,15 @@ def _analyze(records: list) -> dict:
     return {"total": total, "total_open": total_open, "rows": rows}
 
 
-def compute(sf, now: datetime | None = None) -> dict:
+def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
+    """area: None=全件, '東' / '西' でエリア(Field43__c)絞り込み"""
     now = now or datetime.now(JST)
 
-    select_cols = "Id, Field130__c, Field119__c, " + ", ".join(DAIKON_FIELDS)
+    select_cols = "Id, Field130__c, Field119__c, Field43__c, " + ", ".join(DAIKON_FIELDS)
+    area_filter = ""
+    if area in ("東", "西"):
+        area_filter = f" AND Field43__c = '{area}'"
+
     by_period: dict[int, dict] = {}
     for days in PERIODS:
         soql = (
@@ -88,6 +93,7 @@ def compute(sf, now: datetime | None = None) -> dict:
             "FROM Account "
             f"WHERE Field76__r.Name {PRODUCT_LIKE} "
             f"AND Field156__c = LAST_N_DAYS:{days}"
+            f"{area_filter}"
         )
         rec = sf.query_all(soql)["records"]
         by_period[days] = _analyze(rec)
@@ -112,6 +118,7 @@ def compute(sf, now: datetime | None = None) -> dict:
         "by_period": by_period,
         "reasons_order": reasons_order,
         "min_occurrences": MIN_OCCURRENCES,
+        "area": area,  # None / '東' / '西'
     }
 
 

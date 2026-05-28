@@ -2364,6 +2364,13 @@ METRICS: list[Metric] = [
         category="資料",
     ),
     Metric(
+        key="daikon_riyu_au_sonet",
+        label="ソネット光AU・UQ 1次停滞理由",
+        description="利用携帯AU/UQ×ソネット光の1次ダイコン理由別・開通数/開通率/発生率。直近半年合算＋エントリ月別×東/西/合算",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
         key="total_calls",
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",

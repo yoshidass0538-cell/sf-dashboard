@@ -30,6 +30,7 @@ DEFAULT_CATEGORY_ORDER = ["TOTAL", "1週間後FC", "促進", "ツール", "タ�
 FORCED_CATEGORY = {
     "開通前対応": "資料",
     "工事取得FC資料": "資料",
+    "ソネット光AU・UQ 1次停滞理由": "資料",
 }
 
 

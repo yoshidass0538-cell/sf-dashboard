@@ -447,6 +447,12 @@ def _load_kouji_shutoku_fc(cache_day: str, v: int = 1):
     return _ksf.compute(_sf())
 
 
+@st.cache_data(ttl=86400, show_spinner="1次停滞理由を集計中...")
+def _load_daikon_riyu_au_sonet(cache_day: str, v: int = 1):
+    import daikon_riyu_au_sonet as _drs
+    return _drs.compute(_sf())
+
+
 def _load(metric_key: str):
     if metric_key in _CACHE_5MIN_KEYS:
         return _load_5min(metric_key)
@@ -3304,6 +3310,9 @@ elif selected_key == "kaitsu_mae_taiou":
 elif selected_key == "kouji_shutoku_fc":
     # 工事取得FC資料 — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "daikon_riyu_au_sonet":
+    # ソネット光AU・UQ 1次停滞理由 — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -4781,6 +4790,281 @@ if selected_key == "kouji_shutoku_fc":
 
 </div>
 """, unsafe_allow_html=True)
+
+    st.stop()
+
+# ソネット光AU・UQ 1次停滞理由
+if selected_key == "daikon_riyu_au_sonet":
+    import daikon_riyu_au_sonet as _drs
+
+    st.title("ソネット光 × AU/UQ 1次停滞理由")
+    st.caption(
+        "利用携帯にAUまたはUQを含むソネット光案件の1次ダイコン理由別の発生数・開通数・開通率・発生率を、"
+        "エリア(東/西/合算)×期間(直近半年合算＋エントリ月別)で可視化する資料。"
+    )
+
+    # 印刷用CSS (工事取得FCと同じ仕様)
+    st.markdown("""
+<style>
+@media print {
+  section[data-testid="stSidebar"],
+  header[data-testid="stHeader"],
+  div[data-testid="stToolbar"],
+  div[data-testid="stDecoration"],
+  footer,
+  .drs-no-print { display: none !important; }
+
+  .main .block-container,
+  section.main > div,
+  div[data-testid="stAppViewContainer"] > section,
+  div.block-container { max-width: 100% !important; padding: 6mm 8mm !important; }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .drs-tbl { box-shadow: none !important; font-size: 8.5pt !important;
+             page-break-inside: avoid; }
+  .drs-tbl th, .drs-tbl td { padding: 3px 6px !important; }
+  .drs-page-break { page-break-before: always; }
+
+  div[style*="box-shadow"] { box-shadow: none !important; border: 1px solid #ccc !important; }
+  h1, h2, h3 { color: #222 !important; }
+  @page { size: A4 portrait; margin: 8mm; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+    _drc1, _drc2, _drc3 = st.columns([1, 1, 4])
+    with _drc1:
+        st.markdown('<div class="drs-no-print">', unsafe_allow_html=True)
+        if st.button("🔄 再集計", key="drs_reload"):
+            _load_daikon_riyu_au_sonet.clear()
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+    with _drc2:
+        import streamlit.components.v1 as _components
+        _components.html(
+            """
+            <div class="drs-no-print">
+              <button onclick="window.parent.print()"
+                style="background:#5a3a00;color:#fff;border:none;padding:8px 18px;
+                       border-radius:6px;cursor:pointer;font-weight:700;font-size:0.95rem;
+                       box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+                🖨️ PDFに保存
+              </button>
+            </div>
+            """,
+            height=46,
+        )
+
+    res = _load_daikon_riyu_au_sonet(_daily_cache_key())
+    st.caption(f"集計時点: {res['asof']}　集計期間: 直近{res['lookback_days']}日エントリ")
+
+    def _drs_table(df, *, highlight_top: int = 0):
+        _html = df.to_html(index=False, escape=False).replace("<table", '<table class="drs-tbl"', 1)
+        st.markdown(
+            "<style>"
+            ".drs-tbl{width:100%;border-collapse:collapse;font-size:0.93rem;"
+            "background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.18);margin-bottom:8px;}"
+            ".drs-tbl th,.drs-tbl td{text-align:center!important;padding:6px 10px;border:1px solid #e0e0e0;color:#222!important;}"
+            ".drs-tbl th{background:rgba(107,70,193,0.18);color:#3b2275!important;font-weight:700;}"
+            ".drs-tbl td:first-child{text-align:left!important;font-weight:600;}"
+            ".drs-tbl tr:nth-child(even) td{background:#faf9fd;}"
+            "</style>"
+            f'<div style="overflow-x:auto">{_html}</div>',
+            unsafe_allow_html=True,
+        )
+
+    def _fmt_pct(num, den):
+        return f"{num/den*100:.1f}%" if den else "-"
+
+    # 共通: 1テーブル生成（行=理由、列=件数/開通/開通率/発生率）
+    def _build_reason_table(area, ym):
+        cell = res["table"].get(f"{area}|{ym}", {})
+        total = res["totals"].get(f"{area}|{ym}", 0)
+        rows = []
+        # 理由順は合算全期間の件数順だが、当該 area×ym で件数0の理由はスキップ
+        for r in res["reasons_order"]:
+            v = cell.get(r)
+            if not v or v["count"] == 0:
+                continue
+            rows.append({
+                "1次停滞理由": r,
+                "件数": v["count"],
+                "開通": v["open"],
+                "開通率": _fmt_pct(v["open"], v["count"]),
+                "発生率": _fmt_pct(v["count"], total),
+            })
+        # 合計行
+        rows.append({
+            "1次停滞理由": "<b>合計</b>",
+            "件数": f"<b>{total}</b>",
+            "開通": f"<b>{sum(v['open'] for v in cell.values())}</b>",
+            "開通率": f"<b>{_fmt_pct(sum(v['open'] for v in cell.values()), total)}</b>",
+            "発生率": "<b>100.0%</b>",
+        })
+        return pd.DataFrame(rows), total
+
+    # =============================================
+    # KPI 概要
+    # =============================================
+    st.markdown("## 📊 KPI 概要")
+    total_all = res["totals"].get("合算|全期間", 0)
+    total_higashi = res["totals"].get("東|全期間", 0)
+    total_nishi = res["totals"].get("西|全期間", 0)
+    cell_all = res["table"].get("合算|全期間", {})
+    open_all = sum(v["open"] for v in cell_all.values())
+    top_reason = res["reasons_order"][0] if res["reasons_order"] else "(なし)"
+    top_v = cell_all.get(top_reason, {"count": 0, "open": 0})
+
+    def _kpi(label, value, sub=""):
+        return (
+            f"<div style='background:#fff;border-radius:10px;padding:14px 18px;"
+            f"box-shadow:0 2px 8px rgba(0,0,0,0.15);text-align:center;'>"
+            f"<div style='font-size:0.85rem;color:#555;'>{label}</div>"
+            f"<div style='font-size:1.7rem;font-weight:800;color:#3b2275;line-height:1.2;'>{value}</div>"
+            f"<div style='font-size:0.78rem;color:#777;'>{sub}</div>"
+            f"</div>"
+        )
+
+    cols = st.columns(4)
+    cols[0].markdown(_kpi(
+        "母集団件数（半年合算）", f"{total_all:,}",
+        f"東 {total_higashi:,} ／ 西 {total_nishi:,}"), unsafe_allow_html=True)
+    cols[1].markdown(_kpi(
+        "うち開通済", f"{open_all:,}",
+        "Field130__c(工事完了日) あり"), unsafe_allow_html=True)
+    cols[2].markdown(_kpi(
+        "全体開通率", _fmt_pct(open_all, total_all),
+        "1次停滞経験あり群の開通到達率"), unsafe_allow_html=True)
+    cols[3].markdown(_kpi(
+        "最頻 1次理由", top_reason,
+        f"{top_v['count']}件 / 開通率 {_fmt_pct(top_v['open'], top_v['count'])}"), unsafe_allow_html=True)
+    st.divider()
+
+    # =============================================
+    # 第1章 定義
+    # =============================================
+    st.markdown("## 🧩 第1章 母集団・用語定義")
+    defn = [
+        {"項目": "取次商材", "条件": "Field76__r.Name LIKE '%So-net%'（ソネット光）"},
+        {"項目": "利用携帯", "条件": "Field373__c に 'AU' または 'UQ' を含む（大小文字無視）"},
+        {"項目": "エリア", "条件": "Field43__c が '東' または '西'（その他値は除外）"},
+        {"項目": "1次停滞理由", "条件": "Field242__c（1次ダイコン理由）に値あり。空欄=ストレート進行は除外"},
+        {"項目": "エントリ期間", "条件": f"Field156__c が直近{res['lookback_days']}日（=半年）"},
+        {"項目": "開通", "条件": "Field130__c（工事完了日）にデータあり"},
+        {"項目": "件数", "条件": "母集団に該当する案件数"},
+        {"項目": "開通数", "条件": "件数のうち、開通(Field130__c)に到達した数"},
+        {"項目": "開通率", "条件": "開通数 ÷ 件数（その理由になった案件のうち開通したか）"},
+        {"項目": "発生率", "条件": "件数 ÷ 当該範囲の合計件数（理由ごとの構成比）"},
+    ]
+    _drs_table(pd.DataFrame(defn))
+    st.divider()
+
+    # =============================================
+    # 第2章 直近半年合算（東/西/合算）
+    # =============================================
+    st.markdown('<div class="drs-page-break"></div>', unsafe_allow_html=True)
+    st.markdown(f"## 📈 第2章 直近{res['lookback_days']}日（半年）合算")
+    st.caption("合算 → 東 → 西 の順で、1次停滞理由ごとに件数・開通・開通率・発生率を提示。")
+
+    for area in ["合算", "東", "西"]:
+        st.markdown(f"### {area}")
+        df, tot = _build_reason_table(area, "全期間")
+        if tot == 0:
+            st.info(f"{area} の該当データはありません。")
+            continue
+        _drs_table(df)
+    st.divider()
+
+    # =============================================
+    # 第3章 エントリ月別（合算）
+    # =============================================
+    st.markdown('<div class="drs-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 📅 第3章 エントリ月別 推移（合算）")
+    st.caption(
+        "エントリ月（直近6ヶ月）ごとの1次停滞理由ごとの件数と発生率。"
+        "件数が時期で偏っている理由は当該キャンペーン/工事日付け運用の影響を疑う。"
+    )
+
+    # 行=理由、列=各月の件数(発生率%)
+    months = res["months"]
+    rows = []
+    for r in res["reasons_order"]:
+        row = {"1次停滞理由": r}
+        any_data = False
+        for m in months:
+            cell = res["table"].get(f"合算|{m}", {}).get(r)
+            tot = res["totals"].get(f"合算|{m}", 0)
+            if cell and cell["count"] > 0:
+                any_data = True
+                row[m] = f"{cell['count']} ({cell['count']/tot*100:.0f}%)" if tot else f"{cell['count']}"
+            else:
+                row[m] = "-"
+        if any_data:
+            rows.append(row)
+    # 合計行
+    tot_row = {"1次停滞理由": "<b>合計件数</b>"}
+    for m in months:
+        tot_row[m] = f"<b>{res['totals'].get(f'合算|{m}', 0)}</b>"
+    rows.append(tot_row)
+    _drs_table(pd.DataFrame(rows))
+    st.caption("※セルは「件数 (発生率%)」。発生率は当該月の母集団に対する構成比。")
+    st.divider()
+
+    # =============================================
+    # 第4章 エントリ月別×エリア（東 / 西）
+    # =============================================
+    st.markdown('<div class="drs-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 🗺️ 第4章 エントリ月別 × エリア別")
+    st.caption("東日本と西日本で1次停滞理由の傾向に差があるかを月別で比較。")
+
+    for area in ["東", "西"]:
+        st.markdown(f"### {area}")
+        rows = []
+        for r in res["reasons_order"]:
+            row = {"1次停滞理由": r}
+            any_data = False
+            for m in months:
+                cell = res["table"].get(f"{area}|{m}", {}).get(r)
+                tot = res["totals"].get(f"{area}|{m}", 0)
+                if cell and cell["count"] > 0:
+                    any_data = True
+                    row[m] = f"{cell['count']} ({cell['count']/tot*100:.0f}%)" if tot else f"{cell['count']}"
+                else:
+                    row[m] = "-"
+            if any_data:
+                rows.append(row)
+        tot_row = {"1次停滞理由": "<b>合計件数</b>"}
+        for m in months:
+            tot_row[m] = f"<b>{res['totals'].get(f'{area}|{m}', 0)}</b>"
+        rows.append(tot_row)
+        _drs_table(pd.DataFrame(rows))
+    st.divider()
+
+    # =============================================
+    # 第5章 開通率比較
+    # =============================================
+    st.markdown('<div class="drs-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 🎯 第5章 1次停滞理由別 開通率 比較")
+    st.caption("半年合算ベースで、合算/東/西の開通率を理由ごとに横並びで比較。深追い不要 vs 介入価値ありの判別に。")
+
+    rows = []
+    for r in res["reasons_order"]:
+        row = {"1次停滞理由": r}
+        for area in ["合算", "東", "西"]:
+            cell = res["table"].get(f"{area}|全期間", {}).get(r)
+            if cell and cell["count"] > 0:
+                row[f"{area} 件数"] = cell["count"]
+                row[f"{area} 開通率"] = _fmt_pct(cell["open"], cell["count"])
+            else:
+                row[f"{area} 件数"] = "-"
+                row[f"{area} 開通率"] = "-"
+        rows.append(row)
+    _drs_table(pd.DataFrame(rows))
+    st.caption("💡 開通率が高い理由＝介入価値大、低い理由＝諦め筋（経過観察 or 別フロー）。")
 
     st.stop()
 

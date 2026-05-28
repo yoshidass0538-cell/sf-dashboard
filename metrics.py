@@ -2371,6 +2371,13 @@ METRICS: list[Metric] = [
         category="資料",
     ),
     Metric(
+        key="fubitaitai_kirisute",
+        label="不備停滞 切り捨て判定資料",
+        description="ソネット光の1次〜10次ダイコン理由別の発生率・開通率（経験ベース）。直近180日と365日の両期間で切り捨て可否を判定",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
         key="total_calls",
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",

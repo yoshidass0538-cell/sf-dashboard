@@ -453,6 +453,12 @@ def _load_daikon_riyu_au_sonet(cache_day: str, v: int = 1):
     return _drs.compute(_sf())
 
 
+@st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定を集計中...")
+def _load_fubitaitai_kirisute(cache_day: str, v: int = 1):
+    import fubitaitai_kirisute as _fk
+    return _fk.compute(_sf())
+
+
 def _load(metric_key: str):
     if metric_key in _CACHE_5MIN_KEYS:
         return _load_5min(metric_key)
@@ -3313,6 +3319,9 @@ elif selected_key == "kouji_shutoku_fc":
 elif selected_key == "daikon_riyu_au_sonet":
     # ソネット光AU・UQ 1次停滞理由 — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "fubitaitai_kirisute":
+    # 不備停滞 切り捨て判定資料 — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -5065,6 +5074,339 @@ if selected_key == "daikon_riyu_au_sonet":
         rows.append(row)
     _drs_table(pd.DataFrame(rows))
     st.caption("💡 開通率が高い理由＝介入価値大、低い理由＝諦め筋（経過観察 or 別フロー）。")
+
+    st.stop()
+
+# 不備停滞 切り捨て判定資料
+if selected_key == "fubitaitai_kirisute":
+    import fubitaitai_kirisute as _fk
+
+    st.title("不備停滞 切り捨て判定資料")
+    st.caption(
+        "ソネット光・経験ベース集計（1次〜10次のいずれかに該当理由を含む案件）の発生率・開通率から、"
+        "切り捨て可否を判定する資料。直近180日と365日の両期間を提示。"
+    )
+
+    # 印刷用CSS
+    st.markdown("""
+<style>
+@media print {
+  section[data-testid="stSidebar"],
+  header[data-testid="stHeader"],
+  div[data-testid="stToolbar"],
+  div[data-testid="stDecoration"],
+  footer,
+  .fk-no-print { display: none !important; }
+  .main .block-container,
+  section.main > div,
+  div[data-testid="stAppViewContainer"] > section,
+  div.block-container { max-width: 100% !important; padding: 6mm 8mm !important; }
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .fk-tbl { box-shadow: none !important; font-size: 8.5pt !important;
+            page-break-inside: avoid; }
+  .fk-tbl th, .fk-tbl td { padding: 3px 6px !important; }
+  .fk-page-break { page-break-before: always; }
+  div[style*="box-shadow"] { box-shadow: none !important; border: 1px solid #ccc !important; }
+  h1, h2, h3 { color: #222 !important; }
+  @page { size: A4 portrait; margin: 8mm; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+    _fkc1, _fkc2, _fkc3 = st.columns([1, 1, 4])
+    with _fkc1:
+        st.markdown('<div class="fk-no-print">', unsafe_allow_html=True)
+        if st.button("🔄 再集計", key="fk_reload"):
+            _load_fubitaitai_kirisute.clear()
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+    with _fkc2:
+        import streamlit.components.v1 as _components
+        _components.html(
+            """
+            <div class="fk-no-print">
+              <button onclick="window.parent.print()"
+                style="background:#5a3a00;color:#fff;border:none;padding:8px 18px;
+                       border-radius:6px;cursor:pointer;font-weight:700;font-size:0.95rem;
+                       box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+                🖨️ PDFに保存
+              </button>
+            </div>
+            """,
+            height=46,
+        )
+
+    res = _load_fubitaitai_kirisute(_daily_cache_key())
+    st.caption(f"集計時点: {res['asof']}　集計期間: 直近180日 / 直近365日（並列表示）")
+
+    def _fk_table(df):
+        _html = df.to_html(index=False, escape=False).replace("<table", '<table class="fk-tbl"', 1)
+        st.markdown(
+            "<style>"
+            ".fk-tbl{width:100%;border-collapse:collapse;font-size:0.93rem;"
+            "background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.18);margin-bottom:8px;}"
+            ".fk-tbl th,.fk-tbl td{text-align:center!important;padding:6px 10px;border:1px solid #e0e0e0;color:#222!important;}"
+            ".fk-tbl th{background:rgba(107,70,193,0.18);color:#3b2275!important;font-weight:700;}"
+            ".fk-tbl td:first-child{text-align:left!important;font-weight:600;}"
+            ".fk-tbl tr:nth-child(even) td{background:#faf9fd;}"
+            ".fk-tbl tr.row-kiri td{background:#fde8e8!important;}"
+            ".fk-tbl tr.row-good td{background:#e8f5e9!important;}"
+            "</style>"
+            f'<div style="overflow-x:auto">{_html}</div>',
+            unsafe_allow_html=True,
+        )
+
+    def _kpi(label, value, sub=""):
+        return (
+            f"<div style='background:#fff;border-radius:10px;padding:14px 18px;"
+            f"box-shadow:0 2px 8px rgba(0,0,0,0.15);text-align:center;'>"
+            f"<div style='font-size:0.85rem;color:#555;'>{label}</div>"
+            f"<div style='font-size:1.7rem;font-weight:800;color:#3b2275;line-height:1.2;'>{value}</div>"
+            f"<div style='font-size:0.78rem;color:#777;'>{sub}</div>"
+            f"</div>"
+        )
+
+    def _classify(rate):
+        return _fk.classify(rate)
+
+    def _badge(rate):
+        c = _classify(rate)
+        color = {"切り捨て推奨": "#b94a48", "グレーゾーン": "#d4860a", "介入価値大": "#1e7e34"}.get(c, "#666")
+        return f"<span style='color:{color};font-weight:700;'>{c}</span>"
+
+    p180 = res["by_period"][180]
+    p365 = res["by_period"][365]
+
+    # =============================================
+    # KPI 概要
+    # =============================================
+    st.markdown("## 📊 KPI 概要")
+    cols = st.columns(4)
+    cols[0].markdown(_kpi(
+        "母集団 直近180日", f"{p180['total']:,}",
+        f"開通{p180['total_open']:,}件 ({p180['total_open']/p180['total']*100:.1f}%)"
+        if p180['total'] else ""
+    ), unsafe_allow_html=True)
+    cols[1].markdown(_kpi(
+        "母集団 直近365日", f"{p365['total']:,}",
+        f"開通{p365['total_open']:,}件 ({p365['total_open']/p365['total']*100:.1f}%)"
+        if p365['total'] else ""
+    ), unsafe_allow_html=True)
+    n_kiri_180 = sum(1 for r in p180['rows'] if r['open_rate'] < 20)
+    n_kiri_365 = sum(1 for r in p365['rows'] if r['open_rate'] < 20)
+    cols[2].markdown(_kpi(
+        "切り捨て候補 (180日)", f"{n_kiri_180}理由",
+        "開通率<20%の理由数"
+    ), unsafe_allow_html=True)
+    cols[3].markdown(_kpi(
+        "切り捨て候補 (365日)", f"{n_kiri_365}理由",
+        "開通率<20%の理由数"
+    ), unsafe_allow_html=True)
+    st.divider()
+
+    # =============================================
+    # 第1章 母集団・指標定義
+    # =============================================
+    st.markdown("## 🧩 第1章 母集団・指標定義")
+    defn = [
+        {"項目": "取次商材", "条件": "Field76__r.Name LIKE '%So-net%'（ソネット光）"},
+        {"項目": "エントリ期間", "条件": "Field156__c が直近180日 / 直近365日（両方並列）"},
+        {"項目": "経験ベース", "条件": "1次〜10次のダイコン理由(Field242〜246/341〜345)のいずれかに該当理由を含む案件"},
+        {"項目": "経験数 N", "条件": "その理由を1度でも経験した案件数（同一案件は1件としてカウント）"},
+        {"項目": "発生率", "条件": "N ÷ その期間の母集団全件数（理由ごとの構成比）"},
+        {"項目": "開通数", "条件": "Nのうち、開通(Field130__c)に到達した数"},
+        {"項目": "開通率", "条件": "開通数 ÷ N（この理由を経験した案件の最終開通到達率）"},
+        {"項目": "⚠️ CX率を使わない理由", "条件": "ダイコン理由はCX完了後にも追記される運用のため、CX率は因果分析に使えない"},
+        {"項目": "判定基準", "条件": "切り捨て推奨=開通率<20% ／ グレー=20-35% ／ 介入価値大=35%以上"},
+        {"項目": "サンプル基準", "条件": "経験数N≧30 の理由のみ集計対象（少数サンプルは除外）"},
+    ]
+    _fk_table(pd.DataFrame(defn))
+    st.divider()
+
+    # =============================================
+    # 第2章 両期間並列比較表
+    # =============================================
+    st.markdown('<div class="fk-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 📊 第2章 両期間 並列比較（メイン表）")
+    st.caption(
+        "1理由につき180日・365日の経験数/発生率/開通率を横並びで比較。"
+        "365日（縦長で安定）と180日（直近の動き）の差から、最近トレンドの変化も読める。"
+    )
+
+    rows_main = []
+    for reason in res["reasons_order"]:
+        v180 = next((r for r in p180["rows"] if r["reason"] == reason), None)
+        v365 = next((r for r in p365["rows"] if r["reason"] == reason), None)
+        row = {"不備停滞理由": reason}
+        if v180:
+            row["180日 経験数"] = v180["n"]
+            row["180日 発生率"] = f"{v180['occur_rate']:.1f}%"
+            row["180日 開通率"] = f"{v180['open_rate']:.1f}%"
+        else:
+            row["180日 経験数"] = "-"
+            row["180日 発生率"] = "-"
+            row["180日 開通率"] = "-"
+        if v365:
+            row["365日 経験数"] = v365["n"]
+            row["365日 発生率"] = f"{v365['occur_rate']:.1f}%"
+            row["365日 開通率"] = f"{v365['open_rate']:.1f}%"
+            row["判定 (365日)"] = _badge(v365["open_rate"])
+        else:
+            row["365日 経験数"] = "-"
+            row["365日 発生率"] = "-"
+            row["365日 開通率"] = "-"
+            row["判定 (365日)"] = "-"
+        rows_main.append(row)
+    _fk_table(pd.DataFrame(rows_main))
+    st.caption(
+        "💡 365日ベースで判定すると母数が大きく傾向が安定。180日は最近の動きを確認する用途。"
+        "両期間で大きく開通率が変わる理由は運用変更・対応強化の影響を疑う。"
+    )
+    st.divider()
+
+    # =============================================
+    # 第3章 切り捨て推奨（開通率<20%）
+    # =============================================
+    st.markdown('<div class="fk-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 🔴 第3章 切り捨て推奨（開通率<20%）")
+    st.caption(
+        "両期間それぞれで開通率20%未満の理由を抽出。"
+        "経験しても10件中2件未満しか開通しない＝構造的に動かない案件群。"
+    )
+
+    st.markdown("### 直近180日")
+    kiri_180 = [r for r in p180["rows"] if r["open_rate"] < 20]
+    kiri_180.sort(key=lambda x: x["open_rate"])
+    if not kiri_180:
+        st.info("該当なし")
+    else:
+        df = pd.DataFrame([
+            {
+                "不備停滞理由": r["reason"],
+                "経験数": r["n"],
+                "発生率": f"{r['occur_rate']:.1f}%",
+                "開通数": r["open"],
+                "開通率": f"{r['open_rate']:.1f}%",
+            }
+            for r in kiri_180
+        ])
+        _fk_table(df)
+
+    st.markdown("### 直近365日")
+    kiri_365 = [r for r in p365["rows"] if r["open_rate"] < 20]
+    kiri_365.sort(key=lambda x: x["open_rate"])
+    if not kiri_365:
+        st.info("該当なし")
+    else:
+        df = pd.DataFrame([
+            {
+                "不備停滞理由": r["reason"],
+                "経験数": r["n"],
+                "発生率": f"{r['occur_rate']:.1f}%",
+                "開通数": r["open"],
+                "開通率": f"{r['open_rate']:.1f}%",
+            }
+            for r in kiri_365
+        ])
+        _fk_table(df)
+    st.divider()
+
+    # =============================================
+    # 第4章 グレーゾーン（20-35%）
+    # =============================================
+    st.markdown('<div class="fk-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 🟡 第4章 グレーゾーン（開通率 20-35%）")
+    st.caption("即切り捨てではないが、深追いコストとリターンを精査すべき理由群。件数の多いものは打ち手の余地大。")
+
+    for days, p in [(180, p180), (365, p365)]:
+        st.markdown(f"### 直近{days}日")
+        gray = [r for r in p["rows"] if 20 <= r["open_rate"] < 35]
+        gray.sort(key=lambda x: -x["n"])
+        if not gray:
+            st.info("該当なし")
+            continue
+        df = pd.DataFrame([
+            {
+                "不備停滞理由": r["reason"],
+                "経験数": r["n"],
+                "発生率": f"{r['occur_rate']:.1f}%",
+                "開通数": r["open"],
+                "開通率": f"{r['open_rate']:.1f}%",
+            }
+            for r in gray
+        ])
+        _fk_table(df)
+    st.divider()
+
+    # =============================================
+    # 第5章 介入価値大（35%以上）
+    # =============================================
+    st.markdown('<div class="fk-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 🟢 第5章 介入価値大（開通率 35%以上）")
+    st.caption(
+        "経験しても1/3以上が開通する＝フォロー強化でさらに回収できる可能性大。"
+        "切り捨てた人員リソースをここに集中投下するのが効率的。"
+    )
+
+    for days, p in [(180, p180), (365, p365)]:
+        st.markdown(f"### 直近{days}日")
+        good = [r for r in p["rows"] if r["open_rate"] >= 35]
+        good.sort(key=lambda x: -x["open_rate"])
+        if not good:
+            st.info("該当なし")
+            continue
+        df = pd.DataFrame([
+            {
+                "不備停滞理由": r["reason"],
+                "経験数": r["n"],
+                "発生率": f"{r['occur_rate']:.1f}%",
+                "開通数": r["open"],
+                "開通率": f"{r['open_rate']:.1f}%",
+            }
+            for r in good
+        ])
+        _fk_table(df)
+    st.divider()
+
+    # =============================================
+    # 第6章 結論・運用提案
+    # =============================================
+    st.markdown('<div class="fk-page-break"></div>', unsafe_allow_html=True)
+    st.markdown("## 🏁 第6章 結論・運用提案")
+
+    # 365日ベースで切り捨て候補の理由名リスト
+    kiri_names = [r["reason"] for r in p365["rows"] if r["open_rate"] < 20]
+    good_names = [r["reason"] for r in p365["rows"] if r["open_rate"] >= 35]
+    gray_top_365 = sorted(
+        [r for r in p365["rows"] if 20 <= r["open_rate"] < 35],
+        key=lambda x: -x["n"],
+    )[:3]
+
+    st.markdown(f"""
+<div style='background:#fff;border-radius:10px;padding:16px 22px;box-shadow:0 2px 8px rgba(0,0,0,0.15);line-height:1.8;'>
+
+**① 切り捨て対象（直近365日基準・開通率<20%）**
+- {' / '.join(kiri_names) if kiri_names else '該当なし'}
+- これらを経験した案件は構造的・物理的に動かない案件群。フォロー工数を投下しても回収率が極めて低い。
+- 推奨運用: 1回確認のみ → 反応なければ放置。次次数の理由検知時にも自動で優先度低に。
+
+**② 集中投下先（直近365日基準・開通率≥35%）**
+- {' / '.join(good_names) if good_names else '該当なし'}
+- 経験しても1/3以上が開通する＝フォロー強化で更に回収余地大。切り捨てから捻出したリソースをここへ。
+
+**③ ボリュームゾーンへの中量投下（件数最大のグレー上位）**
+{''.join([f'- **{r["reason"]}** ({r['n']:,}件 / 開通率{r['open_rate']:.1f}%)' + chr(10) for r in gray_top_365])}
+
+**④ 重要な前提**
+- 経験ベース集計のためサンプル重複なし（同一案件は1件カウント）
+- CX率は集計対象外（ダイコン理由はCX後にも追記される運用のため因果に使えない）
+- N<30 の少数理由は集計対象外（誤判定回避）
+
+</div>
+""", unsafe_allow_html=True)
 
     st.stop()
 

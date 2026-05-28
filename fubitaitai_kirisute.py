@@ -40,8 +40,11 @@ DAIKON_FIELDS = [
 ]
 
 
-def _analyze(records: list) -> dict:
-    """recordsを集計して理由別の経験数・開通数を返す。"""
+def _analyze(records: list, fc_count_map: dict[str, int] | None = None) -> dict:
+    """recordsを集計して理由別の経験数・開通数・平均FC回数を返す。
+    fc_count_map: { AccountId: 代コン系FC回数 } (なければ平均FCは0)
+    """
+    fc_count_map = fc_count_map or {}
     total = len(records)
     total_open = sum(1 for r in records if r.get("Field130__c"))
 
@@ -65,13 +68,23 @@ def _analyze(records: list) -> dict:
         n = len(ids)
         if n < MIN_OCCURRENCES:
             continue
-        op = len(opened_set[reason])
+        op_ids = opened_set[reason]
+        op = len(op_ids)
+        # 開通済み案件の代コン系FC回数（0回含む全平均）
+        fc_counts_open = [fc_count_map.get(rid, 0) for rid in op_ids]
+        fc_avg_open = (sum(fc_counts_open) / len(fc_counts_open)) if fc_counts_open else 0.0
+        # 0回除外平均（実際にコールされた案件のみ）
+        fc_pos = [c for c in fc_counts_open if c > 0]
+        fc_avg_pos = (sum(fc_pos) / len(fc_pos)) if fc_pos else 0.0
         rows.append({
             "reason": reason,
             "n": n,
             "open": op,
             "open_rate": op / n * 100,
             "occur_rate": n / total * 100 if total else 0.0,
+            "fc_avg_open": fc_avg_open,       # 開通案件全体の平均FC回数（0回含む）
+            "fc_avg_pos": fc_avg_pos,         # うちFC>0のみの平均
+            "fc_open_with_call": len(fc_pos), # うちFCを1回以上受けた数
         })
     rows.sort(key=lambda x: -x["n"])
     return {"total": total, "total_open": total_open, "rows": rows}
@@ -86,6 +99,13 @@ def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
     if area in ("東", "西"):
         area_filter = f" AND Field43__c = '{area}'"
 
+    # 代コン系FC（不備停滞対応の架電群）
+    DAICON_FC_LABELS = (
+        "'フォローコール（代コン）'",
+        "'フォローコール（代コン窓口）'",
+        "'フォローコール（工事取得）'",
+    )
+
     by_period: dict[int, dict] = {}
     for days in PERIODS:
         soql = (
@@ -96,7 +116,27 @@ def compute(sf, now: datetime | None = None, area: str | None = None) -> dict:
             f"{area_filter}"
         )
         rec = sf.query_all(soql)["records"]
-        by_period[days] = _analyze(rec)
+
+        # 同じ母集団に対する代コン系FCの回数を案件IDごとに集計
+        # ※ GROUP BY 付きクエリは query_all() ページング不可のため、WhatId だけ
+        #   取得して Python 側でカウントする。
+        soql_task = (
+            "SELECT WhatId FROM Task "
+            f"WHERE Field2_del__c IN ({', '.join(DAICON_FC_LABELS)}) "
+            "AND WhatId IN ("
+            "  SELECT Id FROM Account "
+            f"  WHERE Field76__r.Name {PRODUCT_LIKE} "
+            f"  AND Field156__c = LAST_N_DAYS:{days}"
+            f"  {area_filter}"
+            ")"
+        )
+        fc_count_map: dict[str, int] = defaultdict(int)
+        for t in sf.query_all(soql_task)["records"]:
+            wid = t.get("WhatId")
+            if wid:
+                fc_count_map[wid] += 1
+
+        by_period[days] = _analyze(rec, fc_count_map)
 
     # 全理由の和集合（両期間に出てくるもの）
     all_reasons = set()

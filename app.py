@@ -5245,6 +5245,7 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
         {"項目": "発生率", "条件": "N ÷ その期間の母集団全件数（理由ごとの構成比）"},
         {"項目": "開通数", "条件": "Nのうち、開通(Field130__c)に到達した数"},
         {"項目": "開通率", "条件": "開通数 ÷ N（この理由を経験した案件の最終開通到達率）"},
+        {"項目": "平均架電", "条件": "開通済み案件が受けた代コン系FC（フォローコール代コン/代コン窓口/工事取得）の平均回数（0回案件は除外）"},
         {"項目": "⚠️ CX率を使わない理由", "条件": "ダイコン理由はCX完了後にも追記される運用のため、CX率は因果分析に使えない"},
         {"項目": "判定基準", "条件": "切り捨て推奨=開通率<20% ／ グレー=20-35% ／ 介入価値大=35%以上"},
         {"項目": "サンプル基準", "条件": "経験数N≧30 の理由のみ集計対象（少数サンプルは除外）"},
@@ -5271,25 +5272,30 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
             row["180日 経験数"] = v180["n"]
             row["180日 発生率"] = f"{v180['occur_rate']:.1f}%"
             row["180日 開通率"] = f"{v180['open_rate']:.1f}%"
+            row["180日 平均架電"] = f"{v180['fc_avg_pos']:.1f}回"
         else:
             row["180日 経験数"] = "-"
             row["180日 発生率"] = "-"
             row["180日 開通率"] = "-"
+            row["180日 平均架電"] = "-"
         if v365:
             row["365日 経験数"] = v365["n"]
             row["365日 発生率"] = f"{v365['occur_rate']:.1f}%"
             row["365日 開通率"] = f"{v365['open_rate']:.1f}%"
+            row["365日 平均架電"] = f"{v365['fc_avg_pos']:.1f}回"
             row["判定 (365日)"] = _badge(v365["open_rate"])
         else:
             row["365日 経験数"] = "-"
             row["365日 発生率"] = "-"
             row["365日 開通率"] = "-"
+            row["365日 平均架電"] = "-"
             row["判定 (365日)"] = "-"
         rows_main.append(row)
     _fk_table(pd.DataFrame(rows_main))
     st.caption(
         "💡 365日ベースで判定すると母数が大きく傾向が安定。180日は最近の動きを確認する用途。"
-        "両期間で大きく開通率が変わる理由は運用変更・対応強化の影響を疑う。"
+        "「平均架電」=開通済み案件が代コン系FC（代コン/代コン窓口/工事取得）を平均何回受けて開通したか（0回除外）。"
+        "短い＝早期決着、長い＝粘り強いフォローで救えるが工数大、と読む。"
     )
     st.divider()
 
@@ -5316,6 +5322,7 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
                 "発生率": f"{r['occur_rate']:.1f}%",
                 "開通数": r["open"],
                 "開通率": f"{r['open_rate']:.1f}%",
+                "平均架電": f"{r['fc_avg_pos']:.1f}回",
             }
             for r in kiri_180
         ])
@@ -5334,6 +5341,7 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
                 "発生率": f"{r['occur_rate']:.1f}%",
                 "開通数": r["open"],
                 "開通率": f"{r['open_rate']:.1f}%",
+                "平均架電": f"{r['fc_avg_pos']:.1f}回",
             }
             for r in kiri_365
         ])
@@ -5361,6 +5369,7 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
                 "発生率": f"{r['occur_rate']:.1f}%",
                 "開通数": r["open"],
                 "開通率": f"{r['open_rate']:.1f}%",
+                "平均架電": f"{r['fc_avg_pos']:.1f}回",
             }
             for r in gray
         ])
@@ -5391,6 +5400,7 @@ if selected_key in ("fubitaitai_kirisute", "fubitaitai_kirisute_higashi", "fubit
                 "発生率": f"{r['occur_rate']:.1f}%",
                 "開通数": r["open"],
                 "開通率": f"{r['open_rate']:.1f}%",
+                "平均架電": f"{r['fc_avg_pos']:.1f}回",
             }
             for r in good
         ])

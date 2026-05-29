@@ -454,37 +454,37 @@ def _load_daikon_riyu_au_sonet(cache_day: str, v: int = 1):
 
 
 @st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定を集計中...")
-def _load_fubitaitai_kirisute(cache_day: str, v: int = 1):
+def _load_fubitaitai_kirisute(cache_day: str, v: int = 2):
     import fubitaitai_kirisute as _fk
     return _fk.compute(_sf())
 
 
 @st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(東)を集計中...")
-def _load_fubitaitai_kirisute_higashi(cache_day: str, v: int = 1):
+def _load_fubitaitai_kirisute_higashi(cache_day: str, v: int = 2):
     import fubitaitai_kirisute as _fk
     return _fk.compute(_sf(), area="東")
 
 
 @st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(西)を集計中...")
-def _load_fubitaitai_kirisute_nishi(cache_day: str, v: int = 1):
+def _load_fubitaitai_kirisute_nishi(cache_day: str, v: int = 2):
     import fubitaitai_kirisute as _fk
     return _fk.compute(_sf(), area="西")
 
 
 @st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(AUリスト)を集計中...")
-def _load_fubitaitai_kirisute_au(cache_day: str, v: int = 1):
+def _load_fubitaitai_kirisute_au(cache_day: str, v: int = 2):
     import fubitaitai_kirisute as _fk
     return _fk.compute(_sf(), list_type="AU")
 
 
 @st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(ドコモリスト)を集計中...")
-def _load_fubitaitai_kirisute_docomo(cache_day: str, v: int = 1):
+def _load_fubitaitai_kirisute_docomo(cache_day: str, v: int = 2):
     import fubitaitai_kirisute as _fk
     return _fk.compute(_sf(), list_type="docomo")
 
 
 @st.cache_data(ttl=86400, show_spinner="不備停滞切り捨て判定(SBリスト)を集計中...")
-def _load_fubitaitai_kirisute_sb(cache_day: str, v: int = 1):
+def _load_fubitaitai_kirisute_sb(cache_day: str, v: int = 2):
     import fubitaitai_kirisute as _fk
     return _fk.compute(_sf(), list_type="SB")
 

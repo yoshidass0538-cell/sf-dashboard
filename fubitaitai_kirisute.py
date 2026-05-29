@@ -2,6 +2,8 @@
 
 母集団:
   - 取次商材: ソネット光 (Field76__r.Name LIKE '%So-net%')
+  - 申込区分: 新設 + 事業者変更 (Field78__c IN ('新設','事業者変更'))
+    ※ 事業者変更は「元々新設で受けたが顧客希望 or 不備停滞で種別変更された案件」を含めるため
   - エントリ日: 直近180日 と 直近365日 の両期間
   - ⚠️ 直近 EXCLUDE_RECENT_DAYS 日(=3ヶ月)の案件は除外（進行中で結果未確定の案件を弾く）
 
@@ -28,6 +30,7 @@ from collections import defaultdict
 JST = timezone(timedelta(hours=9))
 
 PRODUCT_LIKE = "LIKE '%So-net%'"
+APPLY_KBN_FILTER = "Field78__c IN ('新設', '事業者変更')"
 PERIODS = [180, 365]  # 直近半年 / 直近1年
 MIN_OCCURRENCES = 30  # 母数のカットオフ
 EXCLUDE_RECENT_DAYS = 90  # 直近この日数以内のエントリは除外（進行中除外）
@@ -148,6 +151,7 @@ def compute(
             f"SELECT {select_cols} "
             "FROM Account "
             f"WHERE Field76__r.Name {PRODUCT_LIKE} "
+            f"AND {APPLY_KBN_FILTER} "
             f"AND Field156__c = LAST_N_DAYS:{days}"
             f"{extra_filter}"
             f"{area_filter}"
@@ -162,6 +166,7 @@ def compute(
             "AND WhatId IN ("
             "  SELECT Id FROM Account "
             f"  WHERE Field76__r.Name {PRODUCT_LIKE} "
+            f"  AND {APPLY_KBN_FILTER} "
             f"  AND Field156__c = LAST_N_DAYS:{days}"
             f"  {extra_filter}"
             f"  {area_filter}"

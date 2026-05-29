@@ -2755,6 +2755,9 @@ if selected_key.startswith("talk_script_"):
         # 決済登録済みなら【決済未登録】セクションは非表示
         _kessai_done = bool((info.get("決済登録日（引用）") or "").strip())
 
+        # 本文中の {{フリガナ}} を顧客のカナ名に置換（無ければ「顧客名」のままにする）
+        _furigana_tk = (info.get("申込者氏名（フリガナ）") or "").strip()
+
         for _sec in _sections_tk:
             _sec_name = _sec["section"]
             _body = _sec["body"]
@@ -2771,6 +2774,7 @@ if selected_key.startswith("talk_script_"):
                 continue
             _body = _apply_nanori_tk(_body, info)
             _body = _apply_replace_tk(_body)
+            _body = _body.replace("{{フリガナ}}", _furigana_tk or "顧客名")
             _safe_tk = _html_tk.escape(_body).replace("\n", "<br>").replace(" ", "&nbsp;")
             st.markdown(
                 f'<div style="background:#E3F2FD;border-left:4px solid #1976D2;'

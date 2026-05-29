@@ -567,11 +567,23 @@ _CAT_COLORS = {
     "資料": {"bg": "#6B46C1", "fg": "#ffffff"},
 }
 
+# CS1〜CS7ログイン時は「ツール」カテゴリのみ表示（他カテゴリ・マスタ・SECRET・資料すべて非表示）
+_lu_top = st.session_state.get("logged_in_user") or {}
+_lu_id_top = (_lu_top.get("id") or "").lower()
+_cs_only_view = _lu_id_top in {f"cs{n}" for n in range(1, 8)}
+
+# CS only モードではツールカテゴリを初期展開
+if _cs_only_view and not st.session_state.get("_cs_view_initialized"):
+    st.session_state["cat_open_ツール"] = True
+    st.session_state["_cs_view_initialized"] = True
+
 # サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
 # SECRET / 資料 は「マスタ」ボタンの下に表示するためここではスキップ
 for container in st.session_state["board_order"]:
     cat = container["header"]
     if cat in ("SECRET", "資料"):
+        continue
+    if _cs_only_view and cat != "ツール":
         continue
     if cat == "TOTAL":
         st.sidebar.subheader(cat)
@@ -656,6 +668,22 @@ _sel = st.session_state.get("selected")
 # talk_script_* は動的生成のため、キャッシュ未更新でも有効とみなす
 if _sel not in valid_keys and not (_sel and _sel.startswith("talk_script_")):
     st.session_state["selected"] = METRICS[0].key
+
+# CS1〜CS7ログイン時は、ツール以外のボードを開いていたら本人のタイミー工事取得へ強制リダイレクト
+if _cs_only_view:
+    from tool_members_store import get_all_member_names as _get_all_for_cs
+    _all_for_cs = _get_all_for_cs()
+    _cs_display = (_lu_top.get("display_name") or "").strip()
+    _cs_expected = None
+    if _cs_display in _all_for_cs:
+        _cs_idx = _all_for_cs.index(_cs_display)
+        _cs_expected = f"talk_script_{_cs_idx:02d}_timee_kouji"
+    _curr_sel = st.session_state.get("selected") or ""
+    _is_own_board = bool(_cs_expected) and _curr_sel == _cs_expected
+    if not _is_own_board:
+        if _cs_expected:
+            st.session_state["selected"] = _cs_expected
+        # フォールバック: 表示名が不明な場合は METRICS[0] のまま（救済不可）
 
 selected_key = st.session_state["selected"]
 
@@ -781,7 +809,7 @@ setInterval(detectTheme, 2000);
 </script>
 """, height=0)
 
-if st.sidebar.button("🔒 マスタ", key="btn_master", width="stretch"):
+if not _cs_only_view and st.sidebar.button("🔒 マスタ", key="btn_master", width="stretch"):
     st.session_state["selected"] = "_master"
 
 # --- SECRET カテゴリ（マスタの直下、パスワード保護）---
@@ -789,7 +817,7 @@ _secret_container = next(
     (c for c in st.session_state["board_order"] if c.get("header") == "SECRET"),
     None,
 )
-if _secret_container:
+if _secret_container and not _cs_only_view:
     _secret_toggle_key = "cat_open_SECRET"
     if _secret_toggle_key not in st.session_state:
         st.session_state[_secret_toggle_key] = False
@@ -814,7 +842,7 @@ _presen_container = next(
     (c for c in st.session_state["board_order"] if c.get("header") == "資料"),
     None,
 )
-if _presen_container:
+if _presen_container and not _cs_only_view:
     _presen_toggle_key = "cat_open_資料"
     if _presen_toggle_key not in st.session_state:
         st.session_state[_presen_toggle_key] = False

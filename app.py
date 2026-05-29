@@ -2654,6 +2654,89 @@ if selected_key.startswith("talk_script_"):
         unsafe_allow_html=True,
     )
 
+    # タイミー工事取得トーク: 顧客カードのエントリ日で本文タブを切替（前確OK/LINE/URL/本文テンプレは全部スキップ）
+    if _board_suffix == "timee_kouji":
+        import html as _html_tk
+        from datetime import date as _date_tk, datetime as _dt_tk
+        from talk_script_store import load_timee_kouji_script, TIMEE_KOUJI_TABS
+        from nanori_master_store import apply_nanori_substitution as _apply_nanori_tk
+        from replace_master_store import apply_replace_substitution as _apply_replace_tk
+
+        # エントリ日のパース（YYYY/MM/DD or YYYY-MM-DD or YYYY/M/D 等）
+        _entry_raw = (info.get("案件進捗管理: エントリ日") or "").strip()
+        _entry_date = None
+        for _fmt in ("%Y/%m/%d", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            try:
+                _entry_date = _dt_tk.strptime(_entry_raw, _fmt).date()
+                break
+            except (ValueError, TypeError):
+                continue
+
+        if _entry_date is None:
+            st.warning(f"エントリ日のパースに失敗しました（値: `{_entry_raw}`）。ET+7-10 タブで表示します。")
+            _elapsed_days = 0
+            _tab_label = TIMEE_KOUJI_TABS["et7_10"]
+            _tab_key = "et7_10"
+        else:
+            _today_tk = _date_tk.today()
+            _elapsed_days = (_today_tk - _entry_date).days
+            if _elapsed_days <= 10:
+                _tab_label = TIMEE_KOUJI_TABS["et7_10"]
+                _tab_key = "et7_10"
+            else:
+                _tab_label = TIMEE_KOUJI_TABS["et11"]
+                _tab_key = "et11"
+
+        # エントリ日経過バッジ
+        _badge_color = "#1976D2" if _tab_key == "et7_10" else "#C62828"
+        st.markdown(
+            f'<div style="background:{_badge_color};color:#fff;display:inline-block;'
+            f'padding:6px 14px;border-radius:6px;font-weight:700;margin:8px 0 4px 0;">'
+            f'📅 エントリ日経過 {_elapsed_days}日 → 「{_tab_label}」を使用</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.subheader(f"📞 タイミー工事取得トーク　|　{_tab_label}")
+
+        try:
+            _sections_tk = load_timee_kouji_script(_tab_label)
+        except Exception as _e_tk:
+            st.error(f"トークスクリプトの読み込みに失敗しました: {_e_tk}")
+            st.stop()
+
+        if not _sections_tk:
+            st.info(f"「{_tab_label}」タブに本文が見つかりませんでした。")
+            st.stop()
+
+        for _sec in _sections_tk:
+            _sec_name = _sec["section"]
+            _body = _sec["body"]
+            if not _body:
+                # 見出しのみの行も表示する
+                st.markdown(
+                    f'<div style="background:#E3F2FD;border-left:4px solid #1976D2;'
+                    f'padding:6px 12px;margin:12px 0 4px 0;border-radius:4px;'
+                    f'font-weight:600;color:#0D47A1;">{_sec_name}</div>',
+                    unsafe_allow_html=True,
+                )
+                continue
+            _body = _apply_nanori_tk(_body, info)
+            _body = _apply_replace_tk(_body)
+            _safe_tk = _html_tk.escape(_body).replace("\n", "<br>").replace(" ", "&nbsp;")
+            st.markdown(
+                f'<div style="background:#E3F2FD;border-left:4px solid #1976D2;'
+                f'padding:6px 12px;margin:12px 0 4px 0;border-radius:4px;'
+                f'font-weight:600;color:#0D47A1;">{_sec_name}</div>'
+                f'<div style="background:rgba(255,255,255,0.85);border-left:6px solid #1976D2;'
+                f'border-radius:6px;padding:14px 20px;font-size:0.95rem;line-height:1.7;color:#1a1a1a;'
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.06);white-space:pre-wrap;'
+                f"font-family:'Meiryo','メイリオ','Yu Gothic',sans-serif;font-weight:700;"
+                f'">{_safe_tk}</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.stop()
+
     # 1週間後FCトーク: 顧客カード直下に 事業変番号連絡先 を表示
     if _board_suffix == "fc1week":
         _renrakusaki_fc_html = _build_renrakusaki_html(info.get("利用回線") or "", standalone=True)

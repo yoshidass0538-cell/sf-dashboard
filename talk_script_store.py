@@ -31,6 +31,14 @@ LOOKUP_SHEETS_BY_SUFFIX = {
     "fc1week": LOOKUP_SHEET,
     "shiryou": LOOKUP_SHEET,
     "sokushin": DAICON_LOOKUP_SHEET,
+    "timee_kouji": LOOKUP_SHEET,
+}
+
+# タイミー工事取得トーク用スプレッドシート（A列1セル1行のトーク本文、【セクション】見出し付き）
+TIMEE_KOUJI_SHEET_ID = "1H1vquKw-em6FN-F0zOme0gwUEvgC_5OiJGIrFSTCQ7s"
+TIMEE_KOUJI_TABS = {
+    "et7_10":  "ET+7-10",     # エントリ日から10日以内
+    "et11":    "ET+11以降",    # エントリ日から11日以上経過
 }
 
 # 商材種別 → トークシート名
@@ -224,7 +232,70 @@ def detect_kind(shozai: str) -> str:
     return "Sonet"
 
 
+@st.cache_data(ttl=1800, show_spinner="タイミー工事取得トークを取得中...")
+def load_timee_kouji_script(tab_name: str) -> list[dict]:
+    """タイミー工事取得トークスプレッドシートの指定タブのA列を読み取り、
+    【セクション】見出し行と本文行に分けて返す。
+
+    Returns:
+        [{"section": "アプローチ", "body": "本文1\\n本文2\\n..."}, ...]
+    """
+    import time as _time
+    from talk_template_store import _get_writable_client
+    try:
+        client = _get_writable_client()
+    except Exception:
+        client = _get_gspread_client()
+
+    last_err = None
+    for attempt in range(4):
+        try:
+            sh = client.open_by_key(TIMEE_KOUJI_SHEET_ID)
+            ws = sh.worksheet(tab_name)
+            col_a = ws.col_values(1)
+            break
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            if "429" in msg or "quota" in msg.lower() or "rate" in msg.lower() or "limit" in msg.lower():
+                _time.sleep(2 ** attempt)
+                continue
+            raise
+    else:
+        raise last_err
+
+    sections: list[dict] = []
+    current_section = None
+    current_body: list[str] = []
+
+    def _flush():
+        if current_section is not None:
+            body_lines = current_body[:]
+            while body_lines and not body_lines[-1].strip():
+                body_lines.pop()
+            while body_lines and not body_lines[0].strip():
+                body_lines.pop(0)
+            sections.append({"section": current_section, "body": "\n".join(body_lines)})
+
+    for raw in col_a:
+        line = (raw or "").rstrip()
+        stripped = line.strip()
+        # 【...】で始まる行をセクション見出しとして扱う
+        if stripped.startswith("【") and "】" in stripped:
+            _flush()
+            current_section = stripped
+            current_body = []
+        else:
+            if current_section is None:
+                # 見出しより前の本文は破棄
+                continue
+            current_body.append(line)
+    _flush()
+    return sections
+
+
 def clear_caches():
     """キャッシュクリア（サイドバーの🔄ボタンから呼ぶ用）。"""
     load_customer_data.clear()
     load_talk_script.clear()
+    load_timee_kouji_script.clear()

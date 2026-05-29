@@ -607,10 +607,16 @@ for container in st.session_state["board_order"]:
             if cat == "ツール":
                 from tool_members_store import get_member_assignments, get_all_member_names, is_excluded_member as _tool_excluded
                 _all_names = get_all_member_names()
+                # CS1〜CS7アカウントでログイン中はCS1〜CS7のみ表示
+                _lu_for_tool = st.session_state.get("logged_in_user") or {}
+                _lu_id_for_tool = (_lu_for_tool.get("id") or "").lower()
+                _cs_only_mode = _lu_id_for_tool in {f"cs{n}" for n in range(1, 8)}
                 for _member_name in container["items"]:
                     if _member_name not in _all_names:
                         continue
                     if _tool_excluded(_member_name):
+                        continue
+                    if _cs_only_mode and not _member_name.startswith("CS"):
                         continue
                     _mem_idx = _all_names.index(_member_name)
                     _mem_assignments = get_member_assignments(_member_name)

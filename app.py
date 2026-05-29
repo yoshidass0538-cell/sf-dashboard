@@ -2438,9 +2438,19 @@ if selected_key.startswith("talk_script_"):
         st.stop()
 
     info = lookup_customer(phone_clean, _lookup_sheet)
+    _lookup_source = _lookup_sheet
+    # タイミー工事取得トーク: 1週間後FC該当案件で見つからなければ So-net光案件 タブにフォールバック
+    if info is None and _board_suffix == "timee_kouji":
+        from talk_script_store import SONET_KAITSU_LOOKUP_SHEET
+        info = lookup_customer(phone_clean, SONET_KAITSU_LOOKUP_SHEET)
+        if info is not None:
+            _lookup_source = SONET_KAITSU_LOOKUP_SHEET
     if info is None:
         st.warning(f"電話番号 `{phone_clean}` に該当する顧客情報が見つかりません。")
         st.stop()
+    # フォールバック発火時は明示する
+    if _board_suffix == "timee_kouji" and _lookup_source != _lookup_sheet:
+        st.info(f"📋 1週間後FC該当案件に見つからなかったため『{_lookup_source}』タブから取得しました。")
 
     # --- 商流変更アラート（直前に表示した商流と違えば警告） ---
     _current_shoryu = (info.get("商流（引用）") or "").strip()

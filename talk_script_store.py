@@ -25,6 +25,7 @@ TALK_SCRIPT_SHEET_ID = "15kqCJoZYQSrkvqwecmLgeS9aJBlJAVdoSOP1j822zS0"
 LOOKUP_SHEET_ID = "1iNtEakg4U4C3p7uQlVcJIzojnUd8uW5Ykl8swQRQD5U"
 LOOKUP_SHEET = "1週間後FC該当案件"
 DAICON_LOOKUP_SHEET = "代コン不備該当案件"
+SONET_KAITSU_LOOKUP_SHEET = "So-net光案件"  # タイミー工事取得トーク フォールバック検索先
 
 # suffix → ワークシート名 のマッピング
 LOOKUP_SHEETS_BY_SUFFIX = {

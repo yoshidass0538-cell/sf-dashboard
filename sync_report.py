@@ -30,6 +30,9 @@ LOOKUP_TAB = "1週間後FC該当案件"
 # 代コン不備該当案件 lookup用
 DAICON_LOOKUP_TAB = "代コン不備該当案件"
 
+# So-net光 案件 lookup用（タイミー工事取得トークのフォールバック検索先）
+SONET_KAITSU_LOOKUP_TAB = "So-net光案件"
+
 # 「1週間後FC該当案件」に引用する列（レポートのラベル名で指定）
 LOOKUP_COLUMNS = [
     "取引先名",
@@ -470,6 +473,64 @@ def extract_daicon_fubi_data(headers: list[str], rows: list[list[str]]) -> tuple
     return found_headers, extracted
 
 
+def extract_sonet_kaitsu_data(headers: list[str], rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
+    """
+    So-net光 案件のフォールバック検索用抽出。
+    条件:
+      - 取次商材情報 が 'So-net光' で始まる（前方一致）
+      - キャンセル日（引用）が空
+      - status大区分 が 95/96/キャンセル 以外
+      - 開通日（引用）が空（未開通のみ）
+    抽出列は 1週間後FC該当案件 と同じ（LOOKUP_COLUMNS）。
+    """
+    col_indices = []
+    found_headers = []
+    for col_name in LOOKUP_COLUMNS:
+        if col_name in headers:
+            col_indices.append(headers.index(col_name))
+            found_headers.append(col_name)
+        else:
+            print(f"  WARNING: 列 '{col_name}' がレポートに見つかりません（スキップ）")
+
+    shozai_idx = headers.index("取次商材情報") if "取次商材情報" in headers else -1
+    cancel_idx = headers.index("キャンセル日（引用）") if "キャンセル日（引用）" in headers else -1
+    status_idx = headers.index("status大区分（引用）") if "status大区分（引用）" in headers else -1
+    kaitsu_idx = headers.index("開通日（引用）") if "開通日（引用）" in headers else -1
+    EXCLUDE_STATUS = {"95 キャンセル済み", "96 解約済み", "キャンセル"}
+
+    extracted = []
+    skipped = 0
+    for row in rows:
+        # 取次商材情報が 'So-net光' で始まる
+        if shozai_idx < 0:
+            break
+        sz = row[shozai_idx].strip() if shozai_idx < len(row) else ""
+        if not sz.startswith("So-net光"):
+            skipped += 1
+            continue
+
+        # キャンセル日が入っていたら除外
+        if cancel_idx >= 0 and cancel_idx < len(row) and row[cancel_idx].strip():
+            skipped += 1
+            continue
+
+        # status大区分除外
+        if status_idx >= 0 and status_idx < len(row) and row[status_idx].strip() in EXCLUDE_STATUS:
+            skipped += 1
+            continue
+
+        # 開通日が入っていたら除外（未開通のみ）
+        if kaitsu_idx >= 0 and kaitsu_idx < len(row) and row[kaitsu_idx].strip():
+            skipped += 1
+            continue
+
+        extracted.append([row[i] if i < len(row) else "" for i in col_indices])
+
+    print(f"  フィルター: 取次商材LIKE 'So-net光%' & キャンセル日空 & status除外={EXCLUDE_STATUS} & 開通日空")
+    print(f"  → {len(extracted)}行（除外: {skipped}行）")
+    return found_headers, extracted
+
+
 def main():
     print("=== SF Report → Google Sheets Sync ===")
 
@@ -499,6 +560,14 @@ def main():
     print("4. 代コン不備該当案件タブに必要列を書込中...")
     daicon_headers, daicon_rows = extract_daicon_fubi_data(headers, rows)
     write_to_sheet(client, LOOKUP_SHEET_ID, DAICON_LOOKUP_TAB, daicon_headers, daicon_rows)
+
+    # API制限回避
+    time.sleep(3)
+
+    # 5. So-net光案件タブに書込（タイミー工事取得トークのフォールバック検索用）
+    print("5. So-net光案件タブに必要列を書込中...")
+    sonet_headers, sonet_rows = extract_sonet_kaitsu_data(headers, rows)
+    write_to_sheet(client, LOOKUP_SHEET_ID, SONET_KAITSU_LOOKUP_TAB, sonet_headers, sonet_rows)
 
     print("=== 完了 ===")
 

@@ -2718,9 +2718,14 @@ if selected_key.startswith("talk_script_"):
             st.info(f"「{_tab_label}」タブに本文が見つかりませんでした。")
             st.stop()
 
+        # 決済登録済みなら【決済未登録】セクションは非表示
+        _kessai_done = bool((info.get("決済登録日（引用）") or "").strip())
+
         for _sec in _sections_tk:
             _sec_name = _sec["section"]
             _body = _sec["body"]
+            if _kessai_done and "決済未登録" in _sec_name:
+                continue
             if not _body:
                 # 見出しのみの行も表示する
                 st.markdown(

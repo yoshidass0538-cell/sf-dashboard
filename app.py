@@ -1425,12 +1425,18 @@ if selected_key == "_master":
 
     with st.expander("📞 トークスクリプト編集", expanded=False):
         # 編集するトークスクリプトの種別を動的に生成
-        _talk_script_options = ["（選択してください）"] + [b["label"] for b in get_boards()]
+        _boards_for_edit = get_boards()
+        _talk_script_options = ["（選択してください）"] + [b["label"] for b in _boards_for_edit]
         _selected_script = st.selectbox(
             "編集するトークスクリプトを選択",
             _talk_script_options,
             key="master_talk_script_select",
         )
+        # 選択ボードのsuffix。タイミー工事取得(timee_kouji)では不要な編集項目を隠す
+        _selected_suffix = next(
+            (b["suffix"] for b in _boards_for_edit if b["label"] == _selected_script), None
+        )
+        _is_timee_kouji = (_selected_suffix == "timee_kouji")
 
         if _selected_script == "（選択してください）":
             st.info("編集したいトークスクリプトを上のプルダウンから選択してください。")
@@ -1907,12 +1913,14 @@ if selected_key == "_master":
                 kind_templates = templates.setdefault(kind, {})
                 current_sections = list(_sections_by_kind.get(kind, []))
 
-                # サブタブで機能を整理
-                sub_tabs = st.tabs([
+                # サブタブで機能を整理（タイミー工事取得ではLINEテンプレを非表示）
+                _sub_labels = [
                     "📝 セクション構成・表示条件",
                     "✏️ テンプレート本文編集",
-                    "💬 LINEテンプレ",
-                ])
+                ]
+                if not _is_timee_kouji:
+                    _sub_labels.append("💬 LINEテンプレ")
+                sub_tabs = st.tabs(_sub_labels)
 
                 # ===== サブタブ1: セクション構成・表示条件 =====
                 with sub_tabs[0]:
@@ -2161,14 +2169,22 @@ if selected_key == "_master":
                         # 不備解消(Sonet)は9種テンプレに展開
                         if sec_name == "不備解消" and kind == "Sonet":
                             fubi_templates = templates.setdefault("Sonet_fubi", {})
+                            _fubi_keys_to_show = (
+                                ["工事取得", "有派遣へ変更必要"] if _is_timee_kouji else SONET_FUBI_KEYS
+                            )
+                            _fubi_header = (
+                                "【不備解消】テンプレート（工事取得・有派遣へ変更必要）"
+                                if _is_timee_kouji
+                                else "【不備解消】テンプレート（ダイコンステータス別 9種）"
+                            )
                             st.markdown(
                                 f'<div style="background:{color};color:#fff;padding:8px 14px;'
                                 f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
-                                f'【不備解消】テンプレート（ダイコンステータス別 9種）</div>',
+                                f'{_fubi_header}</div>',
                                 unsafe_allow_html=True,
                             )
                             st.caption("ダイコンステータスから自動選択されます。「工事日調整希望」は「工事取得」に変換されます。")
-                            for fkey in SONET_FUBI_KEYS:
+                            for fkey in _fubi_keys_to_show:
                                 with st.expander(f"📋 {fkey}", expanded=False):
                                     current = fubi_templates.get(fkey, "")
                                     new_val = st.text_area(
@@ -2218,29 +2234,30 @@ if selected_key == "_master":
                             if new_val != current:
                                 kind_templates[sec_name] = new_val
 
-                # ===== サブタブ3: LINEテンプレ =====
-                with sub_tabs[2]:
-                    st.caption("完了LINE・留守LINE・留守完了LINEの3種を編集できます。")
-                    line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
-                    line_store = templates.setdefault(line_store_key, {})
-                    st.markdown(
-                        f'<div style="background:#06C755;color:#fff;padding:8px 14px;'
-                        f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
-                        f'💬 LINEテンプレ（3種）</div>',
-                        unsafe_allow_html=True,
-                    )
-                    for lkey in LINE_TEMPLATE_KEYS:
-                        with st.expander(f"💬 {lkey}", expanded=False):
-                            current = line_store.get(lkey, "")
-                            new_val = st.text_area(
-                                lkey,
-                                value=current,
-                                height=240,
-                                key=f"talk_edit_line_{kind}_{lkey}",
-                                label_visibility="collapsed",
-                            )
-                            if new_val != current:
-                                line_store[lkey] = new_val
+                # ===== サブタブ3: LINEテンプレ（タイミー工事取得では非表示） =====
+                if not _is_timee_kouji:
+                    with sub_tabs[2]:
+                        st.caption("完了LINE・留守LINE・留守完了LINEの3種を編集できます。")
+                        line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
+                        line_store = templates.setdefault(line_store_key, {})
+                        st.markdown(
+                            f'<div style="background:#06C755;color:#fff;padding:8px 14px;'
+                            f'border-radius:6px;font-weight:700;margin:18px 0 8px 0;">'
+                            f'💬 LINEテンプレ（3種）</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for lkey in LINE_TEMPLATE_KEYS:
+                            with st.expander(f"💬 {lkey}", expanded=False):
+                                current = line_store.get(lkey, "")
+                                new_val = st.text_area(
+                                    lkey,
+                                    value=current,
+                                    height=240,
+                                    key=f"talk_edit_line_{kind}_{lkey}",
+                                    label_visibility="collapsed",
+                                )
+                                if new_val != current:
+                                    line_store[lkey] = new_val
 
                 # ===== 共通の保存/再読み込み（タブ外） =====
                 st.divider()

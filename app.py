@@ -1466,11 +1466,28 @@ if selected_key == "_master":
             update_sokushin_section_rule,
             get_sokushin_line_templates,
             update_sokushin_line_template,
+            ensure_board_copy,
+            NAMESPACED_BOARDS,
         )
+
+        # 独立ボード（例: 1週間後FCトーク0601）は専用テンプレを持つ。初回選択時に現行内容をコピー。
+        if _selected_suffix in NAMESPACED_BOARDS:
+            ensure_board_copy(_selected_suffix)
+
+        # ボード切替時、編集用ウィジェットのsession_stateをクリア（ボード間で内容が混ざるのを防ぐ）
+        if st.session_state.get("_master_prev_board") != _selected_script:
+            for _wk in list(st.session_state.keys()):
+                if _wk.startswith((
+                    "talk_edit_", "sec_name_", "sec_rule_", "sec_new_",
+                    "sec_up_", "sec_down_", "sec_del_", "sec_add_", "_sec_order_",
+                )):
+                    st.session_state.pop(_wk, None)
+            st.session_state["_master_prev_board"] = _selected_script
+
         from talk_script_store import get_lookup_columns
         _lookup_cols = get_lookup_columns()
 
-        templates = get_templates()
+        templates = get_templates(_selected_suffix)
         if _selected_script == "促進用トーク":
             st.markdown(
                 '<div style="background:#2E8B57;color:#fff;padding:10px 16px;'
@@ -1952,7 +1969,7 @@ if selected_key == "_master":
                     # value入力が必要な演算子
                     _OPS_NEED_VALUE = {"eq", "ne", "contains", "not_contains", "starts_with", "lt", "gt", "le", "ge"}
                     for si, sn in enumerate(_sec_list):
-                        _rule_current = get_section_rule(kind, sn)
+                        _rule_current = get_section_rule(kind, sn, _selected_suffix)
                         _cur_field = _rule_current.get("field", "")
                         _cur_op = _rule_current.get("op", "")
                         _has_rule = bool(_cur_field and _cur_op)
@@ -2124,7 +2141,7 @@ if selected_key == "_master":
 
                         # ルール変更を反映
                         if _new_rule != _rule_current:
-                            update_section_rule(kind, sn, _new_rule)
+                            update_section_rule(kind, sn, _new_rule, _selected_suffix)
 
                     # 名前変更を反映
                     for si, new_name in _renamed.items():
@@ -2134,10 +2151,10 @@ if selected_key == "_master":
                         if old_name in kind_templates and old_name != new_name:
                             kind_templates[new_name] = kind_templates.pop(old_name)
                         # 表示ルールも引き継ぎ
-                        _old_rule = get_section_rule(kind, old_name)
+                        _old_rule = get_section_rule(kind, old_name, _selected_suffix)
                         if _old_rule and old_name != new_name:
-                            update_section_rule(kind, old_name, {})
-                            update_section_rule(kind, new_name, _old_rule)
+                            update_section_rule(kind, old_name, {}, _selected_suffix)
+                            update_section_rule(kind, new_name, _old_rule, _selected_suffix)
 
                     # 削除を反映
                     if _to_delete:
@@ -2264,7 +2281,7 @@ if selected_key == "_master":
                 col_save, col_reload = st.columns([1, 1])
                 if col_save.button(f"💾 {label} を保存", key=f"talk_save_{kind}", use_container_width=True, type="primary"):
                     # セクション構成の変更（並び替え・追加・削除）もここで確定
-                    update_sections(kind, list(_sec_list))
+                    update_sections(kind, list(_sec_list), _selected_suffix)
                     st.session_state[_sec_order_key] = list(_sec_list)
                     ok, msg = save_templates()
                     st.toast(msg, icon="✅" if ok else "⚠️")
@@ -3012,7 +3029,7 @@ if selected_key.startswith("talk_script_"):
     # --- LINEテンプレ（折りたたみ） ---
     import html as _html
     from talk_template_store import get_templates as _get_tpl_for_line, LINE_TEMPLATE_KEYS
-    _all_templates_for_line = _get_tpl_for_line()
+    _all_templates_for_line = _get_tpl_for_line(_board_suffix)
     _line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
     line_templates = _all_templates_for_line.get(_line_store_key, {})
     if any(line_templates.values()):
@@ -3053,8 +3070,8 @@ if selected_key.startswith("talk_script_"):
     )
 
     st.subheader(f"📞 トークスクリプト（{kind_label}）")
-    templates = get_templates()
-    sections = get_sections(kind)
+    templates = get_templates(_board_suffix)
+    sections = get_sections(kind, _board_suffix)
     kind_templates = templates.get(kind, {})
 
     # Sonetの場合、不備解消セクションは9種テンプレから動的選択
@@ -3095,7 +3112,7 @@ if selected_key.startswith("talk_script_"):
 
     for sec_name in sections:
         # マスタで設定した引用情報ベースの表示ルールを評価
-        _rule = get_section_rule(kind, sec_name)
+        _rule = get_section_rule(kind, sec_name, _board_suffix)
         if not evaluate_section_rule(_rule, info):
             continue
 

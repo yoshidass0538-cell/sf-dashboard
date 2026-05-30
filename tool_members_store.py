@@ -47,6 +47,7 @@ def is_excluded_member(name: str) -> bool:
 # 初期トーク種類
 _DEFAULT_BOARDS = [
     {"suffix": "fc1week", "label": "1週間後FCトーク"},
+    {"suffix": "fc0601", "label": "1週間後FCトーク0601"},
     {"suffix": "shiryou", "label": "1週間後FC 資料"},
     {"suffix": "sokushin", "label": "促進用トーク"},
     {"suffix": "timee_kouji", "label": "タイミー工事取得"},

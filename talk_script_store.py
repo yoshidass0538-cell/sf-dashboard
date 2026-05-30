@@ -30,6 +30,7 @@ SONET_KAITSU_LOOKUP_SHEET = "So-net光案件"  # タイミー工事取得トー�
 # suffix → ワークシート名 のマッピング
 LOOKUP_SHEETS_BY_SUFFIX = {
     "fc1week": LOOKUP_SHEET,
+    "fc0601": LOOKUP_SHEET,
     "shiryou": LOOKUP_SHEET,
     "sokushin": DAICON_LOOKUP_SHEET,
     "timee_kouji": LOOKUP_SHEET,

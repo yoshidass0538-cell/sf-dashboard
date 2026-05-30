@@ -858,6 +858,40 @@ def _serialize(templates: dict[str, dict[str, str]]) -> str:
     return json.dumps(templates, ensure_ascii=False)
 
 
+# 独立したトーク内容を持つボード（共有ではなく専用namespaceで保存）
+NAMESPACED_BOARDS = {"fc0601"}
+# 専用namespaceにコピーする内容キー
+_NS_COPY_KEYS = [
+    "Sonet", "NURO", "Sonet_fubi", "Sonet_closing",
+    "Sonet_line", "NURO_line", "_sections", "_section_rules",
+]
+
+
+def _board_root(board: str | None = None) -> dict:
+    """board専用のテンプレ辞書を返す。専用namespaceが無ければ共有ルートを返す（後方互換）。"""
+    t = _shared_templates()
+    if board:
+        ov = t.get("_board_overrides", {})
+        if board in ov:
+            return ov[board]
+    return t
+
+
+def ensure_board_copy(board: str) -> bool:
+    """board専用テンプレが無ければ現行の共有内容をコピーして作成・即保存。新規作成でTrueを返す。"""
+    import copy as _copy
+    t = _shared_templates()
+    ov = t.setdefault("_board_overrides", {})
+    if board in ov:
+        return False
+    ov[board] = {k: _copy.deepcopy(t[k]) for k in _NS_COPY_KEYS if k in t}
+    try:
+        _get_storage_worksheet().update_acell(TEMPLATE_CELL, _serialize(t))
+    except Exception:
+        pass
+    return True
+
+
 def _deserialize(raw: str) -> dict:
     data = json.loads(raw)
     # セクション構成がなければデフォルトで初期化
@@ -927,30 +961,30 @@ def _shared_templates() -> dict:
         return result
 
 
-def get_templates() -> dict:
-    """共有テンプレートを取得（編集可能な参照を返す）。"""
-    return _shared_templates()
+def get_templates(board: str | None = None) -> dict:
+    """共有テンプレートを取得（編集可能な参照を返す）。boardに専用namespaceがあればそれを返す。"""
+    return _board_root(board)
 
 
-def get_sections(kind: str) -> list[str]:
+def get_sections(kind: str, board: str | None = None) -> list[str]:
     """指定商材のセクション構成を取得。Google Sheets保存値優先、なければデフォルト。"""
-    templates = _shared_templates()
+    templates = _board_root(board)
     sections_map = templates.get("_sections", {})
     return sections_map.get(kind, list(_DEFAULT_SECTIONS_BY_KIND.get(kind, [])))
 
 
-def get_sections_by_kind() -> dict[str, list[str]]:
+def get_sections_by_kind(board: str | None = None) -> dict[str, list[str]]:
     """全商材のセクション構成を返す。"""
-    templates = _shared_templates()
+    templates = _board_root(board)
     sections_map = templates.get("_sections")
     if sections_map:
         return sections_map
     return {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
 
 
-def update_sections(kind: str, sections: list[str]):
+def update_sections(kind: str, sections: list[str], board: str | None = None):
     """セクション構成を更新（メモリ上のみ。save_templatesで永続化）。"""
-    templates = _shared_templates()
+    templates = _board_root(board)
     if "_sections" not in templates:
         templates["_sections"] = {k: list(v) for k, v in _DEFAULT_SECTIONS_BY_KIND.items()}
     templates["_sections"][kind] = sections
@@ -966,22 +1000,22 @@ def _ensure_default_section_rules(templates: dict):
     }
 
 
-def get_section_rule(kind: str, section_name: str) -> dict:
+def get_section_rule(kind: str, section_name: str, board: str | None = None) -> dict:
     """
     セクションの表示ルールを取得。
     返り値: {"field": "引用フィールド名", "op": "empty"|"not_empty"} または空 {}（常に表示）
     """
-    templates = _shared_templates()
+    templates = _board_root(board)
     _ensure_default_section_rules(templates)
     rules = templates.get("_section_rules", {})
     return dict(rules.get(kind, {}).get(section_name, {}))
 
 
-def update_section_rule(kind: str, section_name: str, rule: dict):
+def update_section_rule(kind: str, section_name: str, rule: dict, board: str | None = None):
     """
     セクションの表示ルールを更新。rule が空 {} なら削除（常に表示に戻す）。
     """
-    templates = _shared_templates()
+    templates = _board_root(board)
     _ensure_default_section_rules(templates)
     kind_rules = templates["_section_rules"].setdefault(kind, {})
     if rule:

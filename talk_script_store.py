@@ -26,6 +26,7 @@ LOOKUP_SHEET_ID = "1iNtEakg4U4C3p7uQlVcJIzojnUd8uW5Ykl8swQRQD5U"
 LOOKUP_SHEET = "1週間後FC該当案件"
 DAICON_LOOKUP_SHEET = "代コン不備該当案件"
 SONET_KAITSU_LOOKUP_SHEET = "So-net光案件"  # タイミー工事取得トーク フォールバック検索先
+RENKEI_TAB = "代コンデータ連携11/1～"  # 不備停滞の顧客固有データ（1停滞1行・申込受付番号で複数行）
 
 # suffix → ワークシート名 のマッピング
 LOOKUP_SHEETS_BY_SUFFIX = {
@@ -157,6 +158,97 @@ def lookup_customer(phone: str, sheet_name: str = LOOKUP_SHEET) -> dict | None:
         hit["_entry_dt"] = pd.to_datetime(hit[date_col], errors="coerce")
         hit = hit.sort_values("_entry_dt", ascending=False, na_position="last")
     return hit.iloc[0].to_dict()
+
+
+@st.cache_data(ttl=1800, show_spinner="代コン連携データを取得中...")
+def load_renkei_index() -> dict:
+    """代コンデータ連携11/1～ を読み、申込受付番号ごとに「最新の1停滞」を返す。
+
+    1停滞=1行で、同じ申込受付番号が複数行ある（再停滞のたびに追記）。
+    対応依頼日(G列)が最大の行を採用。G欠損時は データ入力日(I) → 登録日(A) でフォールバック。
+
+    返り値: { 申込受付番号: {
+        "事務局コンサル理由": str(E列), "補足": str(F列・顧客固有メモ),
+        "対応方針": str(N列・代コンマスタ準拠の解決済み手順),
+        "代コン備考": str(L列), "対応依頼日": str(G列) } }
+    TTL 30分（API制限回避）。
+    """
+    import time as _time
+    from talk_template_store import _get_writable_client
+    try:
+        client = _get_writable_client()
+    except Exception:
+        client = _get_gspread_client()
+
+    last_err = None
+    for attempt in range(4):
+        try:
+            sh = client.open_by_key(LOOKUP_SHEET_ID)
+            ws = sh.worksheet(RENKEI_TAB)
+            values = ws.get_all_values()
+            break
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            if "429" in msg or "quota" in msg.lower() or "rate" in msg.lower() or "limit" in msg.lower():
+                _time.sleep(2 ** attempt)
+                continue
+            raise
+    else:
+        raise last_err
+
+    if not values or len(values) < 2:
+        return {}
+
+    # 列index(0始まり): A登録日=0 B受付番号=1 E理由=4 F補足=5 G対応依頼日=6 I入力日=8 L代コン備考=11 N対応方針=13
+    I_UKE, I_RIYU, I_HOSOKU, I_IRAI, I_NYU, I_BIKO, I_HOUSHIN = 1, 4, 5, 6, 8, 11, 13
+
+    def _to_dt(s):
+        s = (s or "").strip()
+        return pd.to_datetime(s, errors="coerce") if s else None
+
+    result: dict = {}
+    for row in values[1:]:
+        if len(row) <= I_HOUSHIN:
+            row = row + [""] * (I_HOUSHIN + 1 - len(row))
+        uke = (row[I_UKE] or "").strip()
+        if not uke:
+            continue
+        rank = _to_dt(row[I_IRAI])
+        if rank is None or pd.isna(rank):
+            rank = _to_dt(row[I_NYU])
+        if rank is None or pd.isna(rank):
+            rank = _to_dt(row[0])
+        rec = {
+            "事務局コンサル理由": (row[I_RIYU] or "").strip(),
+            "補足": (row[I_HOSOKU] or "").strip(),
+            "対応方針": (row[I_HOUSHIN] or "").strip(),
+            "代コン備考": (row[I_BIKO] or "").strip(),
+            "対応依頼日": (row[I_IRAI] or "").strip(),
+            "_rank": rank,
+        }
+        prev = result.get(uke)
+        if prev is None:
+            result[uke] = rec
+        else:
+            p = prev.get("_rank")
+            if rank is not None and not pd.isna(rank) and (p is None or pd.isna(p) or rank >= p):
+                result[uke] = rec
+    for v in result.values():
+        v.pop("_rank", None)
+    return result
+
+
+def get_customer_hosoku(uketuke: str) -> dict | None:
+    """申込受付番号から最新停滞の補足情報を返す。該当なし/取得失敗時は None。"""
+    uketuke = (uketuke or "").strip()
+    if not uketuke:
+        return None
+    try:
+        idx = load_renkei_index()
+    except Exception:
+        return None
+    return idx.get(uketuke)
 
 
 @st.cache_data(ttl=600, show_spinner="トークスクリプトを取得中...")

@@ -3157,6 +3157,53 @@ if selected_key.startswith("talk_script_"):
             unsafe_allow_html=True,
         )
 
+        # 不備解消セクションのみ: この顧客固有の「最新代コン補足」を自動表示
+        # （代コンデータ連携11/1〜 を申込受付番号で突合し、対応依頼日が最新の停滞を参照）
+        if sec_name == "不備解消" and kind == "Sonet":
+            from talk_script_store import get_customer_hosoku as _get_hosoku
+            _uketuke = (info.get("申込受付番号") or "").strip()
+            _hosoku = _get_hosoku(_uketuke) if _uketuke else None
+            if _hosoku:
+                _riyu = _hosoku.get("事務局コンサル理由", "")
+                _hos = _hosoku.get("補足", "")
+                _hou = _hosoku.get("対応方針", "")
+                _biko = _hosoku.get("代コン備考", "")
+                _iraibi = _hosoku.get("対応依頼日", "")
+                _parts = []
+                if _riyu:
+                    _parts.append(
+                        f'<div style="font-weight:700;color:{kind_color};">■ 事務局コンサル理由：'
+                        f'{_html.escape(_riyu)}</div>'
+                    )
+                if _hos:
+                    _parts.append(
+                        '<div style="margin-top:6px;">📝 <b>補足（この顧客）</b><br>'
+                        f'{_render_section_body(_hos)}</div>'
+                    )
+                if _biko and _biko != _hos:
+                    _parts.append(
+                        '<div style="margin-top:6px;color:#555;">🗒 代コン備考<br>'
+                        f'{_render_section_body(_biko)}</div>'
+                    )
+                if _hou:
+                    _parts.append(
+                        '<div style="margin-top:6px;">🎯 <b>対応方針（代コンマスタ準拠）</b><br>'
+                        f'{_render_section_body(_hou)}</div>'
+                    )
+                _date_note = f'（最新停滞: {_html.escape(_iraibi)} 時点）' if _iraibi else ''
+                if _parts:
+                    st.markdown(
+                        '<div style="background:#fff8e1;border-left:4px solid #f5a623;border-radius:6px;'
+                        'padding:12px 18px;margin:4px 0 6px 0;font-size:0.92rem;line-height:1.7;color:#1a1a1a;'
+                        "font-family:'Meiryo','メイリオ','Yu Gothic',sans-serif;\">"
+                        '<div style="font-weight:700;color:#b8860b;margin-bottom:4px;">'
+                        f'🔎 この顧客の最新代コン補足 {_date_note}</div>'
+                        f'{"".join(_parts)}</div>',
+                        unsafe_allow_html=True,
+                    )
+            elif _uketuke:
+                st.caption(f"（連携データに {_uketuke} の代コン補足は見つかりませんでした）")
+
     st.stop()
 
 # 育成KPI: カテゴリ→メンバータブ表示

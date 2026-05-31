@@ -424,7 +424,8 @@ def _progress_start() -> str:
 
 def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlement: bool,
                     extra_sf_fields: list[tuple[str, str]] | None = None,
-                    detail_columns: list[str] | None = None):
+                    detail_columns: list[str] | None = None,
+                    apply_kbn: str | None = None):
     """
     extra_sf_fields: 追加でSELECTするSalesforce項目 [(sf_field, 表示名), ...]
     detail_columns: 促進必要件数明細に表示する列名(順序付き)。

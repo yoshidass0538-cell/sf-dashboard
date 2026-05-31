@@ -437,11 +437,14 @@ def _fetch_progress(sf: Salesforce, like_pattern: str, header: str, with_settlem
     base_select = "Field156__c, Field130__c, Field128__c, Field131__c, Field119__c, Field63__c, X1__c"
     extra_select = ", ".join(sf_f for sf_f, _ in extra_sf_fields)
     select_clause = base_select + (", " + extra_select if extra_select else "")
+    # 申込区分(Field78__c)で絞り込む場合のみ条件追加（例: ソネットは新設のみ）
+    kbn_filter = f" AND Field78__c = '{apply_kbn}'" if apply_kbn else ""
     soql = (
         f"SELECT {select_clause} "
         "FROM Account "
         f"WHERE Field76__r.Name LIKE '{like_pattern}' "
         f"AND Field156__c >= {start}"
+        f"{kbn_filter}"
     )
     rs = sf.query_all(soql)["records"]
     if not rs:
@@ -634,6 +637,7 @@ def fetch_progress(sf: Salesforce) -> dict[str, dict]:
             sf, "%So-net%", "ソネット開通進捗", True,
             extra_sf_fields=_build(sonet_extras),
             detail_columns=sonet_detail,
+            apply_kbn="新設",  # 取次種別=新設のみ（事業者変更等は除外）
         ), _missing(sonet_extras)),
         "AU光開通進捗": _pack(_fetch_progress(
             sf, "AU光%", "AU光開通進捗", False,

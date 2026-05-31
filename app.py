@@ -3159,7 +3159,8 @@ if selected_key.startswith("talk_script_"):
 
         # 不備解消セクションのみ: この顧客固有の「最新代コン補足」を自動表示
         # （代コンデータ連携11/1〜 を申込受付番号で突合し、対応依頼日が最新の停滞を参照）
-        if sec_name == "不備解消" and kind == "Sonet":
+        # 「1週間後FCトーク」には表示せず、「1週間後FCトーク0601」にのみ表示する
+        if sec_name == "不備解消" and kind == "Sonet" and _board_name != "1週間後FCトーク":
             from talk_script_store import get_customer_hosoku as _get_hosoku
             _uketuke = (info.get("申込受付番号") or "").strip()
             _hosoku = _get_hosoku(_uketuke) if _uketuke else None

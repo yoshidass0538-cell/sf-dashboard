@@ -176,30 +176,8 @@ def _get_nested(rec, field):
     return val
 
 
-def fetch_report(sf: Salesforce) -> tuple[list[str], list[list[str]]]:
-    """
-    レポートと同等のデータをSOQLで全件取得（2000件制限なし）。
-    レポートのフィルター: 申込区分=新設, 申込日=2025-04-01～2026-05-31
-    """
-    field_names = [f[0] for f in _SOQL_FIELDS]
-    field_str = ", ".join(field_names)
-
-    soql = (
-        f"SELECT {field_str} FROM Account "
-        f"WHERE Field78__c = '新設' "
-        f"AND Field118__c >= 2025-04-01 AND Field118__c <= 2026-05-31 "
-        f"ORDER BY Name"
-    )
-
-    print("  SOQL実行中（全件取得）...")
-    result = sf.query_all(soql)
-    records = result.get("records", [])
-
-    headers = [f[1] for f in _SOQL_FIELDS]
-    # エントリ日を追加（子オブジェクトから別途取得）
-    headers.append("案件進捗管理: エントリ日")
-
-    # Account ID → エントリ日マッピング（最新を1件）
+def fetch_entry_map(sf: Salesforce) -> dict:
+    """Account ID → エントリ日マッピング（最新を1件）。重いクエリなので使い回す。"""
     print("  エントリ日を取得中...")
     entry_soql = (
         "SELECT Field13__c, Field46__c "
@@ -214,6 +192,40 @@ def fetch_report(sf: Salesforce) -> tuple[list[str], list[list[str]]]:
         entry_date = r.get("Field46__c", "") or ""
         if acc_id and acc_id not in entry_map:
             entry_map[acc_id] = entry_date
+    return entry_map
+
+
+def fetch_report(
+    sf: Salesforce,
+    kubun_list: tuple[str, ...] = ("新設",),
+    entry_map: dict | None = None,
+) -> tuple[list[str], list[list[str]]]:
+    """
+    レポートと同等のデータをSOQLで全件取得（2000件制限なし）。
+    レポートのフィルター: 申込区分 IN kubun_list, 申込日=2025-04-01～2026-05-31
+    entry_map を渡すとエントリ日の重いクエリを省略（複数区分で使い回す用）。
+    """
+    field_names = [f[0] for f in _SOQL_FIELDS]
+    field_str = ", ".join(field_names)
+
+    kubun_in = ", ".join(f"'{k}'" for k in kubun_list)
+    soql = (
+        f"SELECT {field_str} FROM Account "
+        f"WHERE Field78__c IN ({kubun_in}) "
+        f"AND Field118__c >= 2025-04-01 AND Field118__c <= 2026-05-31 "
+        f"ORDER BY Name"
+    )
+
+    print(f"  SOQL実行中（申込区分={kubun_list} 全件取得）...")
+    result = sf.query_all(soql)
+    records = result.get("records", [])
+
+    headers = [f[1] for f in _SOQL_FIELDS]
+    # エントリ日を追加（子オブジェクトから別途取得）
+    headers.append("案件進捗管理: エントリ日")
+
+    if entry_map is None:
+        entry_map = fetch_entry_map(sf)
 
     all_rows = []
     for rec in records:
@@ -539,10 +551,15 @@ def main():
     # 1. Salesforceレポート取得
     print("1. Salesforceレポート取得中...")
     sf = get_sf()
-    headers, rows = fetch_report(sf)
+    entry_map = fetch_entry_map(sf)  # 重いので1回だけ取得し使い回す
+    # 他タブ（デービー/代コン/So-net）用は従来どおり「新設」のみ
+    headers, rows = fetch_report(sf, ("新設",), entry_map=entry_map)
     print(f"   列数: {len(headers)}, 行数: {len(rows)}")
+    # 1週間後FC該当案件タブ用に「事業者変更」も追加取得（このタブにだけ反映）
+    _, rows_jigyo = fetch_report(sf, ("事業者変更",), entry_map=entry_map)
+    print(f"   事業者変更 行数: {len(rows_jigyo)}")
 
-    # 2. プリティーダービー用タブに全量書込
+    # 2. プリティーダービー用タブに全量書込（新設のみ・従来どおり）
     print("2. プリティーダービー用タブに書込中...")
     client = get_gspread_client()
     write_to_sheet(client, DERBY_SHEET_ID, DERBY_TAB, headers, rows)
@@ -550,9 +567,9 @@ def main():
     # API制限回避
     time.sleep(3)
 
-    # 3. lookup用タブに必要列だけ書込
+    # 3. lookup用タブに必要列だけ書込（新設＋事業者変更）
     print("3. 1週間後FC該当案件タブに必要列を書込中...")
-    lookup_headers, lookup_rows = extract_lookup_data(headers, rows)
+    lookup_headers, lookup_rows = extract_lookup_data(headers, rows + rows_jigyo)
     write_to_sheet(client, LOOKUP_SHEET_ID, LOOKUP_TAB, lookup_headers, lookup_rows)
 
     # API制限回避

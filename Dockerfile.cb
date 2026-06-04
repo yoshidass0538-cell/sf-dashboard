@@ -1,0 +1,13 @@
+# CB対応アドバイザー Webhook受け口（Cloud Run用）
+# Streamlit本体とは独立。slimな依存のみ。
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY cb_requirements.txt .
+RUN pip install --no-cache-dir -r cb_requirements.txt
+
+# 受け口に必要なファイルだけコピー
+COPY cb_webhook.py cb_advisor.py sf_client.py cb_judgment_axis.md ./
+
+ENV PORT=8080
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 120 cb_webhook:app

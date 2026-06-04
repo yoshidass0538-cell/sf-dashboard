@@ -1,0 +1,27 @@
+name: Word Articles Daily
+
+on:
+  # 毎日 10:00 JST (= 01:00 UTC)。GitHub標準cronは10〜30分遅延することがある。
+  schedule:
+    - cron: '0 1 * * *'
+  # 手動テスト用
+  workflow_dispatch:
+
+jobs:
+  send-word-article:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Send daily word article
+        env:
+          CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          WORD_ARTICLE_ROOM_ID: '372837276'
+        run: python send_word_articles.py

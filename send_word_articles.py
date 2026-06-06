@@ -1,13 +1,13 @@
 """
 ITワード解説記事 日替わり配信スクリプト（GitHub Actions用）
 
-8ワードを日替わりで1つ選び、そのワードの解説記事URL（使い方・解説中心に
-キュレーション済み）を1本、指定のChatworkルームへ毎日送信する。
+登録ワードから毎日3つ選び、各ワードの解説記事URL（使い方・解説中心に
+キュレーション済み）を1本ずつ、指定のChatworkルームへ送信する。
 
 2段ローテーション:
-- どのワードか      = 通算日 ordinal を 8 で割った余り
-- そのワードの何本目 = 8日で一巡するごとに次のURLへ進む（cycle % 本数）
-これにより毎日ワードが変わり、かつ数週間かけて記事も入れ替わる。
+- どのワードか      = 通算日 ordinal×3+k（k=0..2）をワード数で割った余り
+- そのワードの何本目 = ワード一覧を一巡するごとに次のURLへ進む（cycle % 本数）
+これにより毎日ワードが入れ替わり、かつ数週間かけて記事も入れ替わる。
 """
 
 import os
@@ -135,26 +135,145 @@ WORDS = [
             "https://www.salesforce.com/jp/blog/jp-what-is-aiagent/",
         ],
     },
+    {
+        "word": "LLM（大規模言語モデル）",
+        "desc": "ClaudeやChatGPTの土台となる、大量の言語データを学習したAIモデル。仕組みと種類。",
+        "urls": [
+            "https://aismiley.co.jp/ai_news/what-is-large-language-models/",
+            "https://www.nec-solutioninnovators.co.jp/sp/contents/column/20240229_llm.html",
+            "https://www.hitachi-solutions-create.co.jp/column/technology/llm.html",
+            "https://www.skygroup.jp/media/article/4326/",
+        ],
+    },
+    {
+        "word": "トークン",
+        "desc": "AIがテキストを処理する最小単位。API料金や文字数制限はトークン数で決まる。",
+        "urls": [
+            "https://a-x.inc/blog/llm-tokens/",
+            "https://ex-ture.com/blog/2026/02/28/what-is-token/",
+            "https://g-gen.co.jp/useful/General-tech/explain-language-generation-ai-token/",
+            "https://data.wingarc.com/token-and-api-fees-71251",
+        ],
+    },
+    {
+        "word": "ハルシネーション",
+        "desc": "AIが事実に基づかない情報をもっともらしく出力する現象。業務利用の最重要注意点。",
+        "urls": [
+            "https://www.softbank.jp/business/content/blog/202603/what-is-hallucination",
+            "https://www.ai-souken.com/article/hallucination-overview",
+            "https://business.ntt-east.co.jp/content/cloudsolution/municipality/column-31.html",
+            "https://weel.co.jp/media/hallucination",
+        ],
+    },
+    {
+        "word": "RAG（検索拡張生成）",
+        "desc": "社内文書など外部データを検索してAIに参照させ、正確な回答を生成させる仕組み。",
+        "urls": [
+            "https://www.dir.co.jp/world/entry/solution/rag",
+            "https://www.helpfeel.com/blog/rag-generative-ai",
+            "https://www.sei-info.co.jp/quicksolution/column/rag/",
+            "https://jp.tdsynnex.com/blog/ai/what-is-rag-ai/",
+        ],
+    },
+    {
+        "word": "MCP（Model Context Protocol）",
+        "desc": "AIと外部ツール・データをつなぐ標準規格。「AI用のUSB-Cポート」と呼ばれる。",
+        "urls": [
+            "https://business.ntt-east.co.jp/content/cloudsolution/ih_column-193.html",
+            "https://hblab.co.jp/blog/what-is-mcp/",
+            "https://www.ai-souken.com/article/mcp-overview",
+            "https://jp.ext.hp.com/techdevice/ai/ai_explained_23/",
+        ],
+    },
+    {
+        "word": "ファインチューニング",
+        "desc": "学習済みAIモデルを自社データで追加学習させ、特定業務に適応させる手法。RAGとの違いも。",
+        "urls": [
+            "https://www.sbbit.jp/article/cont1/133069",
+            "https://biz.kddi.com/content/column/smartwork/what-is-fine-tuning/",
+            "https://aismiley.co.jp/ai_news/fine-tuning-rag-difference/",
+            "https://promo.digital.ricoh.com/ai-for-work/column/detail018/",
+        ],
+    },
+    {
+        "word": "API",
+        "desc": "ソフトウェア同士が情報をやり取りする接続口。システム連携の基本の仕組み。",
+        "urls": [
+            "https://kwcplus.kddi-web.com/blog/what-is-api",
+            "https://www.ntt.com/business/services/rink/knowledge/archive_18.html",
+            "https://www.sbbit.jp/article/cont1/62752",
+            "https://data.wingarc.com/what-is-api-16084",
+        ],
+    },
+    {
+        "word": "CI/CD",
+        "desc": "コード変更を自動でテスト・本番反映する開発手法。GitHub Actionsが代表例。",
+        "urls": [
+            "https://atmarkit.itmedia.co.jp/ait/articles/2107/28/news014.html",
+            "https://it-biz.online/it-skills/ci-cd/",
+            "https://www.kagoya.jp/howto/it-glossary/develop/githubactions/",
+            "https://s-p-net.com/knowledge/tech-knowledge/github-actions-cicd-fundamentals-and-design",
+        ],
+    },
+    {
+        "word": "リポジトリ",
+        "desc": "ファイルと変更履歴をまとめて保存する場所。ローカル/リモートの2種類がある。",
+        "urls": [
+            "https://backlog.com/ja/git-tutorial/intro/02/",
+            "https://ninjacode.work/magazine/programming/git4/",
+            "https://envader.plus/article/553",
+            "https://www.sejuku.net/blog/70775",
+        ],
+    },
+    {
+        "word": "DX（デジタルトランスフォーメーション）",
+        "desc": "データとデジタル技術で業務・ビジネスモデルを変革すること。IT化との違いも解説。",
+        "urls": [
+            "https://www.nri.com/jp/knowledge/glossary/dx.html",
+            "https://monstar-lab.com/dx/about/digital_transformation/",
+            "https://biz.kddi.com/content/column/smartwork/what-is-digital-transformation/",
+            "https://www.ntt.com/business/services/rink/knowledge/archive_24.html",
+        ],
+    },
+    {
+        "word": "PoC（概念実証）",
+        "desc": "本格導入の前に小規模に試して実現可能性を検証する取り組み。AI導入で頻出。",
+        "urls": [
+            "https://www.ricoh.co.jp/magazines/smb/column/006953/",
+            "https://www.nec-solutioninnovators.co.jp/sp/contents/column/20230414_poc.html",
+            "https://monstar-lab.com/dx/about/about-poc/",
+            "https://asana.com/ja/resources/proof-of-concept",
+        ],
+    },
 ]
 
 
+WORDS_PER_DAY = 3
+
+
 def pick(now: datetime):
-    """通算日(ordinal)から (ワード, URL) を決める。"""
+    """通算日(ordinal)から当日分の (ワード, URL) を WORDS_PER_DAY 件決める。"""
     ordinal = now.date().toordinal()
-    word_idx = ordinal % len(WORDS)
-    cycle = ordinal // len(WORDS)
-    entry = WORDS[word_idx]
-    url = entry["urls"][cycle % len(entry["urls"])]
-    return entry, url
+    picks = []
+    for k in range(WORDS_PER_DAY):
+        idx = ordinal * WORDS_PER_DAY + k
+        entry = WORDS[idx % len(WORDS)]
+        cycle = idx // len(WORDS)
+        url = entry["urls"][cycle % len(entry["urls"])]
+        picks.append((entry, url))
+    return picks
 
 
-def build_body(entry: dict, url: str) -> str:
-    return (
-        f"[info][title]今日のITワード解説　{entry['word']}[/title]"
-        f"{entry['desc']}\n\n"
-        f"▼解説記事はこちら\n"
-        f"{url}[/info]"
-    )
+def build_body(picks: list) -> str:
+    blocks = []
+    for i, (entry, url) in enumerate(picks, 1):
+        blocks.append(
+            f"[info][title]今日のITワード解説 その{i}　{entry['word']}[/title]"
+            f"{entry['desc']}\n\n"
+            f"▼解説記事はこちら\n"
+            f"{url}[/info]"
+        )
+    return "\n".join(blocks)
 
 
 def send_chatwork(body: str, room_id: str) -> None:
@@ -181,10 +300,11 @@ def main():
         sys.exit(1)
 
     now = datetime.now(JST)
-    entry, url = pick(now)
-    body = build_body(entry, url)
+    picks = pick(now)
+    body = build_body(picks)
 
-    print(f"--- {now.strftime('%Y/%m/%d')} {entry['word']} ---")
+    words = " / ".join(entry["word"] for entry, _ in picks)
+    print(f"--- {now.strftime('%Y/%m/%d')} {words} ---")
     print(body)
     print("--- Sending ---")
     send_chatwork(body, ROOM_ID)

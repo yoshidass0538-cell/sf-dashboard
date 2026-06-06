@@ -105,6 +105,36 @@ WORDS = [
             "https://it-biz.online/it-skills/github/",
         ],
     },
+    {
+        "word": "システムプロンプト",
+        "desc": "AIに役割・制約・ふるまいの土台を最初に与える指示文。出力の一貫性を決める。",
+        "urls": [
+            "https://shinjidainotobira.com/system-prompt/",
+            "https://japan-ai.co.jp/media/5467/",
+            "https://umarketing.co.jp/ai-glossary/system-prompt/",
+            "https://a-x.inc/blog/llm-system-prompt/",
+        ],
+    },
+    {
+        "word": "ユーザープロンプト",
+        "desc": "利用者がその場でAIに送る具体的な指示・依頼文。システムプロンプトとの違いも解説。",
+        "urls": [
+            "https://smarf.jp/article/20435/",
+            "https://zenn.dev/lumichy/articles/system-vs-user-prompt-llm-guide",
+            "https://qiita.com/free-honda/items/77e45095e4026fc7da75",
+            "https://actionbridge.io/ja/llmtutorial/p/mcp-system-vs-user",
+        ],
+    },
+    {
+        "word": "AIエージェント",
+        "desc": "目標に向け状況を認識し、自律的に判断・行動するAIシステム。生成AIとの違いも。",
+        "urls": [
+            "https://www.kagoya.jp/howto/engineer/hpc/aiagent/",
+            "https://www.ai-souken.com/article/ai-agent-overview",
+            "https://proactive.jp/resources/columns/ai-agent-guide/",
+            "https://www.salesforce.com/jp/blog/jp-what-is-aiagent/",
+        ],
+    },
 ]
 
 

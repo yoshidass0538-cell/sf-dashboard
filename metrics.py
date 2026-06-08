@@ -940,6 +940,9 @@ def fetch_cs_shift_for_month(sf: Salesforce, year: int, month: int) -> dict[int,
             e = _fmt(r.get(ef))
             if not s and not e:
                 continue
+            # 稼働時間が 0:00〜0:00（実質シフト無し）は表示・人数カウントから除外
+            if s in ("00:00", "0:00") and e in ("00:00", "0:00"):
+                continue
             by_day.setdefault(day, []).append((owner, s, e))
     return by_day
 

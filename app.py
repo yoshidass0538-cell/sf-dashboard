@@ -5613,7 +5613,7 @@ if selected_key == "gyomu_seiri":
     importlib.reload(_gs)
 
     @st.cache_data(ttl=86400, show_spinner="業務整理資料を集計中...")
-    def _load_gyomu(v=5):
+    def _load_gyomu(v=6):
         return _gs.compute(_sf())
 
     try:
@@ -5691,6 +5691,46 @@ if selected_key == "gyomu_seiri":
         none = [r for r in reasons if r["grp"] == "none"]
 
         st.markdown(f"**母集団: {L['total']:,}件**（過去半年=直近180日エントリ・直近90日除外の確定値／エントリが半年前〜3ヶ月前の分）")
+
+        # ── ◎ 対応方針3案の比較（資料の結論サマリー）──
+        _sm0 = L["summary"]
+        st.markdown("#### ◎ 対応方針3案の比較（月の現場時間 と 開通率）")
+        st.markdown(
+            '<table class="gs-tbl">'
+            '<tr><th>対応方針</th><th>月の現場時間</th><th>削減</th>'
+            '<th>開通率</th><th>低下</th><th>失う開通</th></tr>'
+            # 今までのフロー
+            '<tr><td>今までのフロー（全件・追えるだけ架電）</td>'
+            f'<td>{_sm0["before_h"]:.0f}h/月</td><td>—</td>'
+            f'<td>{_sm0["before_rate"]:.1f}%</td><td>—</td><td>—</td></tr>'
+            # 工取のみ
+            '<tr><td>工取のみ対応（他の不備停滞は全てやめる）</td>'
+            f'<td>{_sm0["kouji_only_h"]:.0f}h/月</td>'
+            f'<td style="color:#c62828;">−{_sm0["kouji_only_save_h"]:.0f}h</td>'
+            f'<td>{_sm0["kouji_only_rate"]:.1f}%</td>'
+            f'<td style="color:#c62828;">−{_sm0["kouji_only_drop_pt"]:.1f}pt</td>'
+            f'<td>{_sm0["kouji_only_lost"]:,}件</td></tr>'
+            # 新フロー(推奨)
+            '<tr style="background:#e8f5e9;font-weight:700;">'
+            '<td>新フロー（5理由は残す＋工取20回キャップ）★推奨</td>'
+            f'<td>{_sm0["after_h"]:.0f}h/月</td>'
+            f'<td style="color:#2e7d32;">−{_sm0["save_h"]:.0f}h</td>'
+            f'<td>{_sm0["after_rate"]:.1f}%</td>'
+            f'<td style="color:#2e7d32;">−{_sm0["drop_pt"]:.1f}pt</td>'
+            f'<td>{_sm0["lost_total"]:,}件</td></tr>'
+            '</table>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div style="background:#fffde7;border-left:5px solid #f9a825;padding:8px 14px;'
+            'border-radius:6px;font-size:13px;line-height:1.6;margin:0 0 14px;">'
+            f'工取のみ案は時間を最も削れる（−{_sm0["kouji_only_save_h"]:.0f}h）が、'
+            f'開通率の低下が大きい（−{_sm0["kouji_only_drop_pt"]:.1f}pt／失う開通{_sm0["kouji_only_lost"]:,}件）。'
+            'これは開通効率の良い<b>5理由まで切ってしまう</b>ため。'
+            f'5理由を残す新フローなら、削減−{_sm0["save_h"]:.0f}hを確保しつつ'
+            f'開通率の低下は−{_sm0["drop_pt"]:.1f}ptに抑えられる。</div>',
+            unsafe_allow_html=True,
+        )
 
         # ── ① 停滞理由別 開通率 ──
         st.markdown("#### ① 停滞理由別 開通率")

@@ -251,6 +251,20 @@ def compute(sf) -> dict:
             "monthly_entries_now": monthly_entries_now,  # 現状の月あたりエントリ目安
         }
 
+        # ── 別案: 工事取得系のみ対応（5理由含むそれ以外の不備停滞を全てやめる）──
+        ko_lost = sum(op for c, (n, op) in A[lst].items()
+                      if c not in KOUJI and c != "(停滞なし)")
+        ko_lost_n = sum(n for c, (n, op) in A[lst].items()
+                        if c not in KOUJI and c != "(停滞なし)")
+        ko_h = avg_kouji_h
+        ko_rate = ((total_open - ko_lost) / total * 100) if total else 0.0
+        summary["kouji_only_h"] = ko_h
+        summary["kouji_only_save_h"] = before_h - ko_h
+        summary["kouji_only_lost"] = ko_lost
+        summary["kouji_only_lost_n"] = ko_lost_n
+        summary["kouji_only_rate"] = ko_rate
+        summary["kouji_only_drop_pt"] = before_rate - ko_rate
+
         out_lists[lst] = {
             "total": total,
             "total_open": total_open,

@@ -5613,7 +5613,7 @@ if selected_key == "gyomu_seiri":
     importlib.reload(_gs)
 
     @st.cache_data(ttl=86400, show_spinner="業務整理資料を集計中...")
-    def _load_gyomu(v=4):
+    def _load_gyomu(v=5):
         return _gs.compute(_sf())
 
     try:
@@ -5651,7 +5651,7 @@ if selected_key == "gyomu_seiri":
     st.markdown("## 業務整理資料")
     st.caption(
         f"対象: ソネット光 × 新設 ／ 集計日 {_gdata['asof']} ／ "
-        f"現場時間は代コン系FC架電 × {_gdata['min_per_call']:.0f}分換算 ／ "
+        f"現場時間は代コン系FC架電（{_gdata['time_model']}）で算定 ／ "
         "リストは利用携帯Ⅰ(主回線)で排他分類"
     )
 
@@ -5815,7 +5815,7 @@ if selected_key == "gyomu_seiri":
 
     st.caption(
         "💡 失う開通は確定値(過去半年=直近180日/直近90日除外)ベース、月時間は3-5月実績ベースのため期間軸が異なる概算です。"
-        " 1架電の想定分(現在5分)を変えると時間は比例して増減します。"
+        " 時間モデル: 留守3分／有効対話13分(通話10分+事務処理3分)。通話結果(Field4_del__c)で按分。"
     )
     st.stop()
 

@@ -2,8 +2,12 @@
 """業務整理資料 — ソネット光×新設の不備停滞対応 業務量/開通率 整理（読み取り専用）。
 
 PART A: リスト別×停滞理由別 開通率（確定値: 過去半年=直近180日/直近90日除外）
-PART B: リスト別×月(3/4/5) 現場時間（代コン系FC架電×5分）
+PART B: リスト別×月(3/4/5) 現場時間（代コン系FC架電。留守3分/有効対話13分）
 PART C: シミュレーション（不備停滞5理由のみ運用 / 工事取得系20回キャップ）
+
+時間モデル（1架電あたり）:
+  - 留守(Field4_del__c='留守'): 3分（事務処理のみ）
+  - 有効対話(留守以外)        : 通話10分 + 事務処理3分 = 13分
 
 リスト判定は利用携帯Ⅰ(Field12__c)主判定で排他:
   AU=KDDI/UQモバイル, SB=Softbank/Y!mobile, docomo=ドコモ
@@ -16,7 +20,8 @@ from datetime import datetime, timezone, timedelta
 
 JST = timezone(timedelta(hours=9))
 
-MIN_PER_CALL = 5.0          # 1架電あたり想定(分)。Zoom実測の有効対話4-5分+留守・後処理の概算
+RUSU_MIN = 3.0              # 留守1架電の所要(分): 事務処理のみ
+EFF_MIN = 13.0             # 有効対話1架電の所要(分): 通話10分 + 事務処理3分
 KOUJI = ("工事日調整希望", "API工事取得")
 KEEP5 = ("番ポ不備", "住所確認", "オーナー確認", "詳細確認", "有派遣へ変更必要")
 DAICON_FC = ("'フォローコール（代コン）'", "'フォローコール（代コン窓口）'", "'フォローコール（工事取得）'")
@@ -44,6 +49,11 @@ def _bucket(cat: str) -> str:
     if cat == "(停滞なし)":
         return "none"
     return "other"
+
+
+def _call_min(result: str | None) -> float:
+    """通話結果から1架電の所要(分)を返す。留守=3分 / それ以外=13分。"""
+    return RUSU_MIN if (result or "") == "留守" else EFF_MIN
 
 
 def compute(sf) -> dict:
@@ -88,13 +98,14 @@ def compute(sf) -> dict:
         if r.get("Field130__c"):
             A[lst][cat][1] += 1
 
-    # ---------- B: 月別架電（現場時間）----------
-    B = {ym: {lst: defaultdict(int) for lst in LISTS} for ym in MONTHS}
+    # ---------- B: 月別架電（現場時間。留守/有効対話で分単位集計）----------
+    # B[ym][lst][bucket] = [calls, minutes]
+    B = {ym: {lst: defaultdict(lambda: [0, 0.0]) for lst in LISTS} for ym in MONTHS}
     for ym in MONTHS:
         y, m = map(int, ym.split("-"))
         last = calendar.monthrange(y, m)[1]
         soql = (
-            f"SELECT WhatId FROM Task WHERE Field2_del__c IN ({','.join(DAICON_FC)}) "
+            f"SELECT WhatId,Field4_del__c FROM Task WHERE Field2_del__c IN ({','.join(DAICON_FC)}) "
             f"AND ActivityDate >= {y}-{m:02d}-01 AND ActivityDate <= {y}-{m:02d}-{last:02d} "
             "AND WhatId IN (SELECT Id FROM Account WHERE Field76__r.Name LIKE '%So-net%' AND Field78__c='新設')"
         )
@@ -108,18 +119,23 @@ def compute(sf) -> dict:
             lst, cat, _ = a
             if lst is None:
                 continue
-            B[ym][lst][_bucket(cat)] += 1
+            cell = B[ym][lst][_bucket(cat)]
+            cell[0] += 1
+            cell[1] += _call_min(t.get("Field4_del__c"))
 
-    # ---------- C: 案件ごとの総架電（A母集団・通年）----------
-    fc_total = defaultdict(int)
+    # ---------- C: 案件ごとの架電（A母集団・通年。回数と分）----------
+    case_calls = defaultdict(int)
+    case_min = defaultdict(float)
     soql_tot = (
-        f"SELECT WhatId FROM Task WHERE Field2_del__c IN ({','.join(DAICON_FC)}) "
+        f"SELECT WhatId,Field4_del__c FROM Task WHERE Field2_del__c IN ({','.join(DAICON_FC)}) "
         f"AND WhatId IN (SELECT Id FROM Account WHERE {A_where})"
     )
     for t in sf.query_all(soql_tot)["records"]:
         wid = t.get("WhatId")
-        if wid:
-            fc_total[wid] += 1
+        if not wid:
+            continue
+        case_calls[wid] += 1
+        case_min[wid] += _call_min(t.get("Field4_del__c"))
 
     # ---------- 整形 ----------
     def cat_order(cat):
@@ -148,27 +164,27 @@ def compute(sf) -> dict:
                 "grp": _bucket(cat),
             })
 
-        # PART B 月別
+        # PART B 月別（分→時間）
         month_time = {}
         for ym in MONTHS:
             b = B[ym][lst]
-            k, f5, ot = b["kouji"], b["keep5"], b["other"]
+            kc, km = b["kouji"]
+            f5c, f5m = b["keep5"]
+            oc, om = b["other"]
             month_time[ym] = {
-                "kouji_calls": k, "keep5_calls": f5, "other_calls": ot,
-                "kouji_h": k * MIN_PER_CALL / 60,
-                "keep5_h": f5 * MIN_PER_CALL / 60,
-                "other_h": ot * MIN_PER_CALL / 60,
-                "total_h": (k + f5 + ot) * MIN_PER_CALL / 60,
+                "kouji_calls": kc, "keep5_calls": f5c, "other_calls": oc,
+                "kouji_h": km / 60, "keep5_h": f5m / 60, "other_h": om / 60,
+                "total_h": (km + f5m + om) / 60,
             }
-        # 月平均
-        mk = sum(B[ym][lst]["kouji"] for ym in MONTHS) / 3
-        m5 = sum(B[ym][lst]["keep5"] for ym in MONTHS) / 3
-        mo = sum(B[ym][lst]["other"] for ym in MONTHS) / 3
+        # 月平均(時間)
+        avg_kouji_h = sum(B[ym][lst]["kouji"][1] for ym in MONTHS) / 3 / 60
+        avg_keep5_h = sum(B[ym][lst]["keep5"][1] for ym in MONTHS) / 3 / 60
+        avg_other_h = sum(B[ym][lst]["other"][1] for ym in MONTHS) / 3 / 60
         avg = {
-            "kouji_h": mk * MIN_PER_CALL / 60,
-            "keep5_h": m5 * MIN_PER_CALL / 60,
-            "other_h": mo * MIN_PER_CALL / 60,
-            "total_h": (mk + m5 + mo) * MIN_PER_CALL / 60,
+            "kouji_h": avg_kouji_h,
+            "keep5_h": avg_keep5_h,
+            "other_h": avg_other_h,
+            "total_h": avg_kouji_h + avg_keep5_h + avg_other_h,
         }
 
         # S1: 不備停滞5理由のみ追う（その他不備切り捨て）
@@ -177,29 +193,35 @@ def compute(sf) -> dict:
         lost_n_s1 = sum(n for c, (n, op) in A[lst].items()
                         if c not in KOUJI and c not in KEEP5 and c != "(停滞なし)")
         s1 = {
-            "keep_h": (mk + m5) * MIN_PER_CALL / 60,   # 今後月必要(工取+5理由)
-            "cut_h": mo * MIN_PER_CALL / 60,           # 月削減(その他不備)
-            "cut_n": lost_n_s1,                        # 切り捨て母数(年)
-            "lost_open": lost_open_s1,                 # 失う開通(年)
+            "keep_h": avg_kouji_h + avg_keep5_h,   # 今後月必要(工取+5理由)
+            "cut_h": avg_other_h,                  # 月削減(その他不備)
+            "cut_n": lost_n_s1,                    # 切り捨て母数(対象期間)
+            "lost_open": lost_open_s1,             # 失う開通(対象期間)
         }
 
-        # S2: 工事取得系20回キャップ
+        # S2: 工事取得系20回キャップ（分ベースで超過分を算出）
         kouji_ids = [r["Id"] for r in accA
                      if list_of(r.get("Field12__c")) == lst and (r.get("Field242__c") or "") in KOUJI]
-        excess = sum(max(0, fc_total.get(i, 0) - CAP) for i in kouji_ids)
+        tot_min_k = sum(case_min.get(i, 0.0) for i in kouji_ids)
+        capped_min_k = 0.0
+        for i in kouji_ids:
+            c = case_calls.get(i, 0)
+            if c <= 0:
+                continue
+            capped_min_k += case_min.get(i, 0.0) * min(CAP / c, 1.0)
+        ratio_kept = (capped_min_k / tot_min_k) if tot_min_k else 1.0
+        s2_cut_h = avg_kouji_h * (1 - ratio_kept)   # 月削減(工取キャップ分・月活動ベース)
         open_now = sum(1 for i in kouji_ids if attr.get(i, (None, "", False))[2])
         lost_open_s2 = sum(1 for i in kouji_ids
-                           if attr.get(i, (None, "", False))[2] and fc_total.get(i, 0) > CAP)
+                           if attr.get(i, (None, "", False))[2] and case_calls.get(i, 0) > CAP)
         s2 = {
             "kouji_n": len(kouji_ids),
             "kouji_open": open_now,
             "lost_open": lost_open_s2,
-            "cut_h": excess * MIN_PER_CALL / 60 / 12,   # 月削減(年間超過/12)
+            "cut_h": s2_cut_h,
         }
 
         # ── 新フローでの「エントリ1件あたり必要時間」係数 ──
-        # 月の新フロー必要時間(after_h) ÷ 現状の月あたりエントリ件数。
-        # エントリ件数 × 係数 = 新フロー必要時間(h/月) となり③結論と整合する。
         _after_h = max(0.0, s1["keep_h"] - s2["cut_h"])
         monthly_entries_now = total / 3.0  # 母集団は約3ヶ月幅(180日前〜90日前)
         per_entry_h = (_after_h / monthly_entries_now) if monthly_entries_now else 0.0
@@ -207,7 +229,7 @@ def compute(sf) -> dict:
         # ── 前後比較サマリー（今までのフロー → 新フロー[5理由のみ＋工取20回キャップ]）──
         total_open = sum(op for _, (n, op) in A[lst].items())
         before_h = avg["total_h"]
-        after_h = max(0.0, s1["keep_h"] - s2["cut_h"])
+        after_h = _after_h
         lost_total = s1["lost_open"] + s2["lost_open"]
         before_rate = (total_open / total * 100) if total else 0.0
         after_rate = ((total_open - lost_total) / total * 100) if total else 0.0
@@ -242,7 +264,9 @@ def compute(sf) -> dict:
 
     return {
         "asof": now.strftime("%Y/%m/%d %H:%M"),
-        "min_per_call": MIN_PER_CALL,
+        "rusu_min": RUSU_MIN,
+        "eff_min": EFF_MIN,
+        "time_model": f"留守{RUSU_MIN:.0f}分／有効対話{EFF_MIN:.0f}分(通話10分+事務3分)",
         "cap": CAP,
         "months": MONTHS,
         "kouji": list(KOUJI),

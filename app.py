@@ -5613,7 +5613,7 @@ if selected_key == "gyomu_seiri":
     importlib.reload(_gs)
 
     @st.cache_data(ttl=86400, show_spinner="業務整理資料を集計中...")
-    def _load_gyomu(v=3):
+    def _load_gyomu(v=4):
         return _gs.compute(_sf())
 
     try:
@@ -5780,6 +5780,31 @@ if selected_key == "gyomu_seiri":
             f'約{(sm["save_h"]/sm["before_h"]*100 if sm["before_h"] else 0):.0f}%減）で、'
             f'開通率は <b>{sm["after_rate"]:.1f}%</b>（<b>{sm["drop_pt"]:.1f}pt</b> しか下がらない）。'
             '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── ④ エントリ予定件数 → 新フロー必要時間 試算 ──
+        st.markdown("#### ④ エントリ予定件数からの必要時間試算（新フロー）")
+        _pe_h = sm["per_entry_h"]
+        _now_ent = sm["monthly_entries_now"]
+        _cL, _cR = st.columns([1, 1])
+        with _cR:
+            _planned = st.number_input(
+                "エントリ予定件数（月あたり）",
+                min_value=0, value=int(round(_now_ent)), step=10,
+                key=f"gyomu_entry_{key}",
+            )
+        _need_h = _planned * _pe_h
+        with _cL:
+            st.metric(
+                "新フローでの必要時間",
+                f"{_need_h:,.0f} h/月",
+                help=f"エントリ1件あたり {_pe_h*60:.1f}分 × {_planned:,}件",
+            )
+        st.caption(
+            f"係数: 新フローではエントリ1件あたり約 <b>{_pe_h*60:.1f}分</b>（={_pe_h:.3f}h）の代コン対応。"
+            f"　必要人数目安: 約<b>{(_need_h/160):.1f}人月</b>（160h/月換算）／ 約{(_need_h/8):.0f}人日。"
+            f"　現状の月あたりエントリ目安 ≈ {_now_ent:,.0f}件。",
             unsafe_allow_html=True,
         )
 

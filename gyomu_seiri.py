@@ -197,6 +197,13 @@ def compute(sf) -> dict:
             "cut_h": excess * MIN_PER_CALL / 60 / 12,   # 月削減(年間超過/12)
         }
 
+        # ── 新フローでの「エントリ1件あたり必要時間」係数 ──
+        # 月の新フロー必要時間(after_h) ÷ 現状の月あたりエントリ件数。
+        # エントリ件数 × 係数 = 新フロー必要時間(h/月) となり③結論と整合する。
+        _after_h = max(0.0, s1["keep_h"] - s2["cut_h"])
+        monthly_entries_now = total / 3.0  # 母集団は約3ヶ月幅(180日前〜90日前)
+        per_entry_h = (_after_h / monthly_entries_now) if monthly_entries_now else 0.0
+
         # ── 前後比較サマリー（今までのフロー → 新フロー[5理由のみ＋工取20回キャップ]）──
         total_open = sum(op for _, (n, op) in A[lst].items())
         before_h = avg["total_h"]
@@ -217,6 +224,9 @@ def compute(sf) -> dict:
             "before_rate": before_rate,
             "after_rate": after_rate,
             "drop_pt": before_rate - after_rate,
+            "per_entry_h": per_entry_h,           # エントリ1件あたり新フロー必要時間(h)
+            "per_entry_min": per_entry_h * 60,    # 同(分)
+            "monthly_entries_now": monthly_entries_now,  # 現状の月あたりエントリ目安
         }
 
         out_lists[lst] = {

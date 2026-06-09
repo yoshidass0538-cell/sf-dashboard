@@ -5622,14 +5622,21 @@ if selected_key == "gyomu_seiri":
         st.error(f"集計に失敗しました: {_e}")
         st.stop()
 
-    st.markdown("""
-    <div style="text-align:right;margin:4px 0 12px;">
-      <button onclick="window.parent.print()" style="background:#1565c0;color:#fff;
-        border:none;padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer;">
-        🖨 PDF保存 / 印刷
-      </button>
-    </div>
-    """, unsafe_allow_html=True)
+    import streamlit.components.v1 as _gs_components
+    _gs_pc1, _gs_pc2 = st.columns([1, 4])
+    with _gs_pc1:
+        _gs_components.html(
+            """
+            <button onclick="window.parent.print()"
+              style="background:#1565c0;color:#fff;border:none;padding:8px 18px;
+                     border-radius:6px;cursor:pointer;font-weight:700;font-size:0.95rem;
+                     box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+              🖨 PDF保存 / 印刷
+            </button>
+            """,
+            height=46,
+        )
+    st.caption("💡 PDF保存は『現在開いているタブ』が対象。タブを切り替えてから押してください。")
 
     st.markdown("""
     <style>

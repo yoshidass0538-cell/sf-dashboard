@@ -5613,7 +5613,7 @@ if selected_key == "gyomu_seiri":
     importlib.reload(_gs)
 
     @st.cache_data(ttl=86400, show_spinner="業務整理資料を集計中...")
-    def _load_gyomu(v=2):
+    def _load_gyomu(v=3):
         return _gs.compute(_sf())
 
     try:

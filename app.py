@@ -5613,7 +5613,7 @@ if selected_key == "gyomu_seiri":
     importlib.reload(_gs)
 
     @st.cache_data(ttl=86400, show_spinner="業務整理資料を集計中...")
-    def _load_gyomu(v=1):
+    def _load_gyomu(v=2):
         return _gs.compute(_sf())
 
     try:
@@ -5690,7 +5690,7 @@ if selected_key == "gyomu_seiri":
         other = [r for r in reasons if r["grp"] == "other"]
         none = [r for r in reasons if r["grp"] == "none"]
 
-        st.markdown(f"**母集団: {L['total']:,}件**（直近365日エントリ・90日除外の確定値）")
+        st.markdown(f"**母集団: {L['total']:,}件**（過去半年=直近180日エントリ・直近90日除外の確定値／エントリが半年前〜3ヶ月前の分）")
 
         # ── ① 停滞理由別 開通率 ──
         st.markdown("#### ① 停滞理由別 開通率")
@@ -5746,8 +5746,8 @@ if selected_key == "gyomu_seiri":
             f'<div style="font-size:13px;line-height:1.7;">'
             f'・今後の月必要時間（工取＋5理由）: <b>{s1["keep_h"]:.0f}h/月</b><br>'
             f'・切り捨てで削減: <b>{s1["cut_h"]:.0f}h/月</b>'
-            f'（その他不備 {s1["cut_n"]:,}件/年の対応をやめる）<br>'
-            f'・開通への影響: その他不備の開通 <b>約{s1["lost_open"]:,}件/年</b>を失う見込み'
+            f'（その他不備 {s1["cut_n"]:,}件/対象期間 の対応をやめる）<br>'
+            f'・開通への影響: その他不備の開通 <b>約{s1["lost_open"]:,}件/対象期間</b>を失う見込み'
             '（多くは開通率20%未満の低見込み層）</div></div>',
             unsafe_allow_html=True,
         )
@@ -5775,7 +5775,7 @@ if selected_key == "gyomu_seiri":
             _render_gyomu(_k)
 
     st.caption(
-        "💡 失う開通は確定値(直近365日)ベース、月時間は3-5月実績ベースのため期間軸が異なる概算です。"
+        "💡 失う開通は確定値(過去半年=直近180日/直近90日除外)ベース、月時間は3-5月実績ベースのため期間軸が異なる概算です。"
         " 1架電の想定分(現在5分)を変えると時間は比例して増減します。"
     )
     st.stop()

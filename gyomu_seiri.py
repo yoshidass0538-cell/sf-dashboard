@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """業務整理資料 — ソネット光×新設の不備停滞対応 業務量/開通率 整理（読み取り専用）。
 
-PART A: リスト別×停滞理由別 開通率（確定値: 直近365日/90日除外）
+PART A: リスト別×停滞理由別 開通率（確定値: 過去半年=直近180日/直近90日除外）
 PART B: リスト別×月(3/4/5) 現場時間（代コン系FC架電×5分）
 PART C: シミュレーション（不備停滞5理由のみ運用 / 工事取得系20回キャップ）
 
@@ -51,10 +51,11 @@ def compute(sf) -> dict:
     now = datetime.now(JST)
     cutoff = (now - timedelta(days=90)).date().isoformat()
 
-    # ---------- A: 開通率確定母集団（直近365日/90日除外）----------
+    # ---------- A: 開通率確定母集団（過去半年=直近180日/直近90日除外）----------
+    # エントリ日が「180日前〜90日前」の確定分のみを対象とする
     A_where = (
         "Field76__r.Name LIKE '%So-net%' AND Field78__c='新設' "
-        f"AND Field156__c = LAST_N_DAYS:365 AND Field156__c <= {cutoff}"
+        f"AND Field156__c = LAST_N_DAYS:180 AND Field156__c <= {cutoff}"
     )
     accA = sf.query_all(
         f"SELECT Id,Field130__c,Field12__c,Field242__c FROM Account WHERE {A_where}"

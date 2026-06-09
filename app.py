@@ -1035,28 +1035,31 @@ if selected_key == "_master":
             _h5.markdown("**最終ログイン**")
             _h6.markdown("**削除**")
 
-            for _ui, _u in enumerate(_users):
+            # widgetキーは並び順(index)ではなく安定したID基準にする。
+            # （indexキーだと削除/並び替え後に古いsession_stateが別ユーザー行へ
+            #   書き込まれ、id↔表示名/パスワードがズレてデータ破損する）
+            for _u in _users:
                 _uid = _u.get("id", "")
                 c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 1, 2, 1])
                 with c1:
                     st.text_input(
-                        "ID", value=_uid, key=f"ua_id_show_{_ui}",
+                        "ID", value=_uid, key=f"ua_id_show_{_uid}",
                         disabled=True, label_visibility="collapsed",
                     )
                 with c2:
                     st.text_input(
                         "パスワード", value=_u.get("password", ""),
-                        key=f"ua_pw_{_ui}", label_visibility="collapsed",
+                        key=f"ua_pw_{_uid}", label_visibility="collapsed",
                     )
                 with c3:
                     st.text_input(
                         "表示名", value=_u.get("display_name", ""),
-                        key=f"ua_name_{_ui}", label_visibility="collapsed",
+                        key=f"ua_name_{_uid}", label_visibility="collapsed",
                     )
                 with c4:
                     st.checkbox(
                         "有効", value=_u.get("active", True),
-                        key=f"ua_active_{_ui}", label_visibility="collapsed",
+                        key=f"ua_active_{_uid}", label_visibility="collapsed",
                     )
                 with c5:
                     st.markdown(
@@ -1064,7 +1067,7 @@ if selected_key == "_master":
                         unsafe_allow_html=True,
                     )
                 with c6:
-                    if st.button("🗑", key=f"ua_del_{_ui}", help=f"{_u.get('display_name', _uid)} を削除"):
+                    if st.button("🗑", key=f"ua_del_{_uid}", help=f"{_u.get('display_name', _uid)} を削除"):
                         _me = (st.session_state.get("logged_in_user") or {}).get("id")
                         if _uid == _me:
                             st.toast("自分自身は削除できません", icon="⚠️")
@@ -1072,6 +1075,9 @@ if selected_key == "_master":
                             ok, msg = _ua_delete_user(_uid)
                             st.toast(msg, icon="✅" if ok else "⚠️")
                             if ok:
+                                # 削除ユーザーの古いwidget stateを破棄（残ると再追加時に混入）
+                                for _pfx in ("ua_id_show_", "ua_pw_", "ua_name_", "ua_active_"):
+                                    st.session_state.pop(f"{_pfx}{_uid}", None)
                                 st.rerun()
 
             # --- 常時表示の保存ボタン ---
@@ -1085,11 +1091,11 @@ if selected_key == "_master":
             ):
                 _any_fail = False
                 _changed_count = 0
-                for _ui, _u in enumerate(_users):
+                for _u in _users:
                     _uid = _u.get("id", "")
-                    _pw_cur = st.session_state.get(f"ua_pw_{_ui}", _u.get("password", ""))
-                    _name_cur = st.session_state.get(f"ua_name_{_ui}", _u.get("display_name", ""))
-                    _active_cur = st.session_state.get(f"ua_active_{_ui}", _u.get("active", True))
+                    _pw_cur = st.session_state.get(f"ua_pw_{_uid}", _u.get("password", ""))
+                    _name_cur = st.session_state.get(f"ua_name_{_uid}", _u.get("display_name", ""))
+                    _active_cur = st.session_state.get(f"ua_active_{_uid}", _u.get("active", True))
                     if _pw_cur != _u.get("password", ""):
                         ok1, _ = _ua_update_password(_uid, _pw_cur)
                         if not ok1:

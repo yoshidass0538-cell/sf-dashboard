@@ -3571,6 +3571,9 @@ elif selected_key == "daikon_riyu_au_sonet":
 elif selected_key in ("fubitaitai_kirisute_area", "fubitaitai_kirisute_list"):
     # 不備停滞 切り捨て判定資料 (エリア別/リスト別) — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "gyomu_seiri":
+    # 業務整理資料 — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -5601,6 +5604,180 @@ background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,
             _res = loader(_daily_cache_key())
             _render_kirisute(_res, label, prefix)
 
+    st.stop()
+
+# 業務整理資料ボード（ソネット光×新設の不備停滞対応 業務量整理 / リスト別）
+if selected_key == "gyomu_seiri":
+    import importlib
+    import gyomu_seiri as _gs
+    importlib.reload(_gs)
+
+    @st.cache_data(ttl=86400, show_spinner="業務整理資料を集計中...")
+    def _load_gyomu(v=1):
+        return _gs.compute(_sf())
+
+    try:
+        _gdata = _load_gyomu()
+    except Exception as _e:
+        st.error(f"集計に失敗しました: {_e}")
+        st.stop()
+
+    st.markdown("""
+    <div style="text-align:right;margin:4px 0 12px;">
+      <button onclick="window.parent.print()" style="background:#1565c0;color:#fff;
+        border:none;padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer;">
+        🖨 PDF保存 / 印刷
+      </button>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <style>
+    .gs-tbl{border-collapse:collapse;width:100%;font-size:13px;margin:4px 0 14px;}
+    .gs-tbl th,.gs-tbl td{border:1px solid #d8dee5;padding:5px 9px;text-align:right;}
+    .gs-tbl th{background:#eceff1;color:#37474f;font-weight:700;text-align:center;}
+    .gs-tbl td:first-child{text-align:left;}
+    .gs-tbl tr.grp-h td{font-weight:700;text-align:left;color:#fff;}
+    .gs-tbl tr.grp-kouji td{background:#1565c0;}
+    .gs-tbl tr.grp-keep td{background:#2e7d32;}
+    .gs-tbl tr.grp-cut td{background:#c62828;}
+    .gs-tbl tr.grp-ref td{background:#90a4ae;}
+    .gs-kouji td:first-child{color:#1565c0;font-weight:600;}
+    .gs-keep td:first-child{color:#2e7d32;font-weight:600;}
+    .gs-card{background:#f7f9fc;border:1px solid #d8dee5;border-radius:8px;padding:12px 16px;margin:6px 0 14px;}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("## 業務整理資料")
+    st.caption(
+        f"対象: ソネット光 × 新設 ／ 集計日 {_gdata['asof']} ／ "
+        f"現場時間は代コン系FC架電 × {_gdata['min_per_call']:.0f}分換算 ／ "
+        "リストは利用携帯Ⅰ(主回線)で排他分類"
+    )
+
+    st.markdown(
+        '<div style="background:#fff3e0;border-left:5px solid #fb8c00;padding:12px 16px;'
+        'border-radius:6px;margin:8px 0 16px;">'
+        '<div style="font-weight:700;font-size:15px;color:#e65100;margin-bottom:4px;">'
+        '■ 今までの業務フロー</div>'
+        '<div style="font-size:13px;color:#5d4037;line-height:1.6;">'
+        '不備停滞が起きたら<b>開通率を度外視して、全件・追えるだけ架電</b>して追っていた。'
+        '停滞理由による優先順位や架電回数の上限は設けていない。<br>'
+        'この資料では「工事取得系（工事日調整希望・API工事取得）」と「それ以外の不備停滞（停滞理由別）」'
+        'に分け、3〜5月でどれだけ時間を使い、開通率にどう効いたかを整理し、'
+        '今後の運用（5理由のみ追う／工取20回キャップ）の影響を試算する。'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    _LBL = {"AU": "AUリスト", "SB": "SBリスト", "docomo": "ドコモリスト"}
+
+    def _gs_reason_rows(items, cls):
+        h = ""
+        for it in items:
+            h += (
+                f'<tr class="{cls}"><td>{it["reason"]}</td>'
+                f'<td>{it["n"]:,}</td><td>{it["open"]:,}</td>'
+                f'<td>{it["rate"]:.1f}%</td><td>{it["occ"]:.1f}%</td></tr>'
+            )
+        return h
+
+    def _render_gyomu(key):
+        L = _gdata["lists"][key]
+        reasons = L["reasons"]
+        kouji = [r for r in reasons if r["grp"] == "kouji"]
+        keep5 = [r for r in reasons if r["grp"] == "keep5"]
+        other = [r for r in reasons if r["grp"] == "other"]
+        none = [r for r in reasons if r["grp"] == "none"]
+
+        st.markdown(f"**母集団: {L['total']:,}件**（直近365日エントリ・90日除外の確定値）")
+
+        # ── ① 停滞理由別 開通率 ──
+        st.markdown("#### ① 停滞理由別 開通率")
+        thead = ("<tr><th>停滞理由</th><th>件数</th><th>開通</th>"
+                 "<th>開通率</th><th>発生率</th></tr>")
+        body = (
+            '<tr class="grp-h grp-kouji"><td colspan="5">■ 工事取得系（件数大・別途20回キャップを検討）</td></tr>'
+            + _gs_reason_rows(kouji, "gs-kouji")
+            + '<tr class="grp-h grp-keep"><td colspan="5">■ 不備停滞5理由（今後も追う）</td></tr>'
+            + _gs_reason_rows(keep5, "gs-keep")
+            + '<tr class="grp-h grp-cut"><td colspan="5">■ その他不備（開通見込みなしは切り捨て候補）</td></tr>'
+            + _gs_reason_rows(other, "")
+            + '<tr class="grp-h grp-ref"><td colspan="5">参考: 停滞なし</td></tr>'
+            + _gs_reason_rows(none, "")
+        )
+        st.markdown(f'<table class="gs-tbl">{thead}{body}</table>', unsafe_allow_html=True)
+        st.caption("発生率 = 件数 ÷ 母集団。開通率 = 開通 ÷ 件数。CX率は信頼できないため不使用。")
+
+        # ── ② 月別 現場時間（3-5月）──
+        st.markdown("#### ② 月別 現場時間（代コン系FC架電）")
+        mt = L["month_time"]
+        rows = ""
+        for ym in _gdata["months"]:
+            d = mt[ym]
+            rows += (
+                f'<tr><td>{ym}</td>'
+                f'<td>{d["kouji_h"]:.0f}h <span style="color:#888">({d["kouji_calls"]:,}回)</span></td>'
+                f'<td>{d["keep5_h"]:.0f}h <span style="color:#888">({d["keep5_calls"]:,}回)</span></td>'
+                f'<td>{d["other_h"]:.0f}h <span style="color:#888">({d["other_calls"]:,}回)</span></td>'
+                f'<td><b>{d["total_h"]:.0f}h</b></td></tr>'
+            )
+        av = L["avg_month"]
+        rows += (
+            f'<tr style="background:#e3f2fd;font-weight:700;"><td>月平均</td>'
+            f'<td>{av["kouji_h"]:.0f}h</td><td>{av["keep5_h"]:.0f}h</td>'
+            f'<td>{av["other_h"]:.0f}h</td><td>{av["total_h"]:.0f}h</td></tr>'
+        )
+        st.markdown(
+            '<table class="gs-tbl"><tr><th>月</th><th>工事取得系</th>'
+            '<th>不備停滞5理由</th><th>その他不備</th><th>合計</th></tr>'
+            f'{rows}</table>',
+            unsafe_allow_html=True,
+        )
+
+        # ── ③ 今後シミュレーション ──
+        st.markdown("#### ③ 今後の運用シミュレーション（月あたり）")
+        s1, s2 = L["s1"], L["s2"]
+        combined = max(0.0, s1["keep_h"] - s2["cut_h"])
+        st.markdown(
+            '<div class="gs-card">'
+            '<div style="font-weight:700;color:#2e7d32;margin-bottom:4px;">'
+            '［施策1］不備停滞は5理由のみ追う（その他不備は切り捨て）</div>'
+            f'<div style="font-size:13px;line-height:1.7;">'
+            f'・今後の月必要時間（工取＋5理由）: <b>{s1["keep_h"]:.0f}h/月</b><br>'
+            f'・切り捨てで削減: <b>{s1["cut_h"]:.0f}h/月</b>'
+            f'（その他不備 {s1["cut_n"]:,}件/年の対応をやめる）<br>'
+            f'・開通への影響: その他不備の開通 <b>約{s1["lost_open"]:,}件/年</b>を失う見込み'
+            '（多くは開通率20%未満の低見込み層）</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="gs-card">'
+            '<div style="font-weight:700;color:#1565c0;margin-bottom:4px;">'
+            f'［施策2］工事取得系を{_gdata["cap"]}回までに架電制限</div>'
+            f'<div style="font-size:13px;line-height:1.7;">'
+            f'・工取 {s2["kouji_n"]:,}件中 開通 {s2["kouji_open"]:,}件。'
+            f'うち{_gdata["cap"]}回超で開通した <b>{s2["lost_open"]:,}件</b>を失う想定<br>'
+            f'・超過架電の削減: <b>約{s2["cut_h"]:.0f}h/月</b></div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div style="background:#ede7f6;border-radius:8px;padding:10px 16px;font-size:13px;">'
+            f'<b>両施策適用後の月必要時間（目安）: 約{combined:.0f}h/月</b>'
+            f'（現状 月平均 {av["total_h"]:.0f}h → 5理由運用 {s1["keep_h"]:.0f}h → 工取キャップで更に圧縮）'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    _gtabs = st.tabs([_LBL[k] for k in ("AU", "SB", "docomo")])
+    for _t, _k in zip(_gtabs, ("AU", "SB", "docomo")):
+        with _t:
+            _render_gyomu(_k)
+
+    st.caption(
+        "💡 失う開通は確定値(直近365日)ベース、月時間は3-5月実績ベースのため期間軸が異なる概算です。"
+        " 1架電の想定分(現在5分)を変えると時間は比例して増減します。"
+    )
     st.stop()
 
 # スキルツリーボード(SVG手描き / Sheetsから動的読込)

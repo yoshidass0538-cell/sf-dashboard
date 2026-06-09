@@ -2393,6 +2393,13 @@ METRICS: list[Metric] = [
         category="資料",
     ),
     Metric(
+        key="gyomu_seiri",
+        label="業務整理資料",
+        description="ソネット光×新設の不備停滞対応の業務量整理。工事取得系/その他不備別に3-5月の現場時間と開通率、5理由のみ運用・工取20回キャップのシミュレーションをリスト別(AU/SB/ドコモ)で表示",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
         key="total_calls",
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",

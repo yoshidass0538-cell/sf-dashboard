@@ -197,13 +197,37 @@ def compute(sf) -> dict:
             "cut_h": excess * MIN_PER_CALL / 60 / 12,   # 月削減(年間超過/12)
         }
 
+        # ── 前後比較サマリー（今までのフロー → 新フロー[5理由のみ＋工取20回キャップ]）──
+        total_open = sum(op for _, (n, op) in A[lst].items())
+        before_h = avg["total_h"]
+        after_h = max(0.0, s1["keep_h"] - s2["cut_h"])
+        lost_total = s1["lost_open"] + s2["lost_open"]
+        before_rate = (total_open / total * 100) if total else 0.0
+        after_rate = ((total_open - lost_total) / total * 100) if total else 0.0
+        summary = {
+            "before_h": before_h,
+            "after_h": after_h,
+            "save_h": before_h - after_h,
+            "save_other_h": s1["cut_h"],      # その他不備カット分
+            "save_kouji_h": s2["cut_h"],      # 工取20回キャップ分
+            "total_open": total_open,
+            "lost_total": lost_total,
+            "lost_other": s1["lost_open"],
+            "lost_kouji": s2["lost_open"],
+            "before_rate": before_rate,
+            "after_rate": after_rate,
+            "drop_pt": before_rate - after_rate,
+        }
+
         out_lists[lst] = {
             "total": total,
+            "total_open": total_open,
             "reasons": reasons,
             "month_time": month_time,
             "avg_month": avg,
             "s1": s1,
             "s2": s2,
+            "summary": summary,
         }
 
     return {

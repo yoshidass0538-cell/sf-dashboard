@@ -5735,37 +5735,51 @@ if selected_key == "gyomu_seiri":
             unsafe_allow_html=True,
         )
 
-        # ── ③ 今後シミュレーション ──
-        st.markdown("#### ③ 今後の運用シミュレーション（月あたり）")
+        # ── ③ 今までのフロー → 新しいフロー（前後比較）──
         s1, s2 = L["s1"], L["s2"]
-        combined = max(0.0, s1["keep_h"] - s2["cut_h"])
+        sm = L["summary"]
+        st.markdown("#### ③ 今までのフロー → 新しいフロー（結論）")
         st.markdown(
-            '<div class="gs-card">'
-            '<div style="font-weight:700;color:#2e7d32;margin-bottom:4px;">'
-            '［施策1］不備停滞は5理由のみ追う（その他不備は切り捨て）</div>'
-            f'<div style="font-size:13px;line-height:1.7;">'
-            f'・今後の月必要時間（工取＋5理由）: <b>{s1["keep_h"]:.0f}h/月</b><br>'
-            f'・切り捨てで削減: <b>{s1["cut_h"]:.0f}h/月</b>'
-            f'（その他不備 {s1["cut_n"]:,}件/対象期間 の対応をやめる）<br>'
-            f'・開通への影響: その他不備の開通 <b>約{s1["lost_open"]:,}件/対象期間</b>を失う見込み'
-            '（多くは開通率20%未満の低見込み層）</div></div>',
+            '<div style="background:#e8f5e9;border-left:5px solid #2e7d32;padding:10px 14px;'
+            'border-radius:6px;margin:4px 0 12px;font-size:13px;line-height:1.6;color:#1b5e20;">'
+            '<b>新しいフロー</b> ＝ ①不備停滞は<b>5理由のみ追う</b>'
+            '（番ポ不備・住所確認・オーナー確認・詳細確認・有派遣へ変更必要）／'
+            'それ以外の不備で開通見込みが無いものは<b>切り捨て</b>、'
+            f'②工事取得系は<b>{_gdata["cap"]}回で架電打ち切り</b>。</div>',
+            unsafe_allow_html=True,
+        )
+        # 前後比較テーブル
+        st.markdown(
+            '<table class="gs-tbl">'
+            '<tr><th></th><th>今までのフロー<br>(全件・追えるだけ架電)</th>'
+            '<th>新しいフロー<br>(5理由のみ＋工取20回)</th><th>差分</th></tr>'
+            f'<tr><td>月の現場時間</td><td>{sm["before_h"]:.0f}h/月</td>'
+            f'<td><b>{sm["after_h"]:.0f}h/月</b></td>'
+            f'<td style="color:#c62828;font-weight:700;">−{sm["save_h"]:.0f}h/月</td></tr>'
+            f'<tr><td>開通率</td><td>{sm["before_rate"]:.1f}%</td>'
+            f'<td><b>{sm["after_rate"]:.1f}%</b></td>'
+            f'<td style="color:#c62828;font-weight:700;">−{sm["drop_pt"]:.1f}pt</td></tr>'
+            '</table>',
             unsafe_allow_html=True,
         )
         st.markdown(
-            '<div class="gs-card">'
-            '<div style="font-weight:700;color:#1565c0;margin-bottom:4px;">'
-            f'［施策2］工事取得系を{_gdata["cap"]}回までに架電制限</div>'
-            f'<div style="font-size:13px;line-height:1.7;">'
-            f'・工取 {s2["kouji_n"]:,}件中 開通 {s2["kouji_open"]:,}件。'
-            f'うち{_gdata["cap"]}回超で開通した <b>{s2["lost_open"]:,}件</b>を失う想定<br>'
-            f'・超過架電の削減: <b>約{s2["cut_h"]:.0f}h/月</b></div></div>',
+            '<div class="gs-card" style="font-size:13px;line-height:1.7;">'
+            '<b>時間削減の内訳</b>：その他不備の切り捨て −'
+            f'{sm["save_other_h"]:.0f}h/月 ＋ 工取{_gdata["cap"]}回キャップ −'
+            f'{sm["save_kouji_h"]:.0f}h/月<br>'
+            '<b>失う開通の内訳</b>：その他不備 '
+            f'{sm["lost_other"]:,}件 ＋ 工取{_gdata["cap"]}回超 '
+            f'{sm["lost_kouji"]:,}件 ＝ 計 <b>{sm["lost_total"]:,}件/対象期間</b>'
+            '（多くは開通率20%未満の低見込み層）</div>',
             unsafe_allow_html=True,
         )
         st.markdown(
-            f'<div style="background:#ede7f6;border-radius:8px;padding:10px 16px;font-size:13px;">'
-            f'<b>両施策適用後の月必要時間（目安）: 約{combined:.0f}h/月</b>'
-            f'（現状 月平均 {av["total_h"]:.0f}h → 5理由運用 {s1["keep_h"]:.0f}h → 工取キャップで更に圧縮）'
-            f'</div>',
+            '<div style="background:#ede7f6;border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.7;">'
+            f'今までは月 <b>{sm["before_h"]:.0f}h</b> 使って開通率 <b>{sm["before_rate"]:.1f}%</b>。'
+            f'新しいフローなら月 <b>{sm["after_h"]:.0f}h</b>（<b>{sm["save_h"]:.0f}h</b> 削減＝'
+            f'約{(sm["save_h"]/sm["before_h"]*100 if sm["before_h"] else 0):.0f}%減）で、'
+            f'開通率は <b>{sm["after_rate"]:.1f}%</b>（<b>{sm["drop_pt"]:.1f}pt</b> しか下がらない）。'
+            '</div>',
             unsafe_allow_html=True,
         )
 

@@ -2092,122 +2092,81 @@ def fetch_cx_age_area(
 
 
 def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """折返し希望件数を Salesforce から直接取得（時間帯×種別・総件数）。
+
+    旧来は後確待ち管理スプレッドシート(BY用_*)を経由していたが、当該シートの
+    更新が止まったため SF 直読みに変更。
+      - 種別   = 対応ステータス Field109__c の折返し希望4種
+      - 時間帯 = 次回コール Field97__c(datetime) を JST で日付×時にバケット
+      - 期間   = 今日〜1週間後
+      - 件数は総数（新規/改め/留守の内訳は持たない＝Aプラン）
+    「合計」列は表示している時間帯の合算と常に一致する（隠れ枠なし）。
     """
-    後確待ち確認用スプレッドシートから、最新の BY用_* シートを読んで
-    今日と明日の時間帯×種別の折返件数を表示用に整形する。
-    対象種別:
-      - 折返CS開通前 → 折り返し希望(開通前)
-      - 折返新設FC → 折り返し希望(新設FC)
-      - 折返１週間FC → 折り返し希望(1週間後)
-      - 折返工事取得 → 折り返し希望(工事取得)
-    """
-    from talk_script_store import _get_gspread_client
-    BY_SHEET_ID = "1Xg2oxrIrXy3oju8s9POm8RRHW6RWqqbj7ALTBjAzkvA"
-
-    TARGET_CATEGORIES = {
-        "折返CS開通前": "(開通前)",
-        "折返新設FC": "(新設FC)",
-        "折返１週間FC": "(1週間後)",
-        "折返工事取得": "(工事取得)",
-    }
-
-    try:
-        client = _get_gspread_client()
-        sh = client.open_by_key(BY_SHEET_ID)
-    except Exception as e:
-        return {"エラー": pd.DataFrame({"メッセージ": [f"シート取得失敗: {e}"]})}
-
-    # BY用_NNNNNNNN 形式の最新シートを取得
-    by_titles = [
-        ws.title for ws in sh.worksheets()
-        if ws.title.startswith("BY用_") and ws.title[4:].lstrip("_").isdigit()
-    ]
-    if not by_titles:
-        return {"エラー": pd.DataFrame({"メッセージ": ["BY用_* シートが見つかりません"]})}
-    by_titles.sort(reverse=True)
-    target_ws = sh.worksheet(by_titles[0])
-    all_vals = target_ws.get_all_values()
-    if len(all_vals) < 2:
-        return {"エラー": pd.DataFrame({"メッセージ": ["データがありません"]})}
-
-    # R1: 時間帯ヘッダー（F=合計、I=10:00、L=11:00、...と3列ずつ）
-    time_header = all_vals[0]
-    time_slots: list[tuple[int, str]] = []  # (start_col_idx, label)
-    for col_idx in range(5, len(time_header), 3):
-        label = (time_header[col_idx] or "").strip()
-        if not label:
-            continue
-        # "10:00:00" → "10:00"
-        if ":" in label:
-            parts = label.split(":")
-            label = f"{parts[0]}:{parts[1]}"
-        # 20:00 は表示不要
-        if label == "20:00":
-            continue
-        time_slots.append((col_idx, label))
-
-    # 日付別に対象種別の行を収集
-    data_by_date: dict[str, dict[str, list[str]]] = {}
-    for row in all_vals:
-        if len(row) < 5:
-            continue
-        date_str = (row[3] or "").strip()
-        cat_str = (row[4] or "").strip()
-        if not date_str or cat_str not in TARGET_CATEGORIES:
-            continue
-        data_by_date.setdefault(date_str, {})[TARGET_CATEGORIES[cat_str]] = row
-
-    if not data_by_date:
-        return {"エラー": pd.DataFrame({"メッセージ": ["対象種別のデータがありません"]})}
-
-    # JST 今日 〜 1週間後 の範囲のみ表示
     from datetime import datetime, timezone, timedelta
     jst = timezone(timedelta(hours=9))
+
+    # 対応ステータス(Field109__c) → 表示種別ラベル
+    CAT_MAP = {
+        "折返し希望（開通前）":   "(開通前)",
+        "折返し希望（1週間後FC）": "(1週間後)",
+        "折返し希望（工事取得）": "(工事取得)",
+        "折返し希望（新設FC）":   "(新設FC)",
+    }
+    display_order = ["(開通前)", "(1週間後)", "(工事取得)", "(新設FC)"]
+
+    cats_soql = "(" + ", ".join(f"'{c}'" for c in CAT_MAP) + ")"
+    soql = (
+        "SELECT Field97__c, Field109__c FROM Account "
+        f"WHERE Field109__c IN {cats_soql} AND Field97__c != null"
+    )
+    try:
+        records = sf.query_all(soql)["records"]
+    except Exception as e:
+        return {"エラー": pd.DataFrame({"メッセージ": [f"SF取得失敗: {e}"]})}
+
     today = datetime.now(jst).date()
     one_week_later = today + timedelta(days=7)
-    target_dates: list[str] = []
-    for date_str in sorted(data_by_date.keys()):
-        try:
-            d = datetime.strptime(date_str, "%Y/%m/%d").date()
-        except ValueError:
+
+    # agg[date_str][cat_label][hour] = 件数
+    agg: dict[str, dict[str, dict[int, int]]] = {}
+    hours_seen: set[int] = set()
+    for r in records:
+        raw = r.get("Field97__c")
+        cat = CAT_MAP.get(r.get("Field109__c") or "")
+        if not raw or not cat:
             continue
-        if today <= d <= one_week_later:
-            target_dates.append(date_str)
-    if not target_dates:
-        # 範囲内に無ければとりあえず先頭から最大8日分
-        target_dates = sorted(data_by_date.keys())[:8]
-
-    # 表示順（ユーザー指定の4種類）
-    display_order = [
-        "(開通前)",
-        "(1週間後)",
-        "(工事取得)",
-        "(新設FC)",
-    ]
-
-    def _to_int(v: str) -> int:
         try:
-            return int((v or "0").strip() or "0")
-        except ValueError:
-            return 0
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(jst)
+        except Exception:
+            continue
+        if not (today <= dt.date() <= one_week_later):
+            continue
+        ds = dt.strftime("%Y/%m/%d")
+        agg.setdefault(ds, {}).setdefault(cat, {})
+        agg[ds][cat][dt.hour] = agg[ds][cat].get(dt.hour, 0) + 1
+        hours_seen.add(dt.hour)
+
+    if not agg:
+        return {"エラー": pd.DataFrame({"メッセージ": ["対象期間（今日〜1週間後）の折返し希望データがありません"]})}
+
+    sorted_hours = sorted(hours_seen)
+    # 0時は「次回コール時刻が未設定」を意味するため「未定」と表記
+    hour_labels = ["未定" if h == 0 else f"{h}:00" for h in sorted_hours]
 
     result: dict[str, pd.DataFrame] = {}
-    for d in target_dates:
+    for ds in sorted(agg.keys()):
         rows = []
-        for cat_label in display_order:
-            if cat_label not in data_by_date[d]:
+        for cat in display_order:
+            if cat not in agg[ds]:
                 continue
-            src_row = data_by_date[d][cat_label]
-            row_dict: dict[str, int] = {"種別": cat_label}
-            for col_idx, time_label in time_slots:
-                # 新規/改め/留守 の3列を合算
-                shinki = _to_int(src_row[col_idx]) if col_idx < len(src_row) else 0
-                arata = _to_int(src_row[col_idx + 1]) if col_idx + 1 < len(src_row) else 0
-                rusu = _to_int(src_row[col_idx + 2]) if col_idx + 2 < len(src_row) else 0
-                row_dict[time_label] = shinki + arata + rusu
-            rows.append(row_dict)
+            hmap = agg[ds][cat]
+            total = sum(hmap.get(h, 0) for h in sorted_hours)
+            row_ordered: dict[str, int | str] = {"種別": cat, "合計": total}
+            for h, hl in zip(sorted_hours, hour_labels):
+                row_ordered[hl] = hmap.get(h, 0)
+            rows.append(row_ordered)
         if rows:
-            result[d] = pd.DataFrame(rows)
+            result[ds] = pd.DataFrame(rows)
 
     if not result:
         return {"エラー": pd.DataFrame({"メッセージ": ["表示可能なデータがありません"]})}
@@ -2416,7 +2375,7 @@ METRICS: list[Metric] = [
     Metric(
         key="orikaeshi_kensu",
         label="折返し件数",
-        description="後確待ち管理シートから今日と明日の時間別折返件数を表示",
+        description="Salesforce(対応ステータス×次回コール日時)から今日〜1週間後の時間別折返件数を直接集計",
         fetch=fetch_orikaeshi_kensu,
         category="TOTAL",
     ),

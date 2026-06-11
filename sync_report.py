@@ -202,8 +202,12 @@ def fetch_report(
 ) -> tuple[list[str], list[list[str]]]:
     """
     レポートと同等のデータをSOQLで全件取得（2000件制限なし）。
-    レポートのフィルター: 申込区分 IN kubun_list, 申込日=2025-04-01～2026-05-31
+    フィルター: 申込区分 IN kubun_list, 申込日 2025-04-01 〜 当日(TODAY)
     entry_map を渡すとエントリ日の重いクエリを省略（複数区分で使い回す用）。
+
+    ※ 上限はかつて 2026-05-31 固定だったが、それを過ぎると新規申込が丸ごと
+       除外され（1週間後FCトーク等のlookupに載らない）不具合になるため、
+       当日まで自動で含むよう TODAY に変更。
     """
     field_names = [f[0] for f in _SOQL_FIELDS]
     field_str = ", ".join(field_names)
@@ -212,7 +216,7 @@ def fetch_report(
     soql = (
         f"SELECT {field_str} FROM Account "
         f"WHERE Field78__c IN ({kubun_in}) "
-        f"AND Field118__c >= 2025-04-01 AND Field118__c <= 2026-05-31 "
+        f"AND Field118__c >= 2025-04-01 AND Field118__c <= TODAY "
         f"ORDER BY Name"
     )
 

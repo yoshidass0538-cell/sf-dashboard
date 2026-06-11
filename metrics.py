@@ -2157,9 +2157,8 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
     for ds in sorted(agg.keys()):
         rows = []
         for cat in display_order:
-            if cat not in agg[ds]:
-                continue
-            hmap = agg[ds][cat]
+            # 0件でも4種別は常に行表示する（範囲内に該当が無い種別も見えるように）
+            hmap = agg[ds].get(cat, {})
             total = sum(hmap.get(h, 0) for h in sorted_hours)
             row_ordered: dict[str, int | str] = {"種別": cat, "合計": total}
             for h, hl in zip(sorted_hours, hour_labels):

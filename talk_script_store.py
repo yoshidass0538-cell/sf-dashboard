@@ -35,7 +35,9 @@ LOOKUP_SHEETS_BY_SUFFIX = {
     "shiryou": LOOKUP_SHEET,
     "sokushin": DAICON_LOOKUP_SHEET,
     "timee_kouji": LOOKUP_SHEET,
-    "kouji_oritsugi": LOOKUP_SHEET,
+    # 簡易版SO工事取得: 工事取得は古い未開通案件も引きたいので、エントリ60日以内に
+    # 限定される「1週間後FC該当案件」ではなく未開通の全So-net新設を含む「So-net光案件」を参照
+    "kouji_oritsugi": SONET_KAITSU_LOOKUP_SHEET,
 }
 
 # タイミー工事取得トーク用スプレッドシート（A列1セル1行のトーク本文、【セクション】見出し付き）

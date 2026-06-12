@@ -567,10 +567,11 @@ _CAT_COLORS = {
     "資料": {"bg": "#6B46C1", "fg": "#ffffff"},
 }
 
-# CS1〜CS7ログイン時は「ツール」カテゴリのみ表示（他カテゴリ・マスタ・SECRET・資料すべて非表示）
+# CS1〜CS7ログイン時の閲覧制限は解除（2026-06-12 ユーザー指示）。
+# 以前は「ツール」カテゴリのみ表示していたが、他アカウントと同じく全カテゴリ閲覧可とする。
 _lu_top = st.session_state.get("logged_in_user") or {}
 _lu_id_top = (_lu_top.get("id") or "").lower()
-_cs_only_view = _lu_id_top in {f"cs{n}" for n in range(1, 8)}
+_cs_only_view = False
 
 # CS only モードではツールカテゴリを初期展開
 if _cs_only_view and not st.session_state.get("_cs_view_initialized"):
@@ -619,10 +620,10 @@ for container in st.session_state["board_order"]:
             if cat == "ツール":
                 from tool_members_store import get_member_assignments, get_all_member_names, is_excluded_member as _tool_excluded
                 _all_names = get_all_member_names()
-                # CS1〜CS7アカウントでログイン中はCS1〜CS7のみ表示
+                # CS1〜CS7の表示制限は解除（2026-06-12）。全メンバーを表示する。
                 _lu_for_tool = st.session_state.get("logged_in_user") or {}
                 _lu_id_for_tool = (_lu_for_tool.get("id") or "").lower()
-                _cs_only_mode = _lu_id_for_tool in {f"cs{n}" for n in range(1, 8)}
+                _cs_only_mode = False
                 for _member_name in container["items"]:
                     if _member_name not in _all_names:
                         continue

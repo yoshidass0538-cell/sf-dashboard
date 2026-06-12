@@ -3042,12 +3042,14 @@ if selected_key.startswith("talk_script_"):
     # 専用namespaceボード（例: 簡易版SO工事取得）がLINEテンプレを持たない場合は共有から取得
     if not any(line_templates.values()):
         line_templates = _get_tpl_for_line().get(_line_store_key, {})
-    if any(line_templates.values()):
+    # 中身のあるLINEテンプレだけタブ表示（空のものはタブごと非表示）
+    _line_keys_show = [k for k in LINE_TEMPLATE_KEYS if (line_templates.get(k) or "").strip()]
+    if _line_keys_show:
         with st.expander("💬 LINEテンプレ", expanded=False):
-            line_tabs = st.tabs(LINE_TEMPLATE_KEYS)
+            line_tabs = st.tabs(_line_keys_show)
             from replace_master_store import apply_replace_substitution as _apply_replace_line
             from nanori_master_store import apply_nanori_substitution as _apply_nanori_line
-            for tab, lkey in zip(line_tabs, LINE_TEMPLATE_KEYS):
+            for tab, lkey in zip(line_tabs, _line_keys_show):
                 with tab:
                     body = line_templates.get(lkey, "")
                     if not body:

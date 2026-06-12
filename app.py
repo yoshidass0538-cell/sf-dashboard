@@ -3039,6 +3039,9 @@ if selected_key.startswith("talk_script_"):
     _all_templates_for_line = _get_tpl_for_line(_board_suffix)
     _line_store_key = "Sonet_line" if kind == "Sonet" else "NURO_line"
     line_templates = _all_templates_for_line.get(_line_store_key, {})
+    # 専用namespaceボード（例: 簡易版SO工事取得）がLINEテンプレを持たない場合は共有から取得
+    if not any(line_templates.values()):
+        line_templates = _get_tpl_for_line().get(_line_store_key, {})
     if any(line_templates.values()):
         with st.expander("💬 LINEテンプレ", expanded=False):
             line_tabs = st.tabs(LINE_TEMPLATE_KEYS)

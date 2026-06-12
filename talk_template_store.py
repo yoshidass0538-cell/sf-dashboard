@@ -859,7 +859,7 @@ def _serialize(templates: dict[str, dict[str, str]]) -> str:
 
 
 # 独立したトーク内容を持つボード（共有ではなく専用namespaceで保存）
-NAMESPACED_BOARDS = {"fc0601"}
+NAMESPACED_BOARDS = {"fc0601", "kouji_oritsugi"}
 # 専用namespaceにコピーする内容キー
 _NS_COPY_KEYS = [
     "Sonet", "NURO", "Sonet_fubi", "Sonet_closing",

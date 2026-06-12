@@ -51,6 +51,7 @@ _DEFAULT_BOARDS = [
     {"suffix": "shiryou", "label": "1週間後FC 資料"},
     {"suffix": "sokushin", "label": "促進用トーク"},
     {"suffix": "timee_kouji", "label": "タイミー工事取得"},
+    {"suffix": "kouji_oritsugi", "label": "工事取得折り返しトーク"},
 ]
 
 # 初期メンバー（初回デプロイ時のシード）

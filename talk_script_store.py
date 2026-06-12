@@ -35,6 +35,7 @@ LOOKUP_SHEETS_BY_SUFFIX = {
     "shiryou": LOOKUP_SHEET,
     "sokushin": DAICON_LOOKUP_SHEET,
     "timee_kouji": LOOKUP_SHEET,
+    "kouji_oritsugi": LOOKUP_SHEET,
 }
 
 # タイミー工事取得トーク用スプレッドシート（A列1セル1行のトーク本文、【セクション】見出し付き）

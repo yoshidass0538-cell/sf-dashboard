@@ -859,7 +859,11 @@ def _serialize(templates: dict[str, dict[str, str]]) -> str:
 
 
 # 独立したトーク内容を持つボード（共有ではなく専用namespaceで保存）
-NAMESPACED_BOARDS = {"fc0601", "kouji_oritsugi"}
+# kouji_oritsugi は専用overrideを既にシード済み。NAMESPACED_BOARDSに入れると
+# マスタ編集時 ensure_board_copy が走り、キャッシュが古いと既存内容を共有デフォルトで
+# 上書き(クロバー)してしまうため外す。override は _board_overrides に存在する限り
+# _board_root 経由で参照されるので、外しても内容はそのまま使われる。
+NAMESPACED_BOARDS = {"fc0601"}
 # 専用namespaceにコピーする内容キー
 _NS_COPY_KEYS = [
     "Sonet", "NURO", "Sonet_fubi", "Sonet_closing",

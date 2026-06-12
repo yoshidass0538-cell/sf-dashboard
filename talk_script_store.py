@@ -396,3 +396,9 @@ def clear_caches():
     load_customer_data.clear()
     load_talk_script.clear()
     load_timee_kouji_script.clear()
+    # トークテンプレ本文の共有キャッシュも更新（マスタ編集や外部更新を反映）
+    try:
+        from talk_template_store import clear_template_cache
+        clear_template_cache()
+    except Exception:
+        pass

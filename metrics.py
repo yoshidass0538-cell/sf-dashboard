@@ -2301,6 +2301,60 @@ def _parse_sheet3(raw: list[list[str]]) -> dict:
     }
 
 
+def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
+    """NURO消セン抑止FC: 吉田 颯の日ごとの活動件数（直近30日）。
+
+    - トータルコール数: 対応区分問わず全Task（架電以外も含む）
+    - 完了/留守/再コール: 対応区分=架電・対応ステータス=フォローコール（その他）・
+      コール結果が各値 で活動記録が残っている数
+    フィールド: 対応区分=Field3_del__c / 対応ステータス=Field2_del__c / コール結果=Field4_del__c
+    """
+    YOSHIDA_NAME = "吉田 颯"
+    FC = "フォローコール（その他）"
+    urs = sf.query(
+        f"SELECT Id FROM User WHERE Name = '{YOSHIDA_NAME}' AND IsActive = true"
+    )["records"]
+    if not urs:
+        return {"NURO消セン抑止FC": pd.DataFrame({"メッセージ": [f"ユーザー『{YOSHIDA_NAME}』が見つかりません"]})}
+    uid = urs[0]["Id"]
+
+    def _daily(extra: str) -> dict:
+        q = (
+            "SELECT ActivityDate d, COUNT(Id) n FROM Task "
+            f"WHERE OwnerId = '{uid}' AND ActivityDate = LAST_N_DAYS:30 {extra} "
+            "GROUP BY ActivityDate ORDER BY ActivityDate DESC"
+        )
+        return {r["d"]: r["n"] for r in sf.query_all(q)["records"]}
+
+    base = f"AND Field3_del__c = '架電' AND Field2_del__c = '{FC}'"
+    total = _daily("")
+    kanryo = _daily(f"{base} AND Field4_del__c = '完了'")
+    rusu = _daily(f"{base} AND Field4_del__c = '留守'")
+    saicall = _daily(f"{base} AND Field4_del__c = '再コール'")
+
+    rows = []
+    for d in sorted(total.keys(), reverse=True):
+        rows.append({
+            "日付": d,
+            "トータルコール数": total.get(d, 0),
+            "完了数": kanryo.get(d, 0),
+            "留守数": rusu.get(d, 0),
+            "再コール数": saicall.get(d, 0),
+        })
+    if rows:
+        rows.append({
+            "日付": "合計",
+            "トータルコール数": sum(total.values()),
+            "完了数": sum(kanryo.values()),
+            "留守数": sum(rusu.values()),
+            "再コール数": sum(saicall.values()),
+        })
+    df = pd.DataFrame(rows, columns=["日付", "トータルコール数", "完了数", "留守数", "再コール数"])
+    if df.empty:
+        df = pd.DataFrame({"メッセージ": ["直近30日の活動記録がありません"]})
+    return {f"NURO消セン抑止FC（{YOSHIDA_NAME}）": df}
+
+
 METRICS: list[Metric] = [
     # --- TOTAL ---
     Metric(
@@ -2464,6 +2518,13 @@ METRICS: list[Metric] = [
         label="新設FCシフト",
         description="新設FC担当の今月シフト一覧",
         fetch=fetch_shinsetsu_fc_shift,
+        category="SECRET",
+    ),
+    Metric(
+        key="nuro_shosen_yoshida",
+        label="NURO消セン抑止FC",
+        description="吉田 颯の日ごとのトータルコール数(全区分)＋FC(その他)の完了/留守/再コール数(直近30日)",
+        fetch=fetch_nuro_shosen_yoshida,
         category="SECRET",
     ),
     Metric(

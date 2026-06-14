@@ -1,0 +1,28 @@
+name: NURO Daily Report (Chatwork)
+
+on:
+  schedule:
+    - cron: '0 10 * * *'   # 10:00 UTC = 19:00 JST 毎日（当日分を送信）
+  workflow_dispatch:        # 手動/外部トリガー用
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install simple-salesforce requests
+
+      - name: Send NURO daily report
+        env:
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_TOKEN: ${{ secrets.SF_TOKEN }}
+          SF_DOMAIN: login
+          CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+        run: python send_nuro_daily_report.py

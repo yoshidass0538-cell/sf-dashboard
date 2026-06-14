@@ -2332,18 +2332,14 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
     def _pct(n: int, d: int) -> str:
         return f"{n / d * 100:.0f}%" if d else "-"
 
-    def _build(like: str) -> pd.DataFrame:
-        urs = sf.query(
-            f"SELECT Id FROM User WHERE Name LIKE '{like}%' AND IsActive = true ORDER BY Name"
-        )["records"]
-        if not urs:
-            return pd.DataFrame({"メッセージ": [f"ユーザー『{like}』が見つかりません"]})
-        uid = urs[0]["Id"]
-
+    def _build(uid_list: list) -> pd.DataFrame:
+        if not uid_list:
+            return pd.DataFrame({"メッセージ": ["対象ユーザーが見つかりません"]})
+        ids_in = ", ".join(f"'{u}'" for u in uid_list)
         res: dict[tuple, int] = {}
         for r in sf.query_all(
             "SELECT ActivityDate d, Field2_del__c s, Field4_del__c k, COUNT(Id) n FROM Task "
-            f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_MONTH "
+            f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = THIS_MONTH "
             f"AND Field3_del__c = '架電' AND Field2_del__c IN ({cats_in}) "
             "AND Field4_del__c IN ('完了','留守','再コール') "
             "GROUP BY ActivityDate, Field2_del__c, Field4_del__c"
@@ -2386,7 +2382,17 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
         return pd.DataFrame(rows, columns=["項目", "合計"] + day_labels)
 
     MEMBERS = [("吉田 颯", "吉田 颯"), ("室谷", "室谷"), ("原田", "原田")]
-    return {label: _build(like) for label, like in MEMBERS}
+
+    def _uid(like: str):
+        rs = sf.query(
+            f"SELECT Id FROM User WHERE Name LIKE '{like}%' AND IsActive = true ORDER BY Name"
+        )["records"]
+        return rs[0]["Id"] if rs else None
+
+    uids = {label: _uid(like) for label, like in MEMBERS}
+    out = {label: _build([uids[label]] if uids[label] else []) for label, _ in MEMBERS}
+    out["ALL"] = _build([u for u in uids.values() if u])  # 3名合算
+    return out
 
 
 METRICS: list[Metric] = [

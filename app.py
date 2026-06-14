@@ -8331,6 +8331,47 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
+    if metric.key == "nuro_shosen_yoshida":
+        # 区分ブロックごとに行の背景色を変える（見やすさ向上）
+        import html as _h
+        # 区分名: (見出し行bg, 本文行bg, 文字色)
+        _BLOCK = {
+            "トータルコール数":          ("#37474f", "#37474f", "#ffffff"),
+            "フォローコール(その他)":     ("#90caf9", "#e3f2fd", "#0d3c61"),
+            "開通前対応":               ("#a5d6a7", "#e8f5e9", "#1b5e20"),
+            "フォローコール(1週間後FC)":  ("#ffcc80", "#fff3e0", "#e65100"),
+            "フォローコール(代コン)":     ("#f48fb1", "#fce4ec", "#880e4f"),
+            "フォローコール(工事取得)":   ("#b39ddb", "#ede7f6", "#4527a0"),
+        }
+        _cur = _BLOCK["トータルコール数"]
+        _thead = "<tr>" + "".join(f"<th>{_h.escape(str(c))}</th>" for c in df.columns) + "</tr>"
+        _body = ""
+        for _, _row in df.iterrows():
+            _item = str(_row["項目"])
+            if _item.strip() in _BLOCK:           # 見出し行（区分名・トータル）
+                _cur = _BLOCK[_item.strip()]
+                _bg, _fg, _wt = _cur[0], _cur[2], "700"
+            else:                                  # 配下のサブ行
+                _bg, _fg, _wt = _cur[1], _cur[2], "400"
+            _tds = ""
+            for _ci, _c in enumerate(df.columns):
+                _al = "left" if _ci == 0 else "center"
+                _ex = f"background:{_bg};" if _ci == 0 else ""
+                _tds += f'<td style="text-align:{_al};white-space:nowrap;{_ex}">{_h.escape(str(_row[_c]))}</td>'
+            _body += f'<tr style="background:{_bg};color:{_fg};font-weight:{_wt};">{_tds}</tr>'
+        st.markdown(
+            f"""<style>
+            .nuro-tbl{{border-collapse:collapse;font-size:0.85rem;}}
+            .nuro-tbl th{{background:#455a64;color:#fff;padding:6px 9px;border:1px solid #cfd8dc;
+                position:sticky;top:0;white-space:nowrap;text-align:center;}}
+            .nuro-tbl td{{padding:5px 9px;border:1px solid #e0e0e0;}}
+            .nuro-tbl td:first-child,.nuro-tbl th:first-child{{position:sticky;left:0;z-index:2;}}
+            </style>
+            <div style="overflow-x:auto;max-width:100%;">
+            <table class="nuro-tbl">{_thead}{_body}</table></div>""",
+            unsafe_allow_html=True,
+        )
+        return
     if metric.key in ("cs_shift", "shinsetsu_shift", "next_month_shift"):
         # AgGrid: 行ドラッグで並び替え可能
         import numpy as np

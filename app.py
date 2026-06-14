@@ -8359,16 +8359,21 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
                 _ex = f"background:{_bg};" if _ci == 0 else ""
                 _tds += f'<td style="text-align:{_al};white-space:nowrap;{_ex}">{_h.escape(str(_row[_c]))}</td>'
             _body += f'<tr style="background:{_bg};color:{_fg};font-weight:{_wt};">{_tds}</tr>'
+        # 注意: st.markdownに渡すHTMLは行頭に空白を入れない（4space以上の字下げは
+        # Markdownがコードブロックと解釈し、生HTMLがそのまま文字表示されてしまう）
+        _style = (
+            "<style>"
+            ".nuro-tbl{border-collapse:collapse;font-size:0.85rem;}"
+            ".nuro-tbl th{background:#455a64;color:#fff;padding:6px 9px;border:1px solid #cfd8dc;"
+            "position:sticky;top:0;white-space:nowrap;text-align:center;}"
+            ".nuro-tbl td{padding:5px 9px;border:1px solid #e0e0e0;}"
+            ".nuro-tbl td:first-child,.nuro-tbl th:first-child{position:sticky;left:0;z-index:2;}"
+            "</style>"
+        )
         st.markdown(
-            f"""<style>
-            .nuro-tbl{{border-collapse:collapse;font-size:0.85rem;}}
-            .nuro-tbl th{{background:#455a64;color:#fff;padding:6px 9px;border:1px solid #cfd8dc;
-                position:sticky;top:0;white-space:nowrap;text-align:center;}}
-            .nuro-tbl td{{padding:5px 9px;border:1px solid #e0e0e0;}}
-            .nuro-tbl td:first-child,.nuro-tbl th:first-child{{position:sticky;left:0;z-index:2;}}
-            </style>
-            <div style="overflow-x:auto;max-width:100%;">
-            <table class="nuro-tbl">{_thead}{_body}</table></div>""",
+            _style
+            + '<div style="overflow-x:auto;max-width:100%;">'
+            + f'<table class="nuro-tbl">{_thead}{_body}</table></div>',
             unsafe_allow_html=True,
         )
         return

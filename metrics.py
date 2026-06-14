@@ -2141,6 +2141,9 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
             continue
         if not (today <= dt.date() <= one_week_later):
             continue
+        # 0時=次回コール時刻が未設定（「未定」）は時間帯不明のため表示・集計から除外
+        if dt.hour == 0:
+            continue
         ds = dt.strftime("%Y/%m/%d")
         agg.setdefault(ds, {}).setdefault(cat, {})
         agg[ds][cat][dt.hour] = agg[ds][cat].get(dt.hour, 0) + 1
@@ -2150,8 +2153,7 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
         return {"エラー": pd.DataFrame({"メッセージ": ["対象期間（今日〜1週間後）の折返し希望データがありません"]})}
 
     sorted_hours = sorted(hours_seen)
-    # 0時は「次回コール時刻が未設定」を意味するため「未定」と表記
-    hour_labels = ["未定" if h == 0 else f"{h}:00" for h in sorted_hours]
+    hour_labels = [f"{h}:00" for h in sorted_hours]
 
     result: dict[str, pd.DataFrame] = {}
     for ds in sorted(agg.keys()):

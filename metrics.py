@@ -2321,12 +2321,14 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
     YOSHIDA_NAME = "吉田 颯"
     CATS = [
         "フォローコール（その他）",
+        "対応",
         "フォローコール（1週間後FC）",
         "フォローコール（代コン）",
         "フォローコール（工事取得）",
     ]
     CAT_DISP = {
         "フォローコール（その他）": "フォローコール(その他)",
+        "対応": "開通前対応",
         "フォローコール（1週間後FC）": "フォローコール(1週間後FC)",
         "フォローコール（代コン）": "フォローコール(代コン)",
         "フォローコール（工事取得）": "フォローコール(工事取得)",
@@ -2562,7 +2564,7 @@ METRICS: list[Metric] = [
     Metric(
         key="nuro_shosen_yoshida",
         label="NURO消セン抑止FC",
-        description="吉田 颯の当月 日別(転置)。対応ステータス4区分別に対応数/完了/留守/再コールの数と率",
+        description="吉田 颯の当月 日別(転置)。区分(その他/開通前対応/1週間後FC/代コン/工事取得)別に完了/留守/再コールの数と率",
         fetch=fetch_nuro_shosen_yoshida,
         category="SECRET",
     ),

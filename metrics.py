@@ -2305,9 +2305,9 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
     """NURO消セン抑止FC: 吉田 颯の当月 日別集計（転置表）。
 
     列: 項目 / 合計 / 当月の各日(M/D)
-    行: トータルコール数(全対応区分) ＋ 対応ステータス4区分ごとに
-        対応数・完了数・完了率・留守数・留守率・再コール数・再コール率
-    率 = 各コール結果数 ÷ 対応数(架電・当ステータスの全コール結果)
+    行: トータルコール数(=4区分の 完了+留守+再コール の合算) ＋ 対応ステータス4区分ごとに
+        区分計(=その区分の 完了+留守+再コール)・完了数・完了率・留守数・留守率・再コール数・再コール率
+    率 = 各コール結果数 ÷ その区分計(完了+留守+再コール)
     フィールド: 対応区分=Field3_del__c / 対応ステータス=Field2_del__c / コール結果=Field4_del__c
     """
     import calendar as _cal
@@ -2340,25 +2340,7 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
     uid = urs[0]["Id"]
     cats_in = ", ".join(f"'{c}'" for c in CATS)
 
-    # トータルコール数（全対応区分）/日
-    total_by_day: dict[str, int] = {}
-    for r in sf.query_all(
-        f"SELECT ActivityDate d, COUNT(Id) n FROM Task "
-        f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_MONTH GROUP BY ActivityDate"
-    )["records"]:
-        total_by_day[r["d"]] = r["n"]
-
-    # 対応数（架電・各ステータスの全コール結果）/日・区分
-    taiou: dict[tuple, int] = {}
-    for r in sf.query_all(
-        f"SELECT ActivityDate d, Field2_del__c s, COUNT(Id) n FROM Task "
-        f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_MONTH "
-        f"AND Field3_del__c = '架電' AND Field2_del__c IN ({cats_in}) "
-        f"GROUP BY ActivityDate, Field2_del__c"
-    )["records"]:
-        taiou[(r["d"], r["s"])] = r["n"]
-
-    # コール結果別 /日・区分・結果
+    # コール結果別 /日・区分・結果（完了/留守/再コール）
     res: dict[tuple, int] = {}
     for r in sf.query_all(
         f"SELECT ActivityDate d, Field2_del__c s, Field4_del__c k, COUNT(Id) n FROM Task "
@@ -2387,20 +2369,19 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
             row[lbl] = _pct(n, d)
         return row
 
-    def _blank_row(label):
-        row = {"項目": label, "合計": ""}
-        for lbl in day_labels:
-            row[lbl] = ""
-        return row
+    def _cat_total(dk, c):
+        return (res.get((dk, c, "完了"), 0)
+                + res.get((dk, c, "留守"), 0)
+                + res.get((dk, c, "再コール"), 0))
 
-    rows = [_count_row("トータルコール数", lambda dk: total_by_day.get(dk, 0))]
+    # トータルコール数 = 4区分の(完了+留守+再コール)を合算
+    rows = [_count_row("トータルコール数", lambda dk: sum(_cat_total(dk, c) for c in CATS))]
     for cat in CATS:
-        _t = lambda dk, c=cat: taiou.get((dk, c), 0)
+        _t = lambda dk, c=cat: _cat_total(dk, c)   # 区分行 = その区分の 完了+留守+再コール
         _c = lambda dk, c=cat: res.get((dk, c, "完了"), 0)
         _r = lambda dk, c=cat: res.get((dk, c, "留守"), 0)
         _s = lambda dk, c=cat: res.get((dk, c, "再コール"), 0)
-        rows.append(_blank_row(CAT_DISP[cat]))
-        rows.append(_count_row("　対応数", _t))
+        rows.append(_count_row(CAT_DISP[cat], _t))
         rows.append(_count_row("　完了数", _c))
         rows.append(_rate_row("　完了率", _c, _t))
         rows.append(_count_row("　留守数", _r))

@@ -2381,7 +2381,7 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
             rows.append(_rrow("　再コール率", _s, _t))
         return pd.DataFrame(rows, columns=["項目", "合計"] + day_labels)
 
-    MEMBERS = [("吉田 颯", "吉田 颯"), ("室谷", "室谷"), ("原田", "原田")]
+    MEMBERS = [("吉田 颯", "吉田 颯"), ("室谷 慧", "室谷"), ("原田 綾子", "原田")]
 
     def _uid(like: str):
         rs = sf.query(

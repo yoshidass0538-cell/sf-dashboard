@@ -2302,13 +2302,14 @@ def _parse_sheet3(raw: list[list[str]]) -> dict:
 
 
 def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
-    """NURO消セン抑止FC: 吉田 颯の当月 日別集計（転置表）。
+    """NURO消セン抑止FC: 担当者別(吉田 颯/室谷/原田)の当月 日別集計（転置表・タブ表示）。
 
     列: 項目 / 合計 / 当月の各日(M/D)
-    行: トータルコール数(=4区分の 完了+留守+再コール の合算) ＋ 対応ステータス4区分ごとに
-        区分計(=その区分の 完了+留守+再コール)・完了数・完了率・留守数・留守率・再コール数・再コール率
+    行: トータルコール数(=各区分の 完了+留守+再コール の合算) ＋ 対応ステータス区分
+        (その他/開通前対応/1週間後FC/代コン/工事取得)ごとに 区分計・完了/留守/再コールの 数と率
     率 = 各コール結果数 ÷ その区分計(完了+留守+再コール)
     フィールド: 対応区分=Field3_del__c / 対応ステータス=Field2_del__c / コール結果=Field4_del__c
+    戻り値: {担当者ラベル: df} （app.py側でタブ表示）
     """
     import calendar as _cal
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
@@ -2318,82 +2319,74 @@ def fetch_nuro_shosen_yoshida(sf: Salesforce) -> dict[str, pd.DataFrame]:
     day_keys = [f"{today.year:04d}-{today.month:02d}-{d:02d}" for d in range(1, last_day + 1)]
     day_labels = [f"{today.month}/{d}" for d in range(1, last_day + 1)]
 
-    YOSHIDA_NAME = "吉田 颯"
+    # (対応ステータス値, 表示名) ※順序: その他→開通前対応→1週間後FC→代コン→工事取得
     CATS = [
-        "フォローコール（その他）",
-        "対応",
-        "フォローコール（1週間後FC）",
-        "フォローコール（代コン）",
-        "フォローコール（工事取得）",
+        ("フォローコール（その他）", "フォローコール(その他)"),
+        ("対応", "開通前対応"),
+        ("フォローコール（1週間後FC）", "フォローコール(1週間後FC)"),
+        ("フォローコール（代コン）", "フォローコール(代コン)"),
+        ("フォローコール（工事取得）", "フォローコール(工事取得)"),
     ]
-    CAT_DISP = {
-        "フォローコール（その他）": "フォローコール(その他)",
-        "対応": "開通前対応",
-        "フォローコール（1週間後FC）": "フォローコール(1週間後FC)",
-        "フォローコール（代コン）": "フォローコール(代コン)",
-        "フォローコール（工事取得）": "フォローコール(工事取得)",
-    }
-
-    urs = sf.query(
-        f"SELECT Id FROM User WHERE Name = '{YOSHIDA_NAME}' AND IsActive = true"
-    )["records"]
-    if not urs:
-        return {"NURO消セン抑止FC": pd.DataFrame({"メッセージ": [f"ユーザー『{YOSHIDA_NAME}』が見つかりません"]})}
-    uid = urs[0]["Id"]
-    cats_in = ", ".join(f"'{c}'" for c in CATS)
-
-    # コール結果別 /日・区分・結果（完了/留守/再コール）
-    res: dict[tuple, int] = {}
-    for r in sf.query_all(
-        f"SELECT ActivityDate d, Field2_del__c s, Field4_del__c k, COUNT(Id) n FROM Task "
-        f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_MONTH "
-        f"AND Field3_del__c = '架電' AND Field2_del__c IN ({cats_in}) "
-        f"AND Field4_del__c IN ('完了','留守','再コール') "
-        f"GROUP BY ActivityDate, Field2_del__c, Field4_del__c"
-    )["records"]:
-        res[(r["d"], r["s"], r["k"])] = r["n"]
+    cats_in = ", ".join(f"'{s}'" for s, _ in CATS)
 
     def _pct(n: int, d: int) -> str:
         return f"{n / d * 100:.0f}%" if d else "-"
 
-    def _count_row(label, getter):
-        vals = [getter(dk) for dk in day_keys]
-        row = {"項目": label, "合計": sum(vals)}
-        for lbl, v in zip(day_labels, vals):
-            row[lbl] = v
-        return row
+    def _build(like: str) -> pd.DataFrame:
+        urs = sf.query(
+            f"SELECT Id FROM User WHERE Name LIKE '{like}%' AND IsActive = true ORDER BY Name"
+        )["records"]
+        if not urs:
+            return pd.DataFrame({"メッセージ": [f"ユーザー『{like}』が見つかりません"]})
+        uid = urs[0]["Id"]
 
-    def _rate_row(label, num_getter, den_getter):
-        nums = [num_getter(dk) for dk in day_keys]
-        dens = [den_getter(dk) for dk in day_keys]
-        row = {"項目": label, "合計": _pct(sum(nums), sum(dens))}
-        for lbl, n, d in zip(day_labels, nums, dens):
-            row[lbl] = _pct(n, d)
-        return row
+        res: dict[tuple, int] = {}
+        for r in sf.query_all(
+            "SELECT ActivityDate d, Field2_del__c s, Field4_del__c k, COUNT(Id) n FROM Task "
+            f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_MONTH "
+            f"AND Field3_del__c = '架電' AND Field2_del__c IN ({cats_in}) "
+            "AND Field4_del__c IN ('完了','留守','再コール') "
+            "GROUP BY ActivityDate, Field2_del__c, Field4_del__c"
+        )["records"]:
+            res[(r["d"], r["s"], r["k"])] = r["n"]
 
-    def _cat_total(dk, c):
-        return (res.get((dk, c, "完了"), 0)
-                + res.get((dk, c, "留守"), 0)
-                + res.get((dk, c, "再コール"), 0))
+        def _crow(label, g):
+            vals = [g(dk) for dk in day_keys]
+            row = {"項目": label, "合計": sum(vals)}
+            for lbl, v in zip(day_labels, vals):
+                row[lbl] = v
+            return row
 
-    # トータルコール数 = 4区分の(完了+留守+再コール)を合算
-    rows = [_count_row("トータルコール数", lambda dk: sum(_cat_total(dk, c) for c in CATS))]
-    for cat in CATS:
-        _t = lambda dk, c=cat: _cat_total(dk, c)   # 区分行 = その区分の 完了+留守+再コール
-        _c = lambda dk, c=cat: res.get((dk, c, "完了"), 0)
-        _r = lambda dk, c=cat: res.get((dk, c, "留守"), 0)
-        _s = lambda dk, c=cat: res.get((dk, c, "再コール"), 0)
-        rows.append(_count_row(CAT_DISP[cat], _t))
-        rows.append(_count_row("　完了数", _c))
-        rows.append(_rate_row("　完了率", _c, _t))
-        rows.append(_count_row("　留守数", _r))
-        rows.append(_rate_row("　留守率", _r, _t))
-        rows.append(_count_row("　再コール数", _s))
-        rows.append(_rate_row("　再コール率", _s, _t))
+        def _rrow(label, ng, dg):
+            ns = [ng(dk) for dk in day_keys]
+            ds = [dg(dk) for dk in day_keys]
+            row = {"項目": label, "合計": _pct(sum(ns), sum(ds))}
+            for lbl, n, d in zip(day_labels, ns, ds):
+                row[lbl] = _pct(n, d)
+            return row
 
-    cols = ["項目", "合計"] + day_labels
-    df = pd.DataFrame(rows, columns=cols)
-    return {f"NURO消セン抑止FC（{YOSHIDA_NAME}）": df}
+        def _tot(dk, s):
+            return (res.get((dk, s, "完了"), 0)
+                    + res.get((dk, s, "留守"), 0)
+                    + res.get((dk, s, "再コール"), 0))
+
+        rows = [_crow("トータルコール数", lambda dk: sum(_tot(dk, s) for s, _ in CATS))]
+        for sval, disp in CATS:
+            _t = lambda dk, s=sval: _tot(dk, s)
+            _c = lambda dk, s=sval: res.get((dk, s, "完了"), 0)
+            _r = lambda dk, s=sval: res.get((dk, s, "留守"), 0)
+            _s = lambda dk, s=sval: res.get((dk, s, "再コール"), 0)
+            rows.append(_crow(disp, _t))
+            rows.append(_crow("　完了数", _c))
+            rows.append(_rrow("　完了率", _c, _t))
+            rows.append(_crow("　留守数", _r))
+            rows.append(_rrow("　留守率", _r, _t))
+            rows.append(_crow("　再コール数", _s))
+            rows.append(_rrow("　再コール率", _s, _t))
+        return pd.DataFrame(rows, columns=["項目", "合計"] + day_labels)
+
+    MEMBERS = [("吉田 颯", "吉田 颯"), ("室谷", "室谷"), ("原田", "原田")]
+    return {label: _build(like) for label, like in MEMBERS}
 
 
 METRICS: list[Metric] = [

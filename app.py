@@ -8331,7 +8331,7 @@ def _render_table(title: str, df: pd.DataFrame, key_suffix: str):
     if df is None or df.empty:
         st.info("該当データはありません。")
         return
-    if metric.key == "nuro_shosen_yoshida":
+    if metric.key == "nuro_shosen_yoshida" and "項目" in df.columns:
         # 区分ブロックごとに行の背景色を変える（見やすさ向上）
         import html as _h
         # 区分名: (見出し行bg, 本文行bg, 文字色)
@@ -8622,7 +8622,17 @@ def _render_sokushin_details(title: str, details_df: pd.DataFrame, key_suffix: s
                 )
 
 
-if metric.key == "daikon_kaitsu":
+if metric.key == "nuro_shosen_yoshida":
+    # 担当者ごとにタブ表示
+    _mem_keys = list(tables.keys())
+    if not _mem_keys:
+        st.info("該当データはありません。")
+    else:
+        _mem_tabs = st.tabs(_mem_keys)
+        for _ti, (_tab, _mk) in enumerate(zip(_mem_tabs, _mem_keys)):
+            with _tab:
+                _render_table(metric.label, tables[_mk], f"nuro_{_ti}")
+elif metric.key == "daikon_kaitsu":
     # ET月ごとにタブ表示（新しい月が左）
     month_keys = list(tables.keys())
     if not month_keys:

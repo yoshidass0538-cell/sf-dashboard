@@ -19,6 +19,13 @@ CATS = [
 ]
 MEMBERS = [("吉田 颯", "吉田 颯"), ("室谷 慧", "室谷"), ("原田 綾子", "原田")]
 
+# 日報の宛先(Chatwork TO)
+TO_HEADER = (
+    "[To:4051103]沖中　駿也(火土休み)さん\n"
+    "[To:11168638]原田　綾子さん\n"
+    "[To:11172420]室谷　慧さん\n"
+)
+
 
 def _pct(n: int, d: int) -> str:
     return f"{n / d * 100:.0f}%" if d else "-"
@@ -97,7 +104,8 @@ def build_report(sf, target_date: date) -> str:
         sections.append(_member_section(lbl, _counts(sf, [u] if u else [], date_iso), with_extras=True))
 
     return (
-        f"[info][title]NURO消セン抑止FC 日報 ({md})[/title]\n"
+        TO_HEADER
+        + f"[info][title]NURO消セン抑止FC 日報 ({md})[/title]\n"
         + "\n\n".join(sections)
         + "\n[/info]"
     )

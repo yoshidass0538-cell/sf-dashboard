@@ -1,9 +1,10 @@
 name: NURO Daily Report (Chatwork)
 
 on:
-  schedule:
-    - cron: '0 10 * * *'   # 10:00 UTC = 19:00 JST 毎日（当日分を送信）
-  workflow_dispatch:        # 手動/外部トリガー用
+  # GitHub標準のscheduleはラグ(15〜60分)が出るため使わない。
+  # cron-job.org から毎日19:00(JST)ちょうどに workflow_dispatch で発火させる
+  # （sync_report / hourly_summary と同方式）。
+  workflow_dispatch:
 
 jobs:
   send:

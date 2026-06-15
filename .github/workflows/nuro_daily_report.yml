@@ -26,4 +26,7 @@ jobs:
           SF_TOKEN: ${{ secrets.SF_TOKEN }}
           SF_DOMAIN: login
           CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          ZOOM_ACCOUNT_ID: ${{ secrets.ZOOM_ACCOUNT_ID }}
+          ZOOM_CLIENT_ID: ${{ secrets.ZOOM_CLIENT_ID }}
+          ZOOM_CLIENT_SECRET: ${{ secrets.ZOOM_CLIENT_SECRET }}
         run: python send_nuro_daily_report.py

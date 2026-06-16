@@ -5971,7 +5971,7 @@ if selected_key == "kpi_call_target":
     st.markdown("#### ③ 種別別の適正コール数（直近30日・CS促進）")
     _hdr = ("<tr><th>種別</th><th>総コール</th><th>留守(率)</th><th>有効対話<br>(率)</th>"
             "<th>完了(率)</th>"
-            "<th>平均通話<br>(実測)</th><th>1コール<br>所要</th><th>適正<br>コール/h</th><th>1日<br>適正</th></tr>")
+            "<th>平均通話<br>(実測)</th><th>1コール<br>所要</th><th>1h適正<br>コール数</th><th>1日<br>適正</th></tr>")
     _body = ""
     for r in _kd["rows"]:
         _body += (
@@ -6011,7 +6011,7 @@ if selected_key == "kpi_call_target":
     from datetime import date as _kpi_date
 
     @st.cache_data(ttl=86400, show_spinner="個人別を集計中...")
-    def _load_kpi_indiv(date_filter, v=6):
+    def _load_kpi_indiv(date_filter, v=7):
         return _kpi.compute_individual(_sf(), date_filter)
 
     try:
@@ -6043,7 +6043,7 @@ if selected_key == "kpi_call_target":
     st.markdown(
         '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:8px 14px;'
         'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;">'
-        '・各種別セル＝<b>有効対話数／留守数</b>。<br>'
+        '・各種別セル＝<b>有効対話数／留守数</b>＋下段に<b>完了数・完了率</b>（完了÷その種別の合計）。<br>'
         '・<b>想定架電時間/日</b>＝対象種別のコールを標準ペースで処理した場合の1日あたり所要分'
         '（Σ 有効×(平均通話+3分)＋留守×3分 ÷ 稼働日数）。<br>'
         '・<b>充足率</b>＝想定架電時間/日 ÷ 実架電420分。'
@@ -6054,13 +6054,20 @@ if selected_key == "kpi_call_target":
         unsafe_allow_html=True,
     )
 
+    def _type_cell(v):
+        # v = (有効, 留守, 合計, 完了)。有効/留守 と 完了数・完了率(完了÷合計) を表示
+        eff, rus, tot, kan = v
+        krate = (kan / tot * 100) if tot else 0.0
+        return (f'<td>{eff:,}/{rus:,}'
+                f'<br><span style="font-size:11px;color:#2e7d32;">完{kan:,}・{krate:.0f}%</span></td>')
+
     def _render_indiv_summary(ki):
-        ah = "<tr><th>担当者</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
+        ah = "<tr><th>担当者</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守<br>完了(率)</th>" for t in _tn) + \
             ("<th>種別計</th><th>有効架電<br>/FC</th><th>種別<br>シェア</th>"
              "<th>稼働<br>日数</th><th>想定架電<br>時間/日(分)</th><th>充足率</th></tr>")
         ab = ""
         for m in ki["members"]:
-            cells = "".join(f"<td>{m['per_type'][t][0]:,}/{m['per_type'][t][1]:,}</td>" for t in _tn)
+            cells = "".join(_type_cell(m['per_type'][t]) for t in _tn)
             ab += (
                 f'<tr><td style="text-align:left;font-weight:600;">{m["name"]}</td>'
                 f'{cells}<td style="font-weight:700;">{m["total"]:,}</td>'
@@ -6073,7 +6080,7 @@ if selected_key == "kpi_call_target":
         )
 
     def _render_indiv_daily(ki):
-        dh = "<tr><th>日付</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
+        dh = "<tr><th>日付</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守<br>完了(率)</th>" for t in _tn) + \
             "<th>合計</th><th>想定架電<br>時間(分)</th><th>充足率</th></tr>"
         any_shown = False
         for m in ki["members"]:
@@ -6089,7 +6096,7 @@ if selected_key == "kpi_call_target":
             )
             db = ""
             for d in drows:
-                cells = "".join(f"<td>{d['per_type'][t][0]:,}/{d['per_type'][t][1]:,}</td>" for t in _tn)
+                cells = "".join(_type_cell(d['per_type'][t]) for t in _tn)
                 db += (
                     f'<tr><td>{d["date"]}</td>{cells}'
                     f'<td style="font-weight:700;">{d["total"]:,}</td>'
@@ -6108,7 +6115,7 @@ if selected_key == "kpi_call_target":
     st.markdown(
         '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:8px 14px;'
         'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;">'
-        '・各種別セル＝<b>有効対話数／留守数</b>。<br>'
+        '・各種別セル＝<b>有効対話数／留守数</b>＋下段に<b>完了数・完了率</b>（完了÷その種別の合計）。<br>'
         '・<b>想定架電時間(分)</b>＝その日の対象種別を標準ペースで処理した所要分'
         '（Σ 有効×(平均通話+3分)＋留守×3分）。<br>'
         '・<b>充足率</b>＝想定架電時間 ÷ 実架電420分。<b>対象種別は全架電/FCの約5割が標準</b>のため、'

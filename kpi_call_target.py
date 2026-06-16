@@ -137,7 +137,7 @@ def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -
     type_names = [t[0] for t in TYPES]
     talk_of = {t[0]: t[3] for t in TYPES}
 
-    # cell[(uid, date, 種別名)] = [総数, 留守数]
+    # cell[(uid, date, 種別名)] = [総数, 留守数, 完了数]
     cell: dict = {}
     dates: set = set()
     for tname, cond, _desc, _talk in TYPES:
@@ -146,14 +146,21 @@ def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -
             f"WHERE OwnerId IN ({ids_in}) AND {date_filter} AND {cond} "
             "GROUP BY OwnerId, ActivityDate"
         )["records"]:
-            cell.setdefault((r["oid"], r["d"], tname), [0, 0])[0] = r["n"]
+            cell.setdefault((r["oid"], r["d"], tname), [0, 0, 0])[0] = r["n"]
             dates.add(r["d"])
         for r in sf.query_all(
             f"SELECT OwnerId oid, ActivityDate d, COUNT(Id) n FROM Task "
             f"WHERE OwnerId IN ({ids_in}) AND {date_filter} AND {cond} "
             "AND Field4_del__c='留守' GROUP BY OwnerId, ActivityDate"
         )["records"]:
-            cell.setdefault((r["oid"], r["d"], tname), [0, 0])[1] = r["n"]
+            cell.setdefault((r["oid"], r["d"], tname), [0, 0, 0])[1] = r["n"]
+            dates.add(r["d"])
+        for r in sf.query_all(
+            f"SELECT OwnerId oid, ActivityDate d, COUNT(Id) n FROM Task "
+            f"WHERE OwnerId IN ({ids_in}) AND {date_filter} AND {cond} "
+            "AND Field4_del__c='完了' GROUP BY OwnerId, ActivityDate"
+        )["records"]:
+            cell.setdefault((r["oid"], r["d"], tname), [0, 0, 0])[2] = r["n"]
             dates.add(r["d"])
 
     # 架電/FC（対象種別以外も含む）コール数（参考＝シェア算出用）。
@@ -168,7 +175,7 @@ def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -
         all_calls[r["oid"]] = r["n"]
 
     def _er(uid, d, tn):
-        c = cell.get((uid, d, tn), [0, 0])
+        c = cell.get((uid, d, tn), [0, 0, 0])
         return c[0] - c[1], c[1]  # (有効, 留守)
 
     def _est(uid, d):
@@ -182,13 +189,14 @@ def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -
     for uid, name in names.items():
         per_type = {}
         for tn in type_names:
-            tot = sum(cell.get((uid, d, tn), [0, 0])[0] for d in dates)
-            rus = sum(cell.get((uid, d, tn), [0, 0])[1] for d in dates)
-            per_type[tn] = (tot - rus, rus, tot)  # (有効, 留守, 合計)
+            tot = sum(cell.get((uid, d, tn), [0, 0, 0])[0] for d in dates)
+            rus = sum(cell.get((uid, d, tn), [0, 0, 0])[1] for d in dates)
+            kan = sum(cell.get((uid, d, tn), [0, 0, 0])[2] for d in dates)
+            per_type[tn] = (tot - rus, rus, tot, kan)  # (有効, 留守, 合計, 完了)
         total = sum(v[2] for v in per_type.values())
         if total == 0:
             continue
-        workdays = len({d for d in dates if any(cell.get((uid, d, tn), [0, 0])[0] for tn in type_names)})
+        workdays = len({d for d in dates if any(cell.get((uid, d, tn), [0, 0, 0])[0] for tn in type_names)})
         est_min = sum(_est(uid, d) for d in dates)
         per_day_min = (est_min / workdays) if workdays else 0.0
         rate = (per_day_min / CALLING_MIN_PER_DAY * 100) if workdays else 0.0
@@ -206,8 +214,8 @@ def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -
         for d in sorted(dates):
             pt = {}
             for tn in type_names:
-                c = cell.get((uid, d, tn), [0, 0])
-                pt[tn] = (c[0] - c[1], c[1], c[0])  # (有効, 留守, 合計)
+                c = cell.get((uid, d, tn), [0, 0, 0])
+                pt[tn] = (c[0] - c[1], c[1], c[0], c[2])  # (有効, 留守, 合計, 完了)
             tcalls = sum(v[2] for v in pt.values())
             if tcalls == 0:
                 continue

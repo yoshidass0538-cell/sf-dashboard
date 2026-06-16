@@ -6003,6 +6003,69 @@ if selected_key == "kpi_call_target":
         '</div>',
         unsafe_allow_html=True,
     )
+
+    # ── 個人別（合算→日別）──
+    @st.cache_data(ttl=86400, show_spinner="個人別を集計中...")
+    def _load_kpi_indiv(v=1):
+        _pc = {r["name"]: r["per_call_min"] for r in _kd["rows"]}
+        return _kpi.compute_individual(_sf(), _pc)
+
+    try:
+        _ki = _load_kpi_indiv()
+    except Exception as _e:
+        st.error(f"個人別の集計に失敗しました: {_e}")
+        st.stop()
+
+    _tn = _ki["type_names"]
+    # 短い列名
+    _short = {
+        "開通前対応架電（開通日空欄）": "開通前対応",
+        "フォローコール(その他)": "FC(その他)",
+        "フォローコール(代コン)": "FC(代コン)",
+        "フォローコール(工事取得)": "FC(工取)",
+    }
+
+    def _rate_cell(rate):
+        bg = "#c8e6c9" if rate >= 80 else ("#fff3c4" if rate >= 50 else "#ffcdd2")
+        return f'<td style="background:{bg};font-weight:700;">{rate:.0f}%</td>'
+
+    st.markdown("#### ④ 個人別 実働コール数（合算・直近30日）")
+    st.caption(
+        "充足率 = 対象4種別の想定所要時間 ÷ 実架電420分（×稼働日数）。"
+        "この4種別が標準ペースで実架電時間をどれだけ埋めているかの目安（他業務は含まない）。"
+    )
+    _ah = "<tr><th>担当者</th>" + "".join(f"<th>{_short.get(t, t)}</th>" for t in _tn) + \
+        "<th>合計</th><th>稼働<br>日数</th><th>想定所要<br>/日(分)</th><th>充足率</th></tr>"
+    _ab = ""
+    for m in _ki["members"]:
+        _cells = "".join(f"<td>{m['per_type'][t]:,}</td>" for t in _tn)
+        _ab += (
+            f'<tr><td style="text-align:left;font-weight:600;">{m["name"]}</td>'
+            f'{_cells}<td style="font-weight:700;">{m["total"]:,}</td>'
+            f'<td>{m["workdays"]}</td><td>{m["per_day_min"]:.0f}</td>{_rate_cell(m["rate"])}</tr>'
+        )
+    st.markdown(f'<table class="kpi-tbl">{_ah}{_ab}</table>', unsafe_allow_html=True)
+
+    st.markdown("#### ⑤ 個人別 日別")
+    _mem_opts = [m["name"] for m in _ki["members"]]
+    if _mem_opts:
+        _sel_name = st.selectbox("担当者を選択", _mem_opts, key="kpi_indiv_member")
+        _sel_uid = next((m["uid"] for m in _ki["members"] if m["name"] == _sel_name), None)
+        _drows = _ki["daily"].get(_sel_uid, [])
+        if not _drows:
+            st.info("この担当者の直近30日のコール記録はありません。")
+        else:
+            _dh = "<tr><th>日付</th>" + "".join(f"<th>{_short.get(t, t)}</th>" for t in _tn) + \
+                "<th>合計</th><th>想定所要<br>(分)</th><th>充足率</th></tr>"
+            _db = ""
+            for d in _drows:
+                _cells = "".join(f"<td>{d['per_type'][t]:,}</td>" for t in _tn)
+                _db += (
+                    f'<tr><td>{d["date"]}</td>{_cells}'
+                    f'<td style="font-weight:700;">{d["total"]:,}</td>'
+                    f'<td>{d["est_min"]:.0f}</td>{_rate_cell(d["rate"])}</tr>'
+                )
+            st.markdown(f'<table class="kpi-tbl">{_dh}{_db}</table>', unsafe_allow_html=True)
     st.stop()
 
 # スキルツリーボード(SVG手描き / Sheetsから動的読込)

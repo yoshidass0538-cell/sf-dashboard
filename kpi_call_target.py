@@ -86,3 +86,65 @@ def compute(sf) -> dict:
         "talk_asof": TALK_ASOF,
         "rows": rows,
     }
+
+
+def compute_individual(sf, per_call: dict) -> dict:
+    """個人別のコール種別集計（合算＋日別）。
+
+    per_call: {種別名: 1コール所要(分)}（compute()のrowsから渡す＝種別ごとの標準）
+    充足率 = 対象4種別の想定所要時間 ÷ 実架電420分（×稼働日数）。これら4種別が
+    標準ペースで実架電時間をどれだけ埋めているかの指標（他業務は含まない）。
+    """
+    cs = sf.query_all(
+        "SELECT Id, Name FROM User WHERE Department='CS促進' AND IsActive=true"
+    )["records"]
+    names = {r["Id"]: r["Name"] for r in cs}
+    if not names:
+        return {"type_names": [t[0] for t in TYPES], "members": [], "daily": {}, "per_call": per_call}
+    ids_in = ", ".join(f"'{u}'" for u in names)
+    type_names = [t[0] for t in TYPES]
+
+    cell: dict = {}   # (uid, date, 種別名) -> 件数
+    dates: set = set()
+    for tname, cond, _desc, _talk in TYPES:
+        for r in sf.query_all(
+            f"SELECT OwnerId oid, ActivityDate d, COUNT(Id) n FROM Task "
+            f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = LAST_N_DAYS:30 AND {cond} "
+            "GROUP BY OwnerId, ActivityDate"
+        )["records"]:
+            cell[(r["oid"], r["d"], tname)] = r["n"]
+            dates.add(r["d"])
+
+    members = []
+    for uid, name in names.items():
+        per_type = {tn: sum(cell.get((uid, d, tn), 0) for d in dates) for tn in type_names}
+        total = sum(per_type.values())
+        if total == 0:
+            continue
+        workdays = len({d for d in dates if any(cell.get((uid, d, tn), 0) for tn in type_names)})
+        est_min = sum(per_type[tn] * per_call.get(tn, 0) for tn in type_names)
+        per_day_min = (est_min / workdays) if workdays else 0.0
+        rate = (per_day_min / CALLING_MIN_PER_DAY * 100) if workdays else 0.0
+        members.append({
+            "uid": uid, "name": name, "per_type": per_type, "total": total,
+            "workdays": workdays, "est_min": est_min, "per_day_min": per_day_min, "rate": rate,
+        })
+    members.sort(key=lambda m: -m["total"])
+
+    daily: dict = {}
+    for uid in names:
+        rs = []
+        for d in sorted(dates):
+            pt = {tn: cell.get((uid, d, tn), 0) for tn in type_names}
+            tcalls = sum(pt.values())
+            if tcalls == 0:
+                continue
+            est = sum(pt[tn] * per_call.get(tn, 0) for tn in type_names)
+            rs.append({
+                "date": d, "per_type": pt, "total": tcalls,
+                "est_min": est, "rate": est / CALLING_MIN_PER_DAY * 100,
+            })
+        if rs:
+            daily[uid] = rs
+
+    return {"type_names": type_names, "members": members, "daily": daily, "per_call": per_call}

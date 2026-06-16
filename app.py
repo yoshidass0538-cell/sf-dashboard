@@ -6054,6 +6054,9 @@ if selected_key == "kpi_call_target":
         unsafe_allow_html=True,
     )
 
+    # ④⑤の表示から除外（指標計算には含む）
+    _KPI_HIDE = {"栗田 優衣"}
+
     def _type_cell(v):
         # v = (有効, 留守, 合計, 完了)。有効/留守 と 完了数・完了率(完了÷合計) を表示
         eff, rus, tot, kan = v
@@ -6067,6 +6070,8 @@ if selected_key == "kpi_call_target":
              "<th>稼働<br>日数</th><th>想定架電<br>時間/日(分)</th><th>充足率</th></tr>")
         ab = ""
         for m in ki["members"]:
+            if m["name"] in _KPI_HIDE:
+                continue
             cells = "".join(_type_cell(m['per_type'][t]) for t in _tn)
             ab += (
                 f'<tr><td style="text-align:left;font-weight:600;">{m["name"]}</td>'
@@ -6084,6 +6089,8 @@ if selected_key == "kpi_call_target":
             "<th>合計</th><th>想定架電<br>時間(分)</th><th>充足率</th></tr>"
         any_shown = False
         for m in ki["members"]:
+            if m["name"] in _KPI_HIDE:
+                continue
             drows = ki["daily"].get(m["uid"], [])
             if not drows:
                 continue

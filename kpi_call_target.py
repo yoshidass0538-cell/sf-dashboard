@@ -27,6 +27,15 @@ PROC_MIN = 3.0          # 事務処理(分)/コール
 CALLING_MIN_PER_DAY = 420   # 実架電時間/日(分) = 在席8h - 10分休憩×6
 TALK_ASOF = "2026-06-16"    # 平均通話(Zoom実測)の算出日
 
+# CS促進(Department)条件に入らないが集計対象に含めるメンバーIDを個別追加
+EXTRA_MEMBER_IDS = ["005TL00000ixkALYAY"]  # 雨貝 一生（Dept=伊藤広部署）
+
+
+def _member_where() -> str:
+    """対象メンバーのWHERE句。Department='CS促進' に EXTRA_MEMBER_IDS を加えたもの。"""
+    extra = ", ".join(f"'{i}'" for i in EXTRA_MEMBER_IDS)
+    return f"(Department='CS促進' OR Id IN ({extra})) AND IsActive=true"
+
 # 種別: (表示名, SOQL条件, 条件の説明文, Zoom実測の平均通話(分))
 TYPES = [
     ("開通前対応架電（開通日空欄）",
@@ -70,7 +79,7 @@ TYPES = [
 
 def compute(sf) -> dict:
     cs = [r["Id"] for r in sf.query_all(
-        "SELECT Id FROM User WHERE Department='CS促進' AND IsActive=true"
+        f"SELECT Id FROM User WHERE {_member_where()}"
     )["records"]]
     ids_in = ", ".join(f"'{u}'" for u in cs)
 
@@ -125,7 +134,7 @@ def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -
     埋めているかの目安（他業務は含まない）。CS1〜CS7（共有アカウント）は非表示。
     """
     cs = sf.query_all(
-        "SELECT Id, Name FROM User WHERE Department='CS促進' AND IsActive=true"
+        f"SELECT Id, Name FROM User WHERE {_member_where()}"
     )["records"]
     names = {
         r["Id"]: r["Name"] for r in cs

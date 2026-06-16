@@ -5889,7 +5889,7 @@ if selected_key == "kpi_call_target":
     import streamlit.components.v1 as _kpi_components
 
     @st.cache_data(ttl=86400, show_spinner="適正コール数を集計中...")
-    def _load_kpi(v=4):
+    def _load_kpi(v=5):
         return _kpi.compute(_sf())
 
     try:
@@ -6011,7 +6011,7 @@ if selected_key == "kpi_call_target":
     from datetime import date as _kpi_date
 
     @st.cache_data(ttl=86400, show_spinner="個人別を集計中...")
-    def _load_kpi_indiv(date_filter, v=7):
+    def _load_kpi_indiv(date_filter, v=8):
         return _kpi.compute_individual(_sf(), date_filter)
 
     try:

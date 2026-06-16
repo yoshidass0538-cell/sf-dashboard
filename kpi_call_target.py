@@ -156,12 +156,14 @@ def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -
             cell.setdefault((r["oid"], r["d"], tname), [0, 0])[1] = r["n"]
             dates.add(r["d"])
 
-    # 全架電/FC（5種別以外も含む）コール数（参考＝シェア算出用）
+    # 架電/FC（対象種別以外も含む）コール数（参考＝シェア算出用）。
+    # 対応ステータス(Field2)空欄は電話システムの自動発信ログ(CallType=Outbound・取引先/結果なし)
+    # が大半のため分母から除外し、「ステータス入力済＝手動記録の有効コール」だけを母数にする。
     all_calls: dict = {}
     for r in sf.query_all(
         f"SELECT OwnerId oid, COUNT(Id) n FROM Task "
         f"WHERE OwnerId IN ({ids_in}) AND {date_filter} "
-        "AND Field3_del__c IN ('架電','FC') GROUP BY OwnerId"
+        "AND Field3_del__c IN ('架電','FC') AND Field2_del__c != null GROUP BY OwnerId"
     )["records"]:
         all_calls[r["oid"]] = r["n"]
 

@@ -6011,7 +6011,7 @@ if selected_key == "kpi_call_target":
     from datetime import date as _kpi_date
 
     @st.cache_data(ttl=86400, show_spinner="個人別を集計中...")
-    def _load_kpi_indiv(date_filter, v=5):
+    def _load_kpi_indiv(date_filter, v=6):
         return _kpi.compute_individual(_sf(), date_filter)
 
     try:
@@ -6046,15 +6046,17 @@ if selected_key == "kpi_call_target":
         '・各種別セル＝<b>有効対話数／留守数</b>。<br>'
         '・<b>想定架電時間/日</b>＝対象種別のコールを標準ペースで処理した場合の1日あたり所要分'
         '（Σ 有効×(平均通話+3分)＋留守×3分 ÷ 稼働日数）。<br>'
-        '・<b>充足率</b>＝想定架電時間/日 ÷ 実架電420分。<b>対象種別は全架電/FCの約5割が標準</b>のため、'
-        '充足率も概ね40〜50%が目安（残りは受電・事務等の非架電業務）。'
-        '色: 45%以上=緑／25〜45%=黄／25%未満=赤。</div>',
+        '・<b>充足率</b>＝想定架電時間/日 ÷ 実架電420分。'
+        '充足率は概ね40〜50%が目安（残りは自動発信ログの架電・受電・事務等）。'
+        '色: 45%以上=緑／25〜45%=黄／25%未満=赤。<br>'
+        '・<b>有効架電/FC</b>＝対応ステータスを入力した架電/FC（電話システムの自動発信ログ'
+        '＝ステータス空欄は除外）。<b>種別シェア</b>＝種別計 ÷ 有効架電/FC。</div>',
         unsafe_allow_html=True,
     )
 
     def _render_indiv_summary(ki):
         ah = "<tr><th>担当者</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
-            ("<th>種別計</th><th>全架電<br>/FC</th><th>種別<br>シェア</th>"
+            ("<th>種別計</th><th>有効架電<br>/FC</th><th>種別<br>シェア</th>"
              "<th>稼働<br>日数</th><th>想定架電<br>時間/日(分)</th><th>充足率</th></tr>")
         ab = ""
         for m in ki["members"]:

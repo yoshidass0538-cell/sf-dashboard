@@ -5889,7 +5889,7 @@ if selected_key == "kpi_call_target":
     import streamlit.components.v1 as _kpi_components
 
     @st.cache_data(ttl=86400, show_spinner="適正コール数を集計中...")
-    def _load_kpi(v=3):
+    def _load_kpi(v=4):
         return _kpi.compute(_sf())
 
     try:
@@ -5969,7 +5969,8 @@ if selected_key == "kpi_call_target":
 
     # 結果テーブル
     st.markdown("#### ③ 種別別の適正コール数（直近30日・CS促進）")
-    _hdr = ("<tr><th>種別</th><th>総コール</th><th>留守(率)</th><th>有効対話</th>"
+    _hdr = ("<tr><th>種別</th><th>総コール</th><th>留守(率)</th><th>有効対話<br>(率)</th>"
+            "<th>完了(率)</th>"
             "<th>平均通話<br>(実測)</th><th>1コール<br>所要</th><th>適正<br>コール/h</th><th>1日<br>適正</th></tr>")
     _body = ""
     for r in _kd["rows"]:
@@ -5978,7 +5979,8 @@ if selected_key == "kpi_call_target":
             f'<span style="font-size:11px;color:#888;">{r["desc"]}</span></td>'
             f'<td>{r["total"]:,}</td>'
             f'<td>{r["rusu"]:,}<br><span style="font-size:11px;color:#888;">{r["rusu_rate"]:.0f}%</span></td>'
-            f'<td>{r["eff"]:,}</td>'
+            f'<td>{r["eff"]:,}<br><span style="font-size:11px;color:#888;">{r["eff_rate"]:.0f}%</span></td>'
+            f'<td>{r["kanryo"]:,}<br><span style="font-size:11px;color:#888;">{r["kanryo_rate"]:.0f}%</span></td>'
             f'<td>{r["talk_min"]:.1f}分</td>'
             f'<td>{r["per_call_min"]:.2f}分</td>'
             f'<td style="background:#e8f5e9;font-weight:700;font-size:1.05rem;">{r["per_hour"]:.1f}</td>'

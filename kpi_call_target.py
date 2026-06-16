@@ -84,6 +84,7 @@ def compute(sf) -> dict:
     for name, cond, desc, talk in TYPES:
         tot = _cnt(cond)
         rusu = _cnt(cond + " AND Field4_del__c='留守'")
+        kanryo = _cnt(cond + " AND Field4_del__c='完了'")
         eff = tot - rusu
         per_call = ((eff * (talk + PROC_MIN) + rusu * PROC_MIN) / tot) if tot else 0.0
         per_h = (60 / per_call) if per_call else 0.0
@@ -94,7 +95,10 @@ def compute(sf) -> dict:
             "total": tot,
             "rusu": rusu,
             "eff": eff,
+            "kanryo": kanryo,
             "rusu_rate": (rusu / tot * 100) if tot else 0.0,
+            "eff_rate": (eff / tot * 100) if tot else 0.0,
+            "kanryo_rate": (kanryo / tot * 100) if tot else 0.0,
             "talk_min": talk,
             "per_call_min": per_call,
             "per_hour": per_h,

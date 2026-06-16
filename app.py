@@ -5889,7 +5889,7 @@ if selected_key == "kpi_call_target":
     import streamlit.components.v1 as _kpi_components
 
     @st.cache_data(ttl=86400, show_spinner="適正コール数を集計中...")
-    def _load_kpi(v=1):
+    def _load_kpi(v=2):
         return _kpi.compute(_sf())
 
     try:
@@ -6006,7 +6006,7 @@ if selected_key == "kpi_call_target":
 
     # ── 個人別（合算→日別）──
     @st.cache_data(ttl=86400, show_spinner="個人別を集計中...")
-    def _load_kpi_indiv(v=1):
+    def _load_kpi_indiv(v=2):
         _pc = {r["name"]: r["per_call_min"] for r in _kd["rows"]}
         return _kpi.compute_individual(_sf(), _pc)
 

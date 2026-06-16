@@ -21,6 +21,8 @@ KPI第1フェーズ＝架電数/コール数（量）。量を指標化するこ
 """
 from __future__ import annotations
 
+import re
+
 PROC_MIN = 3.0          # 事務処理(分)/コール
 CALLING_MIN_PER_DAY = 420   # 実架電時間/日(分) = 在席8h - 10分休憩×6
 TALK_ASOF = "2026-06-16"    # 平均通話(Zoom実測)の算出日
@@ -102,7 +104,11 @@ def compute_individual(sf, per_call: dict) -> dict:
     cs = sf.query_all(
         "SELECT Id, Name FROM User WHERE Department='CS促進' AND IsActive=true"
     )["records"]
-    names = {r["Id"]: r["Name"] for r in cs}
+    # CS1〜CS7（共有アカウント）は個人別から非表示
+    names = {
+        r["Id"]: r["Name"] for r in cs
+        if not re.fullmatch(r"CS[1-7]", (r["Name"] or "").strip())
+    }
     if not names:
         return {"type_names": [t[0] for t in TYPES], "members": [], "daily": {}, "per_call": per_call}
     ids_in = ", ".join(f"'{u}'" for u in names)

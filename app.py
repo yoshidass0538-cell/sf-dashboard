@@ -5889,7 +5889,7 @@ if selected_key == "kpi_call_target":
     import streamlit.components.v1 as _kpi_components
 
     @st.cache_data(ttl=86400, show_spinner="適正コール数を集計中...")
-    def _load_kpi(v=2):
+    def _load_kpi(v=3):
         return _kpi.compute(_sf())
 
     try:

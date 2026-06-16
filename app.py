@@ -6101,7 +6101,17 @@ if selected_key == "kpi_call_target":
     _render_indiv_summary(_ki)
 
     st.markdown("#### ⑤ 個人別 日別（全担当者）")
-    st.caption("各種別セルは「有効対話数／留守数」。想定架電時間=その日の対象種別の標準所要分。充足率=想定÷420分。")
+    st.markdown(
+        '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:8px 14px;'
+        'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;">'
+        '・各種別セル＝<b>有効対話数／留守数</b>。<br>'
+        '・<b>想定架電時間(分)</b>＝その日の対象種別を標準ペースで処理した所要分'
+        '（Σ 有効×(平均通話+3分)＋留守×3分）。<br>'
+        '・<b>充足率</b>＝想定架電時間 ÷ 実架電420分。<b>対象種別は全架電/FCの約5割が標準</b>のため、'
+        '充足率も概ね40〜50%が目安（残りは受電・事務等の非架電業務）。'
+        '色: 45%以上=緑／25〜45%=黄／25%未満=赤（④と同基準）。</div>',
+        unsafe_allow_html=True,
+    )
 
     # 当月＋過去2ヶ月のタブ
     _today = _kpi_date.today()

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """適正コール数KPI資料（読み取り専用）。
 
-現場の実架電時間モデルと、コール結果別の所要時間から、4種別それぞれの
+現場の実架電時間モデルと、コール結果別の所要時間から、各コール種別ごとの
 「1時間あたり適正コール数」「1コール所要時間」を算出する。
 
 KPI第1フェーズ＝架電数/コール数（量）。量を指標化することで必要リソースの圧縮・
@@ -49,6 +49,22 @@ TYPES = [
      "Field3_del__c='FC' AND Field2_del__c='フォローコール（工事取得）'",
      "対応区分=FC／対応ステータス=フォローコール(工事取得)",
      5.7),
+    ("キャンセル対応",
+     "Field3_del__c='架電' AND Field2_del__c='キャンセル対応'",
+     "対応区分=架電／対応ステータス=キャンセル対応",
+     3.47),
+    ("決済促進",
+     "Field3_del__c='FC' AND Field2_del__c='フォローコール（決済促進）'",
+     "対応区分=FC／対応ステータス=フォローコール(決済促進)",
+     3.22),
+    ("開通後①",
+     "Field3_del__c='FC' AND Field2_del__c='フォローコール（開通後①）'",
+     "対応区分=FC／対応ステータス=フォローコール(開通後①)",
+     3.61),
+    ("開通後②",
+     "Field3_del__c='FC' AND Field2_del__c='フォローコール（開通後②）'",
+     "対応区分=FC／対応ステータス=フォローコール(開通後②)",
+     3.72),
 ]
 
 
@@ -94,8 +110,10 @@ def compute(sf) -> dict:
     }
 
 
-def compute_individual(sf, per_call: dict | None = None) -> dict:
+def compute_individual(sf, date_filter: str = "ActivityDate = LAST_N_DAYS:30") -> dict:
     """個人別のコール種別集計（合算＋日別）。各種別を 有効対話/留守 に分けて集計。
+
+    date_filter: SOQLの日付条件（既定=直近30日。⑤の月タブは月範囲を渡す）。
 
     per_type[種別名] = (有効対話数, 留守数, 合計)。
     想定所要 = Σ種別( 有効対話×(平均通話+事務3分) + 留守×事務3分 )（各人の実有効/留守で算出）。
@@ -121,14 +139,14 @@ def compute_individual(sf, per_call: dict | None = None) -> dict:
     for tname, cond, _desc, _talk in TYPES:
         for r in sf.query_all(
             f"SELECT OwnerId oid, ActivityDate d, COUNT(Id) n FROM Task "
-            f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = LAST_N_DAYS:30 AND {cond} "
+            f"WHERE OwnerId IN ({ids_in}) AND {date_filter} AND {cond} "
             "GROUP BY OwnerId, ActivityDate"
         )["records"]:
             cell.setdefault((r["oid"], r["d"], tname), [0, 0])[0] = r["n"]
             dates.add(r["d"])
         for r in sf.query_all(
             f"SELECT OwnerId oid, ActivityDate d, COUNT(Id) n FROM Task "
-            f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = LAST_N_DAYS:30 AND {cond} "
+            f"WHERE OwnerId IN ({ids_in}) AND {date_filter} AND {cond} "
             "AND Field4_del__c='留守' GROUP BY OwnerId, ActivityDate"
         )["records"]:
             cell.setdefault((r["oid"], r["d"], tname), [0, 0])[1] = r["n"]
@@ -138,7 +156,7 @@ def compute_individual(sf, per_call: dict | None = None) -> dict:
     all_calls: dict = {}
     for r in sf.query_all(
         f"SELECT OwnerId oid, COUNT(Id) n FROM Task "
-        f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = LAST_N_DAYS:30 "
+        f"WHERE OwnerId IN ({ids_in}) AND {date_filter} "
         "AND Field3_del__c IN ('架電','FC') GROUP BY OwnerId"
     )["records"]:
         all_calls[r["oid"]] = r["n"]

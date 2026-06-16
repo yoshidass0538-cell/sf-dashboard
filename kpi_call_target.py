@@ -94,27 +94,29 @@ def compute(sf) -> dict:
     }
 
 
-def compute_individual(sf, per_call: dict) -> dict:
-    """個人別のコール種別集計（合算＋日別）。
+def compute_individual(sf, per_call: dict | None = None) -> dict:
+    """個人別のコール種別集計（合算＋日別）。各種別を 有効対話/留守 に分けて集計。
 
-    per_call: {種別名: 1コール所要(分)}（compute()のrowsから渡す＝種別ごとの標準）
-    充足率 = 対象4種別の想定所要時間 ÷ 実架電420分（×稼働日数）。これら4種別が
-    標準ペースで実架電時間をどれだけ埋めているかの指標（他業務は含まない）。
+    per_type[種別名] = (有効対話数, 留守数, 合計)。
+    想定所要 = Σ種別( 有効対話×(平均通話+事務3分) + 留守×事務3分 )（各人の実有効/留守で算出）。
+    充足率 = 想定所要/日 ÷ 実架電420分。対象種別が標準ペースで実架電時間をどれだけ
+    埋めているかの目安（他業務は含まない）。CS1〜CS7（共有アカウント）は非表示。
     """
     cs = sf.query_all(
         "SELECT Id, Name FROM User WHERE Department='CS促進' AND IsActive=true"
     )["records"]
-    # CS1〜CS7（共有アカウント）は個人別から非表示
     names = {
         r["Id"]: r["Name"] for r in cs
         if not re.fullmatch(r"CS[1-7]", (r["Name"] or "").strip())
     }
     if not names:
-        return {"type_names": [t[0] for t in TYPES], "members": [], "daily": {}, "per_call": per_call}
+        return {"type_names": [t[0] for t in TYPES], "members": [], "daily": {}}
     ids_in = ", ".join(f"'{u}'" for u in names)
     type_names = [t[0] for t in TYPES]
+    talk_of = {t[0]: t[3] for t in TYPES}
 
-    cell: dict = {}   # (uid, date, 種別名) -> 件数
+    # cell[(uid, date, 種別名)] = [総数, 留守数]
+    cell: dict = {}
     dates: set = set()
     for tname, cond, _desc, _talk in TYPES:
         for r in sf.query_all(
@@ -122,17 +124,39 @@ def compute_individual(sf, per_call: dict) -> dict:
             f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = LAST_N_DAYS:30 AND {cond} "
             "GROUP BY OwnerId, ActivityDate"
         )["records"]:
-            cell[(r["oid"], r["d"], tname)] = r["n"]
+            cell.setdefault((r["oid"], r["d"], tname), [0, 0])[0] = r["n"]
             dates.add(r["d"])
+        for r in sf.query_all(
+            f"SELECT OwnerId oid, ActivityDate d, COUNT(Id) n FROM Task "
+            f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = LAST_N_DAYS:30 AND {cond} "
+            "AND Field4_del__c='留守' GROUP BY OwnerId, ActivityDate"
+        )["records"]:
+            cell.setdefault((r["oid"], r["d"], tname), [0, 0])[1] = r["n"]
+            dates.add(r["d"])
+
+    def _er(uid, d, tn):
+        c = cell.get((uid, d, tn), [0, 0])
+        return c[0] - c[1], c[1]  # (有効, 留守)
+
+    def _est(uid, d):
+        e = 0.0
+        for tn in type_names:
+            eff, rus = _er(uid, d, tn)
+            e += eff * (talk_of[tn] + PROC_MIN) + rus * PROC_MIN
+        return e
 
     members = []
     for uid, name in names.items():
-        per_type = {tn: sum(cell.get((uid, d, tn), 0) for d in dates) for tn in type_names}
-        total = sum(per_type.values())
+        per_type = {}
+        for tn in type_names:
+            tot = sum(cell.get((uid, d, tn), [0, 0])[0] for d in dates)
+            rus = sum(cell.get((uid, d, tn), [0, 0])[1] for d in dates)
+            per_type[tn] = (tot - rus, rus, tot)  # (有効, 留守, 合計)
+        total = sum(v[2] for v in per_type.values())
         if total == 0:
             continue
-        workdays = len({d for d in dates if any(cell.get((uid, d, tn), 0) for tn in type_names)})
-        est_min = sum(per_type[tn] * per_call.get(tn, 0) for tn in type_names)
+        workdays = len({d for d in dates if any(cell.get((uid, d, tn), [0, 0])[0] for tn in type_names)})
+        est_min = sum(_est(uid, d) for d in dates)
         per_day_min = (est_min / workdays) if workdays else 0.0
         rate = (per_day_min / CALLING_MIN_PER_DAY * 100) if workdays else 0.0
         members.append({
@@ -145,11 +169,14 @@ def compute_individual(sf, per_call: dict) -> dict:
     for uid in names:
         rs = []
         for d in sorted(dates):
-            pt = {tn: cell.get((uid, d, tn), 0) for tn in type_names}
-            tcalls = sum(pt.values())
+            pt = {}
+            for tn in type_names:
+                c = cell.get((uid, d, tn), [0, 0])
+                pt[tn] = (c[0] - c[1], c[1], c[0])  # (有効, 留守, 合計)
+            tcalls = sum(v[2] for v in pt.values())
             if tcalls == 0:
                 continue
-            est = sum(pt[tn] * per_call.get(tn, 0) for tn in type_names)
+            est = _est(uid, d)
             rs.append({
                 "date": d, "per_type": pt, "total": tcalls,
                 "est_min": est, "rate": est / CALLING_MIN_PER_DAY * 100,
@@ -157,4 +184,4 @@ def compute_individual(sf, per_call: dict) -> dict:
         if rs:
             daily[uid] = rs
 
-    return {"type_names": type_names, "members": members, "daily": daily, "per_call": per_call}
+    return {"type_names": type_names, "members": members, "daily": daily}

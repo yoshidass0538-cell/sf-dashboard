@@ -6006,7 +6006,7 @@ if selected_key == "kpi_call_target":
 
     # ── 個人別（合算→日別）──
     @st.cache_data(ttl=86400, show_spinner="個人別を集計中...")
-    def _load_kpi_indiv(v=2):
+    def _load_kpi_indiv(v=3):
         _pc = {r["name"]: r["per_call_min"] for r in _kd["rows"]}
         return _kpi.compute_individual(_sf(), _pc)
 
@@ -6032,14 +6032,14 @@ if selected_key == "kpi_call_target":
 
     st.markdown("#### ④ 個人別 実働コール数（合算・直近30日）")
     st.caption(
-        "充足率 = 対象4種別の想定所要時間 ÷ 実架電420分（×稼働日数）。"
-        "この4種別が標準ペースで実架電時間をどれだけ埋めているかの目安（他業務は含まない）。"
+        "各種別セルは「有効対話数／留守数」。合計は全種別の総コール。"
+        "充足率 = 想定所要時間（Σ 有効×(平均通話+3分)＋留守×3分）÷ 実架電420分（×稼働日数）の目安（他業務は含まない）。"
     )
-    _ah = "<tr><th>担当者</th>" + "".join(f"<th>{_short.get(t, t)}</th>" for t in _tn) + \
+    _ah = "<tr><th>担当者</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
         "<th>合計</th><th>稼働<br>日数</th><th>想定所要<br>/日(分)</th><th>充足率</th></tr>"
     _ab = ""
     for m in _ki["members"]:
-        _cells = "".join(f"<td>{m['per_type'][t]:,}</td>" for t in _tn)
+        _cells = "".join(f"<td>{m['per_type'][t][0]:,}/{m['per_type'][t][1]:,}</td>" for t in _tn)
         _ab += (
             f'<tr><td style="text-align:left;font-weight:600;">{m["name"]}</td>'
             f'{_cells}<td style="font-weight:700;">{m["total"]:,}</td>'
@@ -6056,11 +6056,12 @@ if selected_key == "kpi_call_target":
         if not _drows:
             st.info("この担当者の直近30日のコール記録はありません。")
         else:
-            _dh = "<tr><th>日付</th>" + "".join(f"<th>{_short.get(t, t)}</th>" for t in _tn) + \
+            st.caption("各種別セルは「有効対話数／留守数」。")
+            _dh = "<tr><th>日付</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
                 "<th>合計</th><th>想定所要<br>(分)</th><th>充足率</th></tr>"
             _db = ""
             for d in _drows:
-                _cells = "".join(f"<td>{d['per_type'][t]:,}</td>" for t in _tn)
+                _cells = "".join(f"<td>{d['per_type'][t][0]:,}/{d['per_type'][t][1]:,}</td>" for t in _tn)
                 _db += (
                     f'<tr><td>{d["date"]}</td>{_cells}'
                     f'<td style="font-weight:700;">{d["total"]:,}</td>'

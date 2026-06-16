@@ -134,6 +134,15 @@ def compute_individual(sf, per_call: dict | None = None) -> dict:
             cell.setdefault((r["oid"], r["d"], tname), [0, 0])[1] = r["n"]
             dates.add(r["d"])
 
+    # 全架電/FC（5種別以外も含む）コール数（参考＝シェア算出用）
+    all_calls: dict = {}
+    for r in sf.query_all(
+        f"SELECT OwnerId oid, COUNT(Id) n FROM Task "
+        f"WHERE OwnerId IN ({ids_in}) AND ActivityDate = LAST_N_DAYS:30 "
+        "AND Field3_del__c IN ('架電','FC') GROUP BY OwnerId"
+    )["records"]:
+        all_calls[r["oid"]] = r["n"]
+
     def _er(uid, d, tn):
         c = cell.get((uid, d, tn), [0, 0])
         return c[0] - c[1], c[1]  # (有効, 留守)
@@ -159,8 +168,10 @@ def compute_individual(sf, per_call: dict | None = None) -> dict:
         est_min = sum(_est(uid, d) for d in dates)
         per_day_min = (est_min / workdays) if workdays else 0.0
         rate = (per_day_min / CALLING_MIN_PER_DAY * 100) if workdays else 0.0
+        allc = all_calls.get(uid, 0)
         members.append({
             "uid": uid, "name": name, "per_type": per_type, "total": total,
+            "all_calls": allc, "share": (total / allc * 100) if allc else 0.0,
             "workdays": workdays, "est_min": est_min, "per_day_min": per_day_min, "rate": rate,
         })
     members.sort(key=lambda m: -m["total"])

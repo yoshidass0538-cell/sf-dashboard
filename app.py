@@ -6006,7 +6006,7 @@ if selected_key == "kpi_call_target":
 
     # ── 個人別（合算→日別）──
     @st.cache_data(ttl=86400, show_spinner="個人別を集計中...")
-    def _load_kpi_indiv(v=3):
+    def _load_kpi_indiv(v=4):
         _pc = {r["name"]: r["per_call_min"] for r in _kd["rows"]}
         return _kpi.compute_individual(_sf(), _pc)
 
@@ -6027,47 +6027,59 @@ if selected_key == "kpi_call_target":
     }
 
     def _rate_cell(rate):
-        bg = "#c8e6c9" if rate >= 80 else ("#fff3c4" if rate >= 50 else "#ffcdd2")
+        # 対象5種別は全架電/FCの約4割が標準のため、しきい値は 50/30 で相対表示
+        bg = "#c8e6c9" if rate >= 50 else ("#fff3c4" if rate >= 30 else "#ffcdd2")
         return f'<td style="background:{bg};font-weight:700;">{rate:.0f}%</td>'
 
     st.markdown("#### ④ 個人別 実働コール数（合算・直近30日）")
-    st.caption(
-        "各種別セルは「有効対話数／留守数」。合計は全種別の総コール。"
-        "充足率 = 想定所要時間（Σ 有効×(平均通話+3分)＋留守×3分）÷ 実架電420分（×稼働日数）の目安（他業務は含まない）。"
+    st.markdown(
+        '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:8px 14px;'
+        'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;">'
+        '・各種別セル＝<b>有効対話数／留守数</b>。<br>'
+        '・<b>想定架電時間/日</b>＝対象5種別のコールを標準ペースで処理した場合の1日あたり所要分'
+        '（Σ 有効×(平均通話+3分)＋留守×3分 ÷ 稼働日数）。<br>'
+        '・<b>充足率</b>＝想定架電時間/日 ÷ 実架電420分。<b>対象5種別は全架電/FCの約4割が標準</b>のため、'
+        '充足率も概ね30〜50%が目安（残りはキャンセル対応・決済促進・開通後等の他種別）。'
+        '色: 50%以上=緑／30〜50%=黄／30%未満=赤。</div>',
+        unsafe_allow_html=True,
     )
     _ah = "<tr><th>担当者</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
-        "<th>合計</th><th>稼働<br>日数</th><th>想定所要<br>/日(分)</th><th>充足率</th></tr>"
+        ("<th>5種計</th><th>全架電<br>/FC</th><th>5種<br>シェア</th>"
+         "<th>稼働<br>日数</th><th>想定架電<br>時間/日(分)</th><th>充足率</th></tr>")
     _ab = ""
     for m in _ki["members"]:
         _cells = "".join(f"<td>{m['per_type'][t][0]:,}/{m['per_type'][t][1]:,}</td>" for t in _tn)
         _ab += (
             f'<tr><td style="text-align:left;font-weight:600;">{m["name"]}</td>'
             f'{_cells}<td style="font-weight:700;">{m["total"]:,}</td>'
+            f'<td>{m["all_calls"]:,}</td><td>{m["share"]:.0f}%</td>'
             f'<td>{m["workdays"]}</td><td>{m["per_day_min"]:.0f}</td>{_rate_cell(m["rate"])}</tr>'
         )
     st.markdown(f'<table class="kpi-tbl">{_ah}{_ab}</table>', unsafe_allow_html=True)
 
-    st.markdown("#### ⑤ 個人別 日別")
-    _mem_opts = [m["name"] for m in _ki["members"]]
-    if _mem_opts:
-        _sel_name = st.selectbox("担当者を選択", _mem_opts, key="kpi_indiv_member")
-        _sel_uid = next((m["uid"] for m in _ki["members"] if m["name"] == _sel_name), None)
-        _drows = _ki["daily"].get(_sel_uid, [])
+    st.markdown("#### ⑤ 個人別 日別（全担当者）")
+    st.caption("各種別セルは「有効対話数／留守数」。想定架電時間=その日の対象5種別の標準所要分。充足率=想定÷420分。")
+    _dh = "<tr><th>日付</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
+        "<th>合計</th><th>想定架電<br>時間(分)</th><th>充足率</th></tr>"
+    for m in _ki["members"]:
+        _drows = _ki["daily"].get(m["uid"], [])
         if not _drows:
-            st.info("この担当者の直近30日のコール記録はありません。")
-        else:
-            st.caption("各種別セルは「有効対話数／留守数」。")
-            _dh = "<tr><th>日付</th>" + "".join(f"<th>{_short.get(t, t)}<br>有効/留守</th>" for t in _tn) + \
-                "<th>合計</th><th>想定所要<br>(分)</th><th>充足率</th></tr>"
-            _db = ""
-            for d in _drows:
-                _cells = "".join(f"<td>{d['per_type'][t][0]:,}/{d['per_type'][t][1]:,}</td>" for t in _tn)
-                _db += (
-                    f'<tr><td>{d["date"]}</td>{_cells}'
-                    f'<td style="font-weight:700;">{d["total"]:,}</td>'
-                    f'<td>{d["est_min"]:.0f}</td>{_rate_cell(d["rate"])}</tr>'
-                )
-            st.markdown(f'<table class="kpi-tbl">{_dh}{_db}</table>', unsafe_allow_html=True)
+            continue
+        st.markdown(
+            f'<div style="background:#37474f;color:#fff;padding:5px 12px;border-radius:5px;'
+            f'margin:12px 0 4px;font-weight:700;font-size:13px;">{m["name"]}'
+            f'（合計{m["total"]:,}／稼働{m["workdays"]}日／充足率{m["rate"]:.0f}%）</div>',
+            unsafe_allow_html=True,
+        )
+        _db = ""
+        for d in _drows:
+            _cells = "".join(f"<td>{d['per_type'][t][0]:,}/{d['per_type'][t][1]:,}</td>" for t in _tn)
+            _db += (
+                f'<tr><td>{d["date"]}</td>{_cells}'
+                f'<td style="font-weight:700;">{d["total"]:,}</td>'
+                f'<td>{d["est_min"]:.0f}</td>{_rate_cell(d["rate"])}</tr>'
+            )
+        st.markdown(f'<table class="kpi-tbl">{_dh}{_db}</table>', unsafe_allow_html=True)
     st.stop()
 
 # スキルツリーボード(SVG手描き / Sheetsから動的読込)

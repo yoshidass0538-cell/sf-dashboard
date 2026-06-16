@@ -2459,6 +2459,13 @@ METRICS: list[Metric] = [
         category="資料",
     ),
     Metric(
+        key="kpi_call_target",
+        label="適正コール数KPI資料",
+        description="現場の実架電時間モデルと通話実測(Zoom)から、4種別(開通前対応架電/FCその他/代コン/工事取得)の適正コール数/h・1コール所要時間を算出。直近30日・CS促進。個人FB/上席報告用",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
         key="total_calls",
         label="トータルコール数集計",
         description="指定メンバーの全活動記録を日付別に集計",

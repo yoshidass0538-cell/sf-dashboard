@@ -3586,6 +3586,9 @@ elif selected_key in ("fubitaitai_kirisute_area", "fubitaitai_kirisute_list"):
 elif selected_key == "gyomu_seiri":
     # 業務整理資料 — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "kpi_call_target":
+    # 適正コール数KPI資料 — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -5875,6 +5878,130 @@ if selected_key == "gyomu_seiri":
     st.caption(
         "💡 失う開通は確定値(過去半年=直近180日/直近90日除外)ベース、月時間は3-5月実績ベースのため期間軸が異なる概算です。"
         " 時間モデル: 留守3分／有効対話13分(通話10分+事務処理3分)。通話結果(Field4_del__c)で按分。"
+    )
+    st.stop()
+
+# 適正コール数KPI資料ボード
+if selected_key == "kpi_call_target":
+    import importlib
+    import kpi_call_target as _kpi
+    importlib.reload(_kpi)
+    import streamlit.components.v1 as _kpi_components
+
+    @st.cache_data(ttl=86400, show_spinner="適正コール数を集計中...")
+    def _load_kpi(v=1):
+        return _kpi.compute(_sf())
+
+    try:
+        _kd = _load_kpi()
+    except Exception as _e:
+        st.error(f"集計に失敗しました: {_e}")
+        st.stop()
+
+    _kpi_c1, _kpi_c2 = st.columns([1, 4])
+    with _kpi_c1:
+        _kpi_components.html(
+            '<button onclick="window.parent.print()" style="background:#1565c0;color:#fff;'
+            'border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:700;'
+            'font-size:0.95rem;box-shadow:0 2px 6px rgba(0,0,0,0.2);">🖨 PDF保存 / 印刷</button>',
+            height=46,
+        )
+
+    st.markdown("## 適正コール数KPI資料")
+    st.caption(
+        f"対象: CS促進メンバー {_kd['member_count']}名 ／ 集計期間: 直近30日 ／ "
+        f"平均通話はZoom実測({_kd['talk_asof']}算出) ／ 事務処理 {_kd['proc_min']:.0f}分・実架電 {_kd['calling_min_per_day']}分/日"
+    )
+
+    # 目的・考え方
+    st.markdown(
+        '<div style="background:#e3f2fd;border-left:5px solid #1565c0;padding:12px 16px;'
+        'border-radius:6px;margin:8px 0 14px;font-size:13px;line-height:1.7;color:#0d3c61;">'
+        '<b>■ KPIの考え方</b><br>'
+        '<b>第1フェーズ＝架電数・コール数（量）</b>。まず量を指標化することで、'
+        '必要リソースの圧縮・人件費等の必要コストの削減判断ができる。'
+        '品質（顧客対応の質）は<b>第2フェーズ</b>として後付けで評価する。<br>'
+        'この資料は「各種別を1時間に何コール回すのが適正か」を、現場の実架電時間と'
+        '1コールの実所要時間から算出し、各個人のコール数・処理数が適正かの確認／個人フィードバック／'
+        '上席報告に使う。</div>',
+        unsafe_allow_html=True,
+    )
+
+    # 稼働時間モデル
+    st.markdown("#### ① 現場の稼働時間モデル")
+    st.markdown(
+        '<div style="font-size:13px;line-height:1.7;">'
+        '10:00勤務開始〜19:00就業（在席9時間）。昼休憩1時間(14:00-15:00)＋各時間の10分休憩×6回を除くと、'
+        f'<b>実際に架電する時間＝{_kd["calling_min_per_day"]}分（7時間）/日</b>。'
+        '<br>（在席8時間＝9時間−昼1時間。そこから10分休憩×6＝60分を引いて実架電7時間）</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<table class="kpi-tbl"><tr><th>時間帯</th><th>区分</th></tr>'
+        '<tr><td>10:00-10:50 / 11:00-11:50 / 12:00-12:50</td><td>架電業務(各50分)</td></tr>'
+        '<tr><td>13:00-14:00</td><td>架電業務(60分)</td></tr>'
+        '<tr><td>14:00-15:00</td><td>昼休憩(60分)</td></tr>'
+        '<tr><td>15:00-15:50 / 16:00-16:50 / 17:00-17:50</td><td>架電業務(各50分)</td></tr>'
+        '<tr><td>18:00-19:00</td><td>架電業務(60分)</td></tr>'
+        '<tr><td>各架電業務の後</td><td>10分休憩×6</td></tr>'
+        '<tr style="background:#e3f2fd;font-weight:700;"><td>実架電 合計</td><td>420分 ＝ 7時間</td></tr>'
+        '</table>',
+        unsafe_allow_html=True,
+    )
+
+    # 算出式
+    st.markdown("#### ② 算出方法（1コール所要 → 適正コール数）")
+    st.markdown(
+        '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:12px 16px;'
+        'border-radius:6px;margin:6px 0 12px;font-size:13px;line-height:1.9;">'
+        '<b>1コール所要(分)</b> ＝ ( 有効対話数 × (平均通話 ＋ 事務処理3分) ＋ 留守数 × 事務処理3分 ) ÷ 総コール数<br>'
+        '<b>適正コール数/h</b> ＝ 60分 ÷ 1コール所要<br>'
+        '<b>1日の適正コール数</b> ＝ 実架電420分 ÷ 1コール所要 （＝ 適正/h × 7時間）'
+        '</div>'
+        '<div style="font-size:12px;color:#666;line-height:1.7;">'
+        '・<b>平均通話</b>：完了/有効対話コールの Zoom Phone発信ログ(通話秒数)を、電話番号＋対応時刻(±20分)で'
+        '突合した<b>実測平均</b>。<br>'
+        '・<b>留守</b>：接続なしのため通話時間0、事務処理3分のみ。<br>'
+        '・<b>事務処理3分</b>：1コールにつき記録入力等の処理時間（完了/留守 共通の固定値）。<br>'
+        '・有効対話数＝総コール−留守。率の分母は総コール。</div>',
+        unsafe_allow_html=True,
+    )
+
+    # 結果テーブル
+    st.markdown("#### ③ 種別別の適正コール数（直近30日・CS促進）")
+    _hdr = ("<tr><th>種別</th><th>総コール</th><th>留守(率)</th><th>有効対話</th>"
+            "<th>平均通話<br>(実測)</th><th>1コール<br>所要</th><th>適正<br>コール/h</th><th>1日<br>適正</th></tr>")
+    _body = ""
+    for r in _kd["rows"]:
+        _body += (
+            f'<tr><td style="text-align:left;">{r["name"]}<br>'
+            f'<span style="font-size:11px;color:#888;">{r["desc"]}</span></td>'
+            f'<td>{r["total"]:,}</td>'
+            f'<td>{r["rusu"]:,}<br><span style="font-size:11px;color:#888;">{r["rusu_rate"]:.0f}%</span></td>'
+            f'<td>{r["eff"]:,}</td>'
+            f'<td>{r["talk_min"]:.1f}分</td>'
+            f'<td>{r["per_call_min"]:.2f}分</td>'
+            f'<td style="background:#e8f5e9;font-weight:700;font-size:1.05rem;">{r["per_hour"]:.1f}</td>'
+            f'<td style="font-weight:700;">{r["per_day"]:.0f}</td></tr>'
+        )
+    st.markdown(
+        '<style>.kpi-tbl{border-collapse:collapse;width:100%;font-size:13px;margin:4px 0 12px;}'
+        '.kpi-tbl th,.kpi-tbl td{border:1px solid #d8dee5;padding:6px 9px;text-align:center;}'
+        '.kpi-tbl th{background:#eceff1;color:#37474f;font-weight:700;}</style>'
+        f'<table class="kpi-tbl">{_hdr}{_body}</table>',
+        unsafe_allow_html=True,
+    )
+
+    # 使い方
+    st.markdown(
+        '<div style="background:#f3effe;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.8;">'
+        '<b>■ 使い方</b><br>'
+        '・上記「適正コール/h」「1日適正」を基準に、各個人の実コール数(同条件)を比較し適正かを判断。<br>'
+        '・基準を下回る個人へは架電ペースの改善フィードバック、上回る個人は処理品質も併せて確認。<br>'
+        '・上席報告では「必要コール数 → 必要人員・時間」の根拠として活用。<br>'
+        '<span style="color:#666;font-size:12px;">※平均通話(Zoom実測)は定期更新値。コール数・留守率はSF直近30日でライブ集計。</span>'
+        '</div>',
+        unsafe_allow_html=True,
     )
     st.stop()
 

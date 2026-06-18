@@ -2,7 +2,6 @@
 
 制約:
 - 原田・室谷・金澤 の3名中2名がなるべく毎日出勤
-- 佐々木・堀田 のどちらかが必ず出勤
 - 出勤人数のバラつきを抑える
 - 各人の月間稼働日数を維持 (1日抜く=1日足す)
 - 連勤悪化させない
@@ -12,7 +11,6 @@ from collections import defaultdict
 from typing import NamedTuple
 
 THREE_TEAM = ("原田", "室谷", "金澤")
-TWO_TEAM = ("佐々木", "堀田")
 
 
 class Move(NamedTuple):
@@ -56,10 +54,6 @@ def _has(names, key):
 
 def _violates_3cond(names):
     return sum(1 for k in THREE_TEAM if _has(names, k)) < 2
-
-
-def _violates_2cond(names):
-    return not any(k in (n or "") for n in names for k in TWO_TEAM)
 
 
 def _person_days(by_day, last_day):
@@ -111,8 +105,6 @@ def _can_move(by_day, person_days, full_name, who_key, frm, to, last_day, forbid
     # 制約: frm を抜くことで新規違反を起こさない
     new_frm_names = [n for n in by_day.get(frm, []) if n != full_name]
     if not _violates_3cond(by_day.get(frm, [])) and _violates_3cond(new_frm_names):
-        return False
-    if not _violates_2cond(by_day.get(frm, [])) and _violates_2cond(new_frm_names):
         return False
     return True
 
@@ -176,28 +168,7 @@ def propose_moves(by_day: dict[int, list[str]], last_day: int,
             if len(present) >= 2:
                 break
 
-    # 2. 2条件違反の解消
-    for d in range(1, last_day + 1):
-        names = work.get(d, [])
-        if not names:
-            continue
-        if any(k in (n or "") for n in names for k in TWO_TEAM):
-            continue
-        for who_key in TWO_TEAM:
-            full = _find_full(work, who_key, last_day)
-            if not full:
-                continue
-            placed = False
-            for frm in sorted(pd[full], key=lambda x: -len(work.get(x, []))):
-                if frm == d:
-                    continue
-                if try_move(who_key, frm, d, f"6/{d} 2名条件解消"):
-                    placed = True
-                    break
-            if placed:
-                break
-
-    # 3. 人数のバラつき調整 (過剰→不足)
+    # 2. 人数のバラつき調整 (過剰→不足)
     def cur_counts():
         return {d: len(set(work.get(d, []))) for d in range(1, last_day + 1)}
 
@@ -228,8 +199,6 @@ def propose_moves(by_day: dict[int, list[str]], last_day: int,
                         continue
                     test_from = [n for n in work[od] if n != nm]
                     if _short(nm) in THREE_TEAM and _violates_3cond(test_from) and not _violates_3cond(work[od]):
-                        continue
-                    if _short(nm) in TWO_TEAM and _violates_2cond(test_from) and not _violates_2cond(work[od]):
                         continue
                     reason = f"人数調整 6/{od}({cnt[od]}名) → 6/{ud}({cnt[ud]}名)"
                     if try_move(who_short, od, ud, reason):

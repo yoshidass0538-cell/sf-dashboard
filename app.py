@@ -7210,12 +7210,9 @@ if selected_key == "cs_shift_calendar":
                     if _list:
                         _txt_color = "#bbb" if _is_past else "#333"
                         _time_color = "#aaa" if _is_past else "#888"
-                        _highlight_surnames = ("佐々木", "室谷", "原田", "堀田", "金澤")
-                        _red_surnames = ("佐々木", "堀田")
+                        _highlight_surnames = ("室谷", "原田", "金澤")
                         def _is_hi(nm: str) -> bool:
                             return any(s in (nm or "") for s in _highlight_surnames)
-                        def _is_red(nm: str) -> bool:
-                            return any(s in (nm or "") for s in _red_surnames)
                         def _is_changed(nm: str) -> bool:
                             return any(k in (nm or "") for k in _changed_keys)
                         _lines = []
@@ -7224,9 +7221,7 @@ if selected_key == "cs_shift_calendar":
                             key=lambda t: (0 if _is_hi(t[0]) else 1, t[1], t[0]),
                         ):
                             _t = f"{_s}-{_e}" if _s and _e else (_s or _e)
-                            if _is_red(_name):
-                                _mark = "🔴🟡 "
-                            elif _is_hi(_name):
+                            if _is_hi(_name):
                                 _mark = "🟡 "
                             else:
                                 _mark = ""

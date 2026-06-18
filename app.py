@@ -5953,12 +5953,13 @@ if selected_key == "kpi_call_target":
     st.markdown("#### ② 算出方法（1コール所要 → 適正コール数）")
     st.markdown(
         '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:12px 16px;'
-        'border-radius:6px;margin:6px 0 12px;font-size:13px;line-height:1.9;">'
+        'border-radius:6px;margin:6px 0 12px;font-size:13px;line-height:1.9;color:#3a2f00;">'
         '<b>1コール所要(分)</b> ＝ ( 有効対話数 × (平均通話 ＋ 事務処理3分) ＋ 留守数 × 事務処理3分 ) ÷ 総コール数<br>'
         '<b>適正コール数/h</b> ＝ 60分 ÷ 1コール所要<br>'
         '<b>1日の適正コール数</b> ＝ 実架電420分 ÷ 1コール所要 （＝ 適正/h × 7時間）'
         '</div>'
-        '<div style="font-size:12px;color:#666;line-height:1.7;">'
+        '<div style="background:#fffdf3;border:1px solid #f0e6c0;border-radius:6px;'
+        'padding:8px 12px;font-size:12px;color:#4a4a4a;line-height:1.7;">'
         '・<b>平均通話</b>：完了/有効対話コールの Zoom Phone発信ログ(通話秒数)を、電話番号＋対応時刻(±20分)で'
         '突合した<b>実測平均</b>。<br>'
         '・<b>留守</b>：接続なしのため通話時間0、事務処理3分のみ。<br>'
@@ -5976,27 +5977,30 @@ if selected_key == "kpi_call_target":
     for r in _kd["rows"]:
         _body += (
             f'<tr><td style="text-align:left;">{r["name"]}<br>'
-            f'<span style="font-size:11px;color:#888;">{r["desc"]}</span></td>'
+            f'<span style="font-size:11px;color:#555;">{r["desc"]}</span></td>'
             f'<td>{r["total"]:,}</td>'
-            f'<td>{r["rusu"]:,}<br><span style="font-size:11px;color:#888;">{r["rusu_rate"]:.0f}%</span></td>'
-            f'<td>{r["eff"]:,}<br><span style="font-size:11px;color:#888;">{r["eff_rate"]:.0f}%</span></td>'
-            f'<td>{r["kanryo"]:,}<br><span style="font-size:11px;color:#888;">{r["kanryo_rate"]:.0f}%</span></td>'
+            f'<td>{r["rusu"]:,}<br><span style="font-size:11px;color:#555;">{r["rusu_rate"]:.0f}%</span></td>'
+            f'<td>{r["eff"]:,}<br><span style="font-size:11px;color:#555;">{r["eff_rate"]:.0f}%</span></td>'
+            f'<td>{r["kanryo"]:,}<br><span style="font-size:11px;color:#555;">{r["kanryo_rate"]:.0f}%</span></td>'
             f'<td>{r["talk_min"]:.1f}分</td>'
             f'<td>{r["per_call_min"]:.2f}分</td>'
             f'<td style="background:#e8f5e9;font-weight:700;font-size:1.05rem;">{r["per_hour"]:.1f}</td>'
             f'<td style="font-weight:700;">{r["per_day"]:.0f}</td></tr>'
         )
     st.markdown(
-        '<style>.kpi-tbl{border-collapse:collapse;width:100%;font-size:13px;margin:4px 0 12px;}'
-        '.kpi-tbl th,.kpi-tbl td{border:1px solid #d8dee5;padding:6px 9px;text-align:center;}'
-        '.kpi-tbl th{background:#eceff1;color:#37474f;font-weight:700;}</style>'
+        '<style>.kpi-tbl{border-collapse:collapse;width:100%;font-size:13px;margin:4px 0 12px;'
+        'background:#ffffff;color:#1a1a1a;}'
+        '.kpi-tbl th,.kpi-tbl td{border:1px solid #c2cad2;padding:6px 9px;text-align:center;color:#1a1a1a;}'
+        '.kpi-tbl td{background:#ffffff;}'
+        '.kpi-tbl th{background:#cfd8dc;color:#1f2a30;font-weight:700;}</style>'
         f'<table class="kpi-tbl">{_hdr}{_body}</table>',
         unsafe_allow_html=True,
     )
 
     # 使い方
     st.markdown(
-        '<div style="background:#f3effe;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.8;">'
+        '<div style="background:#f3effe;border-radius:8px;padding:12px 16px;font-size:13px;'
+        'line-height:1.8;color:#2b2440;">'
         '<b>■ 使い方</b><br>'
         '・上記「適正コール/h」「1日適正」を基準に、各個人の実コール数(同条件)を比較し適正かを判断。<br>'
         '・基準を下回る個人へは架電ペースの改善フィードバック、上回る個人は処理品質も併せて確認。<br>'
@@ -6043,7 +6047,7 @@ if selected_key == "kpi_call_target":
     st.markdown("#### ④ 個人別 実働コール数（合算・直近30日）")
     st.markdown(
         '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:8px 14px;'
-        'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;">'
+        'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;color:#3a2f00;">'
         '・各種別セル＝<b>有効対話数／留守数</b>＋下段に<b>完了数・完了率</b>（完了÷その種別の合計）。<br>'
         '・<b>想定架電時間/日</b>＝対象種別のコールを標準ペースで処理した場合の1日あたり所要分'
         '（Σ 有効×(平均通話+3分)＋留守×3分 ÷ 稼働日数）。<br>'
@@ -6122,7 +6126,7 @@ if selected_key == "kpi_call_target":
     st.markdown("#### ⑤ 個人別 日別（全担当者）")
     st.markdown(
         '<div style="background:#fff8e1;border-left:5px solid #f9a825;padding:8px 14px;'
-        'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;">'
+        'border-radius:6px;font-size:12px;line-height:1.7;margin:0 0 8px;color:#3a2f00;">'
         '・各種別セル＝<b>有効対話数／留守数</b>＋下段に<b>完了数・完了率</b>（完了÷その種別の合計）。<br>'
         '・<b>想定架電時間(分)</b>＝その日の対象種別を標準ペースで処理した所要分'
         '（Σ 有効×(平均通話+3分)＋留守×3分）。<br>'

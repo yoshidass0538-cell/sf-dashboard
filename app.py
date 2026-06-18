@@ -7210,7 +7210,7 @@ if selected_key == "cs_shift_calendar":
                     if _list:
                         _txt_color = "#bbb" if _is_past else "#333"
                         _time_color = "#aaa" if _is_past else "#888"
-                        _highlight_surnames = ("室谷", "原田", "金澤")
+                        _highlight_surnames = ("佐々木", "堀田", "菊地")
                         def _is_hi(nm: str) -> bool:
                             return any(s in (nm or "") for s in _highlight_surnames)
                         def _is_changed(nm: str) -> bool:

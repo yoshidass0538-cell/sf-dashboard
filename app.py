@@ -7247,7 +7247,7 @@ if selected_key == "cs_shift_calendar":
                                 f"{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
                             )
                         _names_html = "".join(_lines)
-                        _bomb = "💣 " if len(_list) <= 6 else ""
+                        _bomb = "💣 " if len(_list) <= 4 else ""
                         _cnt_html = (
                             f"<div style='font-size:13px;font-weight:700;margin-top:2px;"
                             f"color:{'#888' if _is_past else '#1565c0'};'>"
@@ -7406,7 +7406,7 @@ if selected_key == "cs_shift_calendar":
                                highlight_changes=_changed_days)
         st.caption(
             "📝 変更希望シフト　|　黄色背景＝移動で追加された人　"
-            "💣 6名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
+            "💣 4名以下　|　🟨 本日　🩶 経過済　🟦 土曜　🟥 日曜"
         )
 
         # ── 🚫 変更不可日（チェック＝この日への移動を禁止） ──

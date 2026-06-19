@@ -8,6 +8,9 @@ on:
 
 jobs:
   send:
+    # 2026-06-19 ユーザー指示により配信停止中。再開する時は次の if 行を削除する。
+    # （cron-job.org からの発火は続くが、このジョブがスキップされ何も送信しない）
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

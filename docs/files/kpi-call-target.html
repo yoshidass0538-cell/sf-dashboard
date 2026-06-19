@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>適正コール数のめやす（CS促進）</title>
+<style>
+ *{box-sizing:border-box;}
+ body{margin:0;background:#eef1f4;color:#1b1f24;
+   font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+   line-height:1.7;-webkit-text-size-adjust:100%;}
+ .wrap{max-width:920px;margin:0 auto;padding:20px 16px 60px;}
+ h1{font-size:24px;margin:8px 0 2px;}
+ .sub{color:#5a6470;font-size:13px;margin-bottom:20px;}
+ .card{background:#fff;border-radius:12px;padding:18px 18px 20px;margin:16px 0;
+   box-shadow:0 1px 4px rgba(0,0,0,.08);}
+ h2{font-size:18px;margin:2px 0 4px;display:flex;align-items:center;gap:8px;}
+ h2 .n{background:#1565c0;color:#fff;border-radius:8px;width:26px;height:26px;
+   display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto;}
+ .lead{color:#444;font-size:14px;margin:4px 0 12px;}
+ table{border-collapse:collapse;width:100%;font-size:14px;}
+ th,td{border:1px solid #dce1e7;padding:9px 8px;text-align:center;}
+ th{background:#f1f4f8;color:#3a444f;font-weight:700;font-size:13px;}
+ td.l{text-align:left;font-weight:600;}
+ td.hi{background:#e8f5e9;font-weight:700;font-size:15px;}
+ .scroll{overflow-x:auto;}
+ .bar{position:relative;height:22px;background:#eceff2;border-radius:6px;min-width:120px;overflow:hidden;}
+ .bar-fill{position:absolute;left:0;top:0;height:100%;border-radius:6px;}
+ .bar-txt{position:relative;z-index:1;font-size:12px;font-weight:700;color:#10243a;
+   line-height:22px;text-shadow:0 0 2px #fff,0 0 2px #fff;}
+ .legend{font-size:13px;color:#444;margin-top:10px;}
+ .legend span{display:inline-block;margin-right:14px;}
+ .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:4px;vertical-align:middle;}
+ .time-row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px;}
+ .chip{background:#f1f4f8;border-radius:8px;padding:6px 10px;font-size:13px;}
+ .chip b{color:#1565c0;}
+ .note{font-size:12.5px;color:#5a6470;margin-top:10px;}
+ .foot{text-align:center;color:#8a94a0;font-size:12px;margin-top:24px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>適正コール数のめやす（CS促進）</h1>
+  <div class="sub">担当者 11名（共有アカウント除く）／ 直近30日の実績 ／ 作成日 2026-06-19</div>
+
+  <div class="card">
+    <h2><span class="n">1</span>1日に電話できる時間</h2>
+    <div class="lead">朝10時から夜19時までのうち、昼休憩と小休憩を引くと、実際に電話に使える時間は
+      <b>1日7時間（420分）</b>です。</div>
+    <div class="time-row">
+      <div class="chip">在席 <b>9時間</b></div>
+      <div class="chip">− 昼休憩 1時間</div>
+      <div class="chip">− 小休憩 10分×6</div>
+      <div class="chip">＝ 電話できる時間 <b>420分</b></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span>電話の種類ごとの「1時間・1日にできる件数」</h2>
+    <div class="lead">1件にかかる時間（実際の通話時間＋記録などの後処理）から、無理なくこなせる件数のめやすを出しています。
+      <b>緑の数字がめやすの件数</b>です。</div>
+    <div class="scroll">
+    <table>
+      <tr><th>電話の種類</th><th>直近30日<br>の件数</th><th>1回の<br>通話時間</th><th>1件に<br>かかる時間</th>
+        <th>1時間の<br>めやす</th><th>1日(420分)<br>のめやす</th></tr>
+      <tr><td class="l">開通前対応架電（開通日空欄）</td><td>2,799</td><td>4.6分</td><td>4.4分</td><td class="hi">14件</td><td class="hi">96件</td></tr><tr><td class="l">フォローコール(その他)</td><td>1,077</td><td>3.2分</td><td>4.2分</td><td class="hi">14件</td><td class="hi">100件</td></tr><tr><td class="l">フォローコール(1週間後)</td><td>822</td><td>5.2分</td><td>4.7分</td><td class="hi">13件</td><td class="hi">90件</td></tr><tr><td class="l">フォローコール(代コン)</td><td>3,182</td><td>3.8分</td><td>3.7分</td><td class="hi">16件</td><td class="hi">115件</td></tr><tr><td class="l">フォローコール(代コン窓口)</td><td>391</td><td>2.5分</td><td>5.5分</td><td class="hi">11件</td><td class="hi">77件</td></tr><tr><td class="l">フォローコール(工事取得)</td><td>5,417</td><td>5.7分</td><td>3.7分</td><td class="hi">16件</td><td class="hi">114件</td></tr><tr><td class="l">キャンセル対応</td><td>485</td><td>3.5分</td><td>5.2分</td><td class="hi">11件</td><td class="hi">80件</td></tr><tr><td class="l">決済促進</td><td>1,404</td><td>3.2分</td><td>3.3分</td><td class="hi">18件</td><td class="hi">126件</td></tr><tr><td class="l">開通後①</td><td>1,324</td><td>3.6分</td><td>4.5分</td><td class="hi">13件</td><td class="hi">94件</td></tr><tr><td class="l">開通後②</td><td>32</td><td>3.7分</td><td>6.6分</td><td class="hi">9件</td><td class="hi">64件</td></tr>
+    </table>
+    </div>
+    <div class="note">※「1件にかかる時間」＝つながった電話は「通話時間＋3分」、留守は「3分」で計算した平均。
+      通話時間はZoomの実測値です。</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span>一人ひとりの実績（直近30日・1日あたり）</h2>
+    <div class="lead">いちばん右は、<b>1日420分のうち電話に使えた割合</b>です（受電や事務の時間は含みません）。</div>
+    <div class="scroll">
+    <table>
+      <tr><th>担当者</th><th>1日の<br>電話件数</th><th>つながった<br>件数/日</th>
+        <th>完了<br>(30日)</th><th>電話に使った<br>時間/日</th><th>420分のうち</th></tr>
+      <tr><td class="l">堀田 輝斗</td><td>56件</td><td>12件</td><td>37件</td><td>227分</td><td><div class="bar"><div class="bar-fill" style="width:54%;background:#2e7d32;"></div><span class="bar-txt">54%・しっかり</span></div></td></tr><tr><td class="l">吉田 颯</td><td>49件</td><td>18件</td><td>98件</td><td>203分</td><td><div class="bar"><div class="bar-fill" style="width:48%;background:#2e7d32;"></div><span class="bar-txt">48%・しっかり</span></div></td></tr><tr><td class="l">葛西 翼</td><td>47件</td><td>10件</td><td>162件</td><td>181分</td><td><div class="bar"><div class="bar-fill" style="width:43%;background:#e6a700;"></div><span class="bar-txt">43%・ふつう</span></div></td></tr><tr><td class="l">菊地 隆真</td><td>45件</td><td>14件</td><td>316件</td><td>195分</td><td><div class="bar"><div class="bar-fill" style="width:47%;background:#2e7d32;"></div><span class="bar-txt">47%・しっかり</span></div></td></tr><tr><td class="l">吉本 将吾</td><td>41件</td><td>19件</td><td>124件</td><td>205分</td><td><div class="bar"><div class="bar-fill" style="width:49%;background:#2e7d32;"></div><span class="bar-txt">49%・しっかり</span></div></td></tr><tr><td class="l">角田 心華</td><td>37件</td><td>8件</td><td>126件</td><td>149分</td><td><div class="bar"><div class="bar-fill" style="width:35%;background:#e6a700;"></div><span class="bar-txt">35%・ふつう</span></div></td></tr><tr><td class="l">原田 綾子</td><td>36件</td><td>13件</td><td>222件</td><td>156分</td><td><div class="bar"><div class="bar-fill" style="width:37%;background:#e6a700;"></div><span class="bar-txt">37%・ふつう</span></div></td></tr><tr><td class="l">室谷 慧</td><td>35件</td><td>13件</td><td>189件</td><td>156分</td><td><div class="bar"><div class="bar-fill" style="width:37%;background:#e6a700;"></div><span class="bar-txt">37%・ふつう</span></div></td></tr><tr><td class="l">金澤 駿平</td><td>25件</td><td>11件</td><td>129件</td><td>125分</td><td><div class="bar"><div class="bar-fill" style="width:30%;background:#e6a700;"></div><span class="bar-txt">30%・ふつう</span></div></td></tr><tr><td class="l">雨貝 一生</td><td>25件</td><td>22件</td><td>418件</td><td>133分</td><td><div class="bar"><div class="bar-fill" style="width:32%;background:#e6a700;"></div><span class="bar-txt">32%・ふつう</span></div></td></tr><tr><td class="l">佐々木 彩乃</td><td>20件</td><td>6件</td><td>63件</td><td>84分</td><td><div class="bar"><div class="bar-fill" style="width:20%;background:#c62828;"></div><span class="bar-txt">20%・少なめ</span></div></td></tr>
+    </table>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:#2e7d32;"></span>45%以上＝しっかり</span>
+      <span><span class="dot" style="background:#e6a700;"></span>25〜45%＝ふつう</span>
+      <span><span class="dot" style="background:#c62828;"></span>25%未満＝少なめ</span>
+    </div>
+    <div class="note">割合が低い主な理由は、つながった件数（中身のある電話の本数）が少ないことです。
+      通話が長いことが理由で低くなることはありません。受電・事務など電話以外の仕事はこの割合に含みません。</div>
+  </div>
+
+  <div class="foot">CS促進 / 適正コール数のめやす ・ 2026-06-19 時点</div>
+</div>
+</body>
+</html>

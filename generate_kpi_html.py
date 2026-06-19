@@ -7,12 +7,16 @@
 from __future__ import annotations
 import html
 import sys
-from datetime import date
+from datetime import date, timedelta
 from dotenv import dotenv_values
 from simple_salesforce import Salesforce
 import kpi_call_target as kpi
 
-ASOF = date.today().isoformat()  # 実行日（資料の作成日）
+_TODAY = date.today()
+ASOF = _TODAY.isoformat()              # 実行日（資料の作成日）
+EXPIRE_DATE = _TODAY + timedelta(days=7)  # 公開期限（作成から1週間）
+EXPIRE_ISO = f"{EXPIRE_DATE.isoformat()}T00:00:00+09:00"  # JST 0時で失効
+EXPIRE_JP = f"{EXPIRE_DATE.year}年{EXPIRE_DATE.month}月{EXPIRE_DATE.day}日"
 HIDE_IN_PERSON = {"栗田 優衣"}   # 個人一覧から外す人
 
 
@@ -132,8 +136,13 @@ def build_html(typ, ind):
 </head>
 <body>
 <div class="wrap">
+  <noscript><div style="text-align:center;padding:60px 20px;color:#555;">この資料の閲覧にはJavaScriptを有効にしてください。</div></noscript>
+  <div id="expired" style="display:none;text-align:center;padding:70px 20px;color:#555;font-size:16px;">
+    この資料の公開期間（{EXPIRE_JP}まで）は終了しました。</div>
+  <div id="content" style="display:none;">
   <h1>適正コール数のめやす（CS促進）</h1>
-  <div class="sub">担当者 {person_count}名（共有アカウント除く）／ 直近30日の実績 ／ 作成日 {ASOF}</div>
+  <div class="sub">担当者 {person_count}名（共有アカウント除く）／ 直近30日の実績 ／ 作成日 {ASOF}
+    ／ <b>公開期限 {EXPIRE_JP}まで</b></div>
 
   <div class="card">
     <h2><span class="n">1</span>1日に電話できる時間</h2>
@@ -181,8 +190,19 @@ def build_html(typ, ind):
       通話が長いことが理由で低くなることはありません。受電・事務など電話以外の仕事はこの割合に含みません。</div>
   </div>
 
-  <div class="foot">CS促進 / 適正コール数のめやす ・ {ASOF} 時点</div>
+  <div class="foot">CS促進 / 適正コール数のめやす ・ {ASOF} 時点 ・ 公開期限 {EXPIRE_JP}</div>
+  </div><!--/#content-->
 </div>
+<script>
+(function(){{
+  var exp = new Date("{EXPIRE_ISO}");
+  if (new Date() < exp) {{
+    document.getElementById('content').style.display = '';
+  }} else {{
+    document.getElementById('expired').style.display = '';
+  }}
+}})();
+</script>
 </body>
 </html>
 """
@@ -196,7 +216,10 @@ def main():
     path = "docs/files/kpi-call-target.html"
     with open(path, "w", encoding="utf-8") as f:
         f.write(out)
-    print("WROTE", path, len(out), "bytes")
+    # 自動削除ワークフロー用の失効日（YYYYMMDD）。GitHub Actionsがこの日以降にHTMLを削除する
+    with open("docs/files/kpi-expire.txt", "w", encoding="utf-8") as f:
+        f.write(EXPIRE_DATE.strftime("%Y%m%d") + "\n")
+    print("WROTE", path, len(out), "bytes / expire", EXPIRE_DATE.isoformat())
 
 
 if __name__ == "__main__":

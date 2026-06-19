@@ -1,0 +1,43 @@
+name: KPI HTML Expire (auto-delete)
+
+# 適正コール数KPIの公開HTMLを、失効日(docs/files/kpi-expire.txt)以降に自動削除する。
+# 削除すると github.io / jsDelivr / raw など全URLが404になり、raw経由でも閲覧不可になる。
+# タイミング厳密さは不要なので GitHub標準の schedule を使用（毎日1回チェック）。
+
+on:
+  schedule:
+    - cron: '10 15 * * *'   # 毎日 00:10 JST (15:10 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete KPI HTML if expired
+        run: |
+          set -e
+          HTML="docs/files/kpi-call-target.html"
+          EXPF="docs/files/kpi-expire.txt"
+          if [ ! -f "$EXPF" ]; then
+            echo "no expire file; nothing to do"; exit 0
+          fi
+          EXP=$(tr -dc '0-9' < "$EXPF")
+          TODAY=$(TZ=Asia/Tokyo date +%Y%m%d)
+          echo "today(JST)=$TODAY expire=$EXP"
+          if [ "$TODAY" -ge "$EXP" ]; then
+            if [ -f "$HTML" ] || [ -f "$EXPF" ]; then
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git rm -f "$HTML" "$EXPF" || true
+              git commit -m "KPI公開HTML: 公開期限($EXP)切れのため自動削除"
+              git push
+              echo "deleted (expired)"
+            fi
+          else
+            echo "not expired yet; keep"
+          fi

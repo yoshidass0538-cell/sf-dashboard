@@ -7167,6 +7167,20 @@ if selected_key == "cs_shift_calendar":
         st.error(f"取得に失敗しました: {e}")
         st.stop()
 
+    # 指定月以降のシフト表示から除外するメンバー（退職等）。{姓: (年, 月)} で「その月以降」除外
+    _SHIFT_EXCLUDE_FROM = {"堀田": (2026, 7)}
+
+    def _shift_excluded(name: str) -> bool:
+        for _key, (_fy, _fm) in _SHIFT_EXCLUDE_FROM.items():
+            if _key in (name or "") and (_cs_y, _cs_m) >= (_fy, _fm):
+                return True
+        return False
+
+    _by_day = {
+        _d: [_t for _t in _lst if not _shift_excluded(_t[0])]
+        for _d, _lst in _by_day.items()
+    }
+
     def _render_shift_calendar(by_day: dict, ns: str, highlight_changes: dict | None = None):
         """カレンダー1枚をレンダリング。highlight_changes={day:set(name_key)} で移動先セル内の該当者を強調。"""
         _wd_labels = ["月", "火", "水", "木", "金", "土", "日"]

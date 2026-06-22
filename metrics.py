@@ -1383,7 +1383,9 @@ def fetch_total_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
 # DAYコール数（本日・CS促進・対応ステータス別）
 # ======================================================================
 TIMEE_MEMBERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
-DAY_CALLS_EXCLUDE = {"太田海斗", "杉山敏樹", "柳原", "対馬", "対馬拓人", "早瀬太一"} | EXCLUDED_OWNERS_NORM
+DAY_CALLS_EXCLUDE = {"柳原"} | EXCLUDED_OWNERS_NORM
+# CS促進マスタ外(CS対応所属)だがDAYコール数に含めるメンバー（2026-06-22 指示）
+DAY_CALLS_INCLUDE = {"対馬拓人", "太田海斗", "早瀬太一", "杉山敏樹"}
 
 
 def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
@@ -1398,6 +1400,7 @@ def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
     }
     cs_names.discard("")
     cs_names = {n for n in cs_names if not any(ex in n for ex in DAY_CALLS_EXCLUDE)}
+    cs_names |= DAY_CALLS_INCLUDE  # CS対応所属だが明示的に含める指定メンバー
 
     # 本日のTask集計
     soql = (

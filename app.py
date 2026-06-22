@@ -3988,8 +3988,17 @@ if selected_key == "day_calls":
             df_c["担当者"] = df_c["担当者"].replace(_rename)
             order = [_rename.get(n, n) for n in order]
         df_c["ラベル"] = df_c["対応ステータス"] + " " + df_c["コール数"].astype(str)
-        # 「対応」を分割した2種は色を固定（開通前=青／開通後=橙）。他ステータスは自動色
+        # 開通前=青／開通後=橙を予約し、他ステータスは青・橙系を避けた別パレットから
+        # 重複しないよう割り当てる（自動色だと「その他」等と同色になるため）。
         _status_colors = {"開通前対応": "#1565c0", "開通後対応": "#ef6c00"}
+        _palette = [
+            "#2e7d32", "#6a1b9a", "#00838f", "#c62828", "#ad1457", "#5d4037",
+            "#9e9d24", "#455a64", "#558b2f", "#8e24aa", "#00695c", "#d81b60",
+            "#3e2723", "#1b5e20",
+        ]
+        _others = sorted(s for s in df_c["対応ステータス"].unique() if s not in _status_colors)
+        for _i, _s in enumerate(_others):
+            _status_colors[_s] = _palette[_i % len(_palette)]
         fig = px.bar(
             df_c, y="担当者", x="コール数", color="対応ステータス",
             orientation="h", text="ラベル", category_orders={"担当者": order},

@@ -4016,11 +4016,12 @@ if selected_key == "day_calls":
             margin=dict(l=10, r=10, t=40, b=10),
             bargap=0.25,
         )
-        # 👑を大きく表示（y軸ラベルをHTMLスパンで拡大）
-        _tick_text = [
-            n.replace("👑 ", '<span style="font-size:56px;">👑</span>&nbsp;', 1) if n.startswith("👑 ") else n
-            for n in order
-        ]
+        # 👑を大きく表示＋名前の右に合計コール数を表示
+        _disp_total = {disp: int(tot) for disp, tot in zip(order, totals.values)}
+        _tick_text = []
+        for n in order:
+            _base = n.replace("👑 ", '<span style="font-size:56px;">👑</span>&nbsp;', 1) if n.startswith("👑 ") else n
+            _tick_text.append(f'{_base}　<span style="font-size:13px;font-weight:700;">（計{_disp_total.get(n, 0)}件）</span>')
         fig.update_yaxes(tickmode="array", tickvals=order, ticktext=_tick_text)
         st.plotly_chart(fig, use_container_width=True)
         # 内訳テーブル（折りたたみ）

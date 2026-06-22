@@ -3988,9 +3988,12 @@ if selected_key == "day_calls":
             df_c["担当者"] = df_c["担当者"].replace(_rename)
             order = [_rename.get(n, n) for n in order]
         df_c["ラベル"] = df_c["対応ステータス"] + " " + df_c["コール数"].astype(str)
+        # 「対応」を分割した2種は色を固定（開通前=青／開通後=橙）。他ステータスは自動色
+        _status_colors = {"開通前対応": "#1565c0", "開通後対応": "#ef6c00"}
         fig = px.bar(
             df_c, y="担当者", x="コール数", color="対応ステータス",
             orientation="h", text="ラベル", category_orders={"担当者": order},
+            color_discrete_map=_status_colors,
         )
         fig.update_traces(
             textposition="inside", textfont_size=12,

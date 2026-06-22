@@ -1403,13 +1403,12 @@ def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
     cs_names |= DAY_CALLS_INCLUDE  # CS対応所属だが明示的に含める指定メンバー
 
     # 本日のTask集計
-    soql = (
+    rs = sf.query_all(
         "SELECT Owner.Name oname, Field2_del__c status, COUNT(Id) cnt "
         "FROM Task "
         "WHERE ActivityDate = TODAY "
         "GROUP BY Owner.Name, Field2_del__c"
-    )
-    rs = sf.query_all(soql)["records"]
+    )["records"]
     cs_rows = []
     timee_rows = []
     for r in rs:
@@ -1418,11 +1417,36 @@ def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
         status = r.get("status")
         if not status:
             continue
+        if status == "対応":
+            continue  # 開通日有無で 開通前対応/開通後対応 に分割して別途追加
         row = {"担当者": owner, "対応ステータス": status, "コール数": int(r["cnt"])}
         if norm in cs_names:
             cs_rows.append(row)
         elif norm in TIMEE_MEMBERS:
             timee_rows.append(row)
+
+    # 「対応」を開通日(Account.Field130__c)の有無で分割
+    #   開通日が空欄 → 開通前対応 ／ 開通日に値あり → 開通後対応
+    def _add_split(owner, status, cnt):
+        n2 = (owner or "").replace(" ", "").replace("　", "")
+        row = {"担当者": owner or "", "対応ステータス": status, "コール数": int(cnt)}
+        if n2 in cs_names:
+            cs_rows.append(row)
+        elif n2 in TIMEE_MEMBERS:
+            timee_rows.append(row)
+
+    for r in sf.query_all(
+        "SELECT Owner.Name oname, COUNT(Id) cnt FROM Task "
+        "WHERE ActivityDate = TODAY AND Field2_del__c = '対応' "
+        "AND Account.Field130__c = null GROUP BY Owner.Name"
+    )["records"]:
+        _add_split(r.get("oname"), "開通前対応", r["cnt"])
+    for r in sf.query_all(
+        "SELECT Owner.Name oname, COUNT(Id) cnt FROM Task "
+        "WHERE ActivityDate = TODAY AND Field2_del__c = '対応' "
+        "AND Account.Field130__c != null GROUP BY Owner.Name"
+    )["records"]:
+        _add_split(r.get("oname"), "開通後対応", r["cnt"])
 
     empty = pd.DataFrame(columns=["担当者", "対応ステータス", "コール数"])
     return {

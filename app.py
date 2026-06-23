@@ -4260,7 +4260,7 @@ if selected_key == "ccr":
             '<div style="font-size:12.5px;color:#cdd6e0;line-height:1.8;">'
             f'現在の業務時間：<b style="color:#fff;">{_ccr_fmt(_p["work"])}</b>　／　'
             f'経過時間：{_ccr_fmt(_p["raw"])}　／　シフト {_shift_lbl}<br>'
-            f'<span style="color:#b0bec5;">■空白の時間：<b style="color:#fff;">{_ccr_fmt(_p["blank"])}</b></span><br>'
+            f'<span style="color:#ff5252;">■空白の時間：<b style="color:#ff5252;">{_ccr_fmt(_p["blank"])}</b></span><br>'
             f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
             f'<span style="color:#7a8a99;font-size:11px;">（有効{_p["eff"]}件×(各平均+処理3分)）</span></span><br>'
             f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
@@ -4282,7 +4282,7 @@ if selected_key == "ccr":
                 f'<div style="width:{_pw:.1f}%;background:#fbc02d;"></div>'
                 f'<div style="width:{_bw:.1f}%;background:#78909c;"></div></div>'
                 f'<div style="font-size:11.5px;margin-top:4px;line-height:1.5;">'
-                f'<span style="color:#b0bec5;">空白<b style="color:#fff;">{_ccr_fmt(_p["blank"])}</b></span><br>'
+                f'<span style="color:#ff5252;">空白<b style="color:#ff5252;">{_ccr_fmt(_p["blank"])}</b></span><br>'
                 f'<span style="color:#8bd6a0;">通話<b>{_ccr_fmt(_p["talk"])}</b></span>'
                 f'<span style="color:#ffd54f;"> 処理<b>{_ccr_fmt(_p["proc"])}</b></span></div>'
                 f'</div>',

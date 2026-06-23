@@ -900,6 +900,13 @@ def _build_shift_df(records, visible_days, member_set, order_list):
 # (退職者ではないが本ボードの表示対象外。EXCLUDED_OWNERS_NORMには含めない)
 CS_SHIFT_CALENDAR_EXTRA_EXCLUDED_NORM = {"吉田颯"}
 
+# CS促進(部署)以外だがシフト表に含めるメンバー（CS対応所属）。指定年月以降のみ。
+# Field128__r.Name はマスタ氏名（全角スペース）と完全一致させる
+CS_SHIFT_INCLUDE_FROM = (2026, 7)
+CS_SHIFT_INCLUDE_NAMES = [
+    "柳原　良久", "対馬　拓人", "杉山　敏樹", "太田　海斗", "早瀬　太一",
+]
+
 
 def fetch_cs_shift_for_month(sf: Salesforce, year: int, month: int) -> dict[int, list[tuple[str, str, str]]]:
     """指定月のCS促進全員のシフトを日別に返す。
@@ -912,10 +919,15 @@ def fetch_cs_shift_for_month(sf: Salesforce, year: int, month: int) -> dict[int,
     field_list = ["Field128__r.Name"]
     for _, s, e in SHIFT_DAY_FIELDS:
         field_list += [s, e]
+    # CS促進(部署)に加え、指定年月以降は CS_SHIFT_INCLUDE_NAMES の個別メンバーも含める
+    member_cond = "Field128__r.Field13__c = 'CS促進'"
+    if (year, month) >= CS_SHIFT_INCLUDE_FROM and CS_SHIFT_INCLUDE_NAMES:
+        _inlist = ", ".join("'" + n + "'" for n in CS_SHIFT_INCLUDE_NAMES)
+        member_cond = f"({member_cond} OR Field128__r.Name IN ({_inlist}))"
     soql = (
         f"SELECT {', '.join(field_list)} FROM CustomObject11__c "
         f"WHERE Field1__c = '{year_label}' AND Field2__c = '{month_label}' "
-        f"AND Field128__r.Field13__c = 'CS促進' "
+        f"AND {member_cond} "
         f"ORDER BY Field128__r.Name"
     )
     rs = sf.query_all(soql)["records"]

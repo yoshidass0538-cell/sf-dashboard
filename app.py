@@ -7449,6 +7449,16 @@ if selected_key == "cs_shift_calendar":
                             return any(s in (nm or "") for s in _highlight_surnames)
                         def _is_changed(nm: str) -> bool:
                             return any(k in (nm or "") for k in _changed_keys)
+                        # 名前の左の色付き丸: 黄=新規5名／青=室谷＋新規5名
+                        _YELLOW_CIRCLE = ("柳原", "対馬", "杉山", "太田", "早瀬")
+                        _BLUE_CIRCLE = ("室谷", "柳原", "対馬", "杉山", "太田", "早瀬")
+                        def _circles(nm: str) -> str:
+                            h = ""
+                            if any(s in (nm or "") for s in _BLUE_CIRCLE):
+                                h += '<span style="color:#1e88e5;">●</span>'
+                            if any(s in (nm or "") for s in _YELLOW_CIRCLE):
+                                h += '<span style="color:#fdd835;">●</span>'
+                            return (h + " ") if h else ""
                         _lines = []
                         for _name, _s, _e in sorted(
                             _list,
@@ -7464,7 +7474,7 @@ if selected_key == "cs_shift_calendar":
                                 _row_style += "background:#fff3b0;border-radius:3px;padding:0 2px;"
                             _lines.append(
                                 f"<div style='{_row_style}'>"
-                                f"{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
+                                f"{_circles(_name)}{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
                             )
                         _names_html = "".join(_lines)
                         _bomb = "💣 " if len(_list) <= 4 else ""

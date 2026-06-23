@@ -4054,7 +4054,7 @@ if selected_key == "ccr":
         pass
 
     _CCR_PROC = 1.5       # 有効対話1件あたりの処理時間(分)=1分30秒
-    _CCR_RUSU_PROC = 1.0  # 無効(留守/履歴なし)1件あたりの処理時間(分)
+    _CCR_RUSU_PROC = 0.5  # 無効(留守/履歴なし)1件あたりの処理時間(分)=30秒
     # 表示順（このリストの種別のみ対象）
     _CCR_ORDER = [
         "開通後対応", "開通前対応", "キャンセル対応", "工事取得", "1週間後FC",
@@ -4305,7 +4305,7 @@ if selected_key == "ccr":
             _types_html += (
                 f'<div style="margin:5px 0 0;font-size:12.5px;color:#e6edf3;">'
                 f'<b>その他(11種以外)</b>：有効{_od["eff_n"]}件／無効{_od["rusu_n"]}件<br>'
-                f'<span style="color:#9fb3c8;">有効=Zoom通話履歴あり(実通話 平均{_oavg})／無効=履歴なし1分</span></div>'
+                f'<span style="color:#9fb3c8;">有効=Zoom通話履歴あり(実通話 平均{_oavg})／無効=履歴なし30秒</span></div>'
             )
         if not _types_html:
             _types_html = '<div style="font-size:12px;color:#9fb3c8;">対象種別の架電はまだありません。</div>'
@@ -4318,7 +4318,7 @@ if selected_key == "ccr":
             f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
             f'<span style="color:#7a8a99;font-size:11px;">（有効{_p["eff"]}件×(各平均+処理1分30秒)）</span></span><br>'
             f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
-            f'<span style="color:#7a8a99;font-size:11px;">（無効{_p["rusu"]}件×1分）</span></span></div>'
+            f'<span style="color:#7a8a99;font-size:11px;">（無効{_p["rusu"]}件×30秒）</span></span></div>'
             '<div style="border-top:1px solid #33414d;margin-top:7px;padding-top:3px;">'
             f'{_types_html}</div>'
         )

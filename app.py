@@ -4392,8 +4392,8 @@ if selected_key == "ccr":
             unsafe_allow_html=True,
         )
 
-    # 19:00〜19:30 と 20:00〜20:30 に「お疲れ様」バナーを表示。デザインは日替わり
-    if (1140 <= _now_min < 1170) or (1200 <= _now_min < 1230):
+    # 18:50〜19:30 と 20:00〜20:30 に「お疲れ様」バナーを表示。デザインは日替わり
+    if (1130 <= _now_min < 1170) or (1200 <= _now_min < 1230):
         _BANNER_VARIANTS = [
             ("linear-gradient(135deg,#ff9a9e 0%,#fecfef 40%,#a18cd1 100%)", "🎉🌸", "今日も一日お疲れさまでした！"),
             ("linear-gradient(135deg,#f093fb 0%,#f5576c 100%)", "💖🎆", "本日も全力、お疲れさまでした！"),

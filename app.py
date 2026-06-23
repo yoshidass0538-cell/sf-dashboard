@@ -4501,7 +4501,7 @@ if selected_key == "ccr":
     _ccr_people.sort(key=lambda x: -x["calls"])
 
     # コンパクトなグリッド（横並び）で表示
-    _ncol = 4 if len(_ccr_people) >= 4 else max(1, len(_ccr_people))
+    _ncol = 3 if len(_ccr_people) >= 3 else max(1, len(_ccr_people))
     _cols = st.columns(_ncol)
     for _i, _p in enumerate(_ccr_people):
         _denom = max(_p["work"], _p["talk"] + _p["proc"], 1.0)
@@ -4519,12 +4519,11 @@ if selected_key == "ccr":
                 _emin = max(0.0, (_now_ep - _eep) / 60.0) if _eep else None
                 _et = _ccr_fmt(_emin) if _emin is not None else "—"
                 _items += (
-                    '<div style="font-size:10.5px;color:#ffd54f;white-space:nowrap;'
-                    'overflow:hidden;text-overflow:ellipsis;">'
+                    '<div style="font-size:9px;color:#ffd54f;white-space:nowrap;line-height:1.35;">'
                     f'📝{_eph or "番号なし"}'
                     f'<span style="color:#cfd8dc;"> {_et}</span></div>'
                 )
-            _ed_html = f'<div style="margin:2px 0 3px;">{_items}</div>'
+            _ed_html = f'<div style="flex-shrink:0;text-align:right;">{_items}</div>'
         # 種別内訳（指定順・件数0は非表示）
         _types_html = ""
         for _lb in _CCR_ORDER:
@@ -4563,10 +4562,12 @@ if selected_key == "ccr":
         with _cols[_i % _ncol]:
             st.markdown(
                 f'<div style="background:#1e2730;border-radius:9px;padding:8px 10px;margin:0 0 8px;">'
-                f'<div style="font-weight:800;font-size:14px;color:#fff;white-space:nowrap;'
-                f'overflow:hidden;text-overflow:ellipsis;">{_p["name"]}'
+                f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">'
+                f'<div style="min-width:0;flex:1;font-weight:800;font-size:14px;color:#fff;'
+                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{_p["name"]}'
                 f'<span style="font-size:11px;color:#9fb3c8;font-weight:400;"> {_p["calls"]}件</span></div>'
                 f'{_ed_html}'
+                f'</div>'
                 f'<div style="font-size:10px;color:#9fb3c8;margin:1px 0 4px;">'
                 f'{_shift_lbl}・業務{_ccr_fmt(_p["work"])}</div>'
                 f'<div style="height:20px;border-radius:4px;overflow:hidden;display:flex;background:#33414d;'

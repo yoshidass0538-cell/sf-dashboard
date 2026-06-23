@@ -4344,10 +4344,23 @@ if selected_key == "ccr":
             )
             with st.expander("詳細"):
                 st.markdown(_detail, unsafe_allow_html=True)
-    st.caption(
-        "※現在の業務時間は各人のシフト（開始-終了）に合わせて算出（休憩除く・シフト未登録は10:00-19:00）。"
-        "有効平均対話時間は種別ごとの標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。"
-        "「対応」は開通日有無で開通前/開通後に分割。対象は指定11種別のみ集計。"
+    st.markdown(
+        '<div style="background:#1e2730;border-radius:10px;padding:12px 16px;margin:14px 0 4px;'
+        'font-size:12.5px;line-height:1.9;color:#cdd6e0;">'
+        '<div style="font-weight:800;color:#fff;font-size:14px;margin-bottom:4px;">時間の集計ロジック</div>'
+        '<b style="color:#fff;">業務時間</b>＝シフトの開始〜現在（終了まで）− 休憩'
+        '<span style="color:#7a8a99;">（休憩=昼休憩14:00-15:00＋各架電後の10分休憩×6。シフト未登録は10:00-19:00）</span><br>'
+        '<b style="color:#8bd6a0;">有効対話時間</b>＝Σ［ 有効件数 ×（種別の平均通話時間 ＋ 処理1分30秒）］'
+        '<span style="color:#7a8a99;">＋ その他(11種以外)で通話履歴ありは「実通話時間＋件数×1分30秒」</span><br>'
+        '<b style="color:#ffd54f;">無効処理時間</b>＝留守（無効）件数 × 30秒'
+        '<span style="color:#7a8a99;">（通話履歴なしのコールも同じく30秒）</span><br>'
+        '<b style="color:#ff5252;">空白の時間</b>＝業務時間 −（有効対話時間 ＋ 無効処理時間）<br>'
+        '<span style="color:#7a8a99;">'
+        '・有効/無効の判定＝ZoomのCallDurationInSeconds（&gt;0で履歴あり＝有効／0・未記録＝無効）。<br>'
+        '・平均通話時間：11種別は標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。その他は実通話時間。<br>'
+        '・「対応」は開通日の有無で開通前/開通後に分割。</span>'
+        '</div>',
+        unsafe_allow_html=True,
     )
     st.stop()
 

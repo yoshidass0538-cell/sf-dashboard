@@ -7595,37 +7595,43 @@ if selected_key == "cs_shift_calendar":
                     if _list:
                         _txt_color = "#bbb" if _is_past else "#333"
                         _time_color = "#aaa" if _is_past else "#888"
-                        _highlight_surnames = ("佐々木", "堀田", "菊地", "室谷", "原田", "金澤")
-                        def _is_hi(nm: str) -> bool:
-                            return any(s in (nm or "") for s in _highlight_surnames)
                         def _is_changed(nm: str) -> bool:
                             return any(k in (nm or "") for k in _changed_keys)
-                        # 名前の左の色付き丸: 黄=新規5名／青=室谷＋新規5名
-                        _YELLOW_CIRCLE = ("柳原", "対馬", "杉山", "太田", "早瀬")
-                        _BLUE_CIRCLE = ("室谷", "柳原", "対馬", "杉山", "太田", "早瀬")
+                        # 名前の左の色付き丸（emojiでサイズ統一）
+                        #  青🔵=室谷＋新規5名 ／ 黄🟡=既存ハイライト6名＋新規5名
+                        _BLUE_SET = ("室谷", "柳原", "対馬", "杉山", "太田", "早瀬")
+                        _YELLOW_SET = ("佐々木", "堀田", "菊地", "室谷", "原田", "金澤",
+                                       "柳原", "対馬", "杉山", "太田", "早瀬")
+                        def _is_blue(nm: str) -> bool:
+                            return any(s in (nm or "") for s in _BLUE_SET)
+                        def _is_yellow(nm: str) -> bool:
+                            return any(s in (nm or "") for s in _YELLOW_SET)
                         def _circles(nm: str) -> str:
                             h = ""
-                            if any(s in (nm or "") for s in _BLUE_CIRCLE):
-                                h += '<span style="color:#1e88e5;">●</span>'
-                            if any(s in (nm or "") for s in _YELLOW_CIRCLE):
-                                h += '<span style="color:#fdd835;">●</span>'
+                            if _is_blue(nm):
+                                h += "🔵"
+                            if _is_yellow(nm):
+                                h += "🟡"
                             return (h + " ") if h else ""
+                        def _rank(nm: str) -> int:
+                            # 青が上 → 黄 → 丸なし
+                            if _is_blue(nm):
+                                return 0
+                            if _is_yellow(nm):
+                                return 1
+                            return 2
                         _lines = []
                         for _name, _s, _e in sorted(
                             _list,
-                            key=lambda t: (0 if _is_hi(t[0]) else 1, t[1], t[0]),
+                            key=lambda t: (_rank(t[0]), t[1], t[0]),
                         ):
                             _t = f"{_s}-{_e}" if _s and _e else (_s or _e)
-                            if _is_hi(_name):
-                                _mark = "🟡 "
-                            else:
-                                _mark = ""
                             _row_style = f"font-size:11px;color:{_txt_color};line-height:1.4;text-align:left;"
                             if _is_changed(_name):
                                 _row_style += "background:#fff3b0;border-radius:3px;padding:0 2px;"
                             _lines.append(
                                 f"<div style='{_row_style}'>"
-                                f"{_circles(_name)}{_mark}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
+                                f"{_circles(_name)}{_cs_html.escape(_name)} <span style='color:{_time_color};'>{_t}</span></div>"
                             )
                         _names_html = "".join(_lines)
                         _bomb = "💣 " if len(_list) <= 4 else ""

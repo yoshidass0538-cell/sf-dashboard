@@ -4273,10 +4273,11 @@ if selected_key == "ccr":
             f'<span style="color:#7a8a99;font-size:12px;">（有効{_p["eff"]}件×(各平均+処理3分)）</span></span><br>'
             f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
             f'<span style="color:#7a8a99;font-size:12px;">（無効{_p["rusu"]}件×3分）</span></span></div>'
-            f'<div style="border-top:1px solid #33414d;margin-top:10px;padding-top:4px;">{_detail}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
+        with st.expander(f"詳細（種別内訳）　{_p['name']}"):
+            st.markdown(_detail, unsafe_allow_html=True)
     st.caption(
         "※現在の業務時間は各人のシフト（開始-終了）に合わせて算出（休憩除く・シフト未登録は10:00-19:00）。"
         "有効平均対話時間は種別ごとの標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。"

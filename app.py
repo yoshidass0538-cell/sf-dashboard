@@ -4307,9 +4307,11 @@ if selected_key == "ccr":
         st.info("本日の対象データがありません。")
         st.stop()
 
-    # 個人別に集計
+    # 個人別に集計（本日シフトのある＝稼働メンバーのみ表示。シフト無しは除外）
     _ccr_people = []
     for _norm, _p in _ccr.items():
+        if _norm not in _ccr_shifts:
+            continue
         _eff_total = sum(v[0] - v[1] for v in _p["types"].values())
         _rusu_total = sum(v[1] for v in _p["types"].values())
         # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理1分30秒）
@@ -4414,7 +4416,7 @@ if selected_key == "ccr":
         'font-size:12.5px;line-height:1.9;color:#cdd6e0;">'
         '<div style="font-weight:800;color:#fff;font-size:14px;margin-bottom:4px;">時間の集計ロジック</div>'
         '<b style="color:#fff;">業務時間</b>＝シフトの開始〜現在（終了まで）− 休憩'
-        '<span style="color:#7a8a99;">（休憩=昼休憩14:00-15:00＋各架電後の10分休憩×6。シフト未登録は10:00-19:00）</span><br>'
+        '<span style="color:#7a8a99;">（休憩=昼休憩14:00-15:00＋各架電後の10分休憩×6。本日シフトのある稼働メンバーのみ表示）</span><br>'
         '<b style="color:#8bd6a0;">有効対話時間</b>＝Σ［ 有効件数 ×（種別の平均通話時間 ＋ 処理1分30秒）］'
         '<span style="color:#7a8a99;">＋ その他(11種以外)で通話履歴ありは「実通話時間＋件数×1分30秒」</span><br>'
         '<b style="color:#ffd54f;">無効処理時間</b>＝留守（無効）件数 × 30秒'

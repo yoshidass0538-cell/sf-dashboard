@@ -4266,20 +4266,20 @@ if selected_key == "ccr":
     # 19:00〜19:30 と 20:00〜20:30 に「お疲れ様」バナーを表示。デザインは日替わり
     if (1140 <= _now_min < 1170) or (1200 <= _now_min < 1230):
         _BANNER_VARIANTS = [
-            ("linear-gradient(135deg,#ff9a9e 0%,#fecfef 40%,#a18cd1 100%)", "🎉🌸"),
-            ("linear-gradient(135deg,#f093fb 0%,#f5576c 100%)", "💖🎆"),
-            ("linear-gradient(135deg,#4facfe 0%,#00f2fe 100%)", "🌊⭐"),
-            ("linear-gradient(135deg,#43cea2 0%,#185a9d 100%)", "🌿✨"),
-            ("linear-gradient(135deg,#fa709a 0%,#fee140 100%)", "🌅🎊"),
-            ("linear-gradient(135deg,#7028e4 0%,#e5b2ca 100%)", "💜🌟"),
-            ("linear-gradient(135deg,#ff6a88 0%,#ff99ac 100%)", "🌸💫"),
-            ("linear-gradient(135deg,#0ba360 0%,#3cba92 100%)", "🍀🎉"),
-            ("linear-gradient(135deg,#ee9ca7 0%,#ffdde1 100%)", "🌷🎀"),
-            ("linear-gradient(135deg,#2af598 0%,#009efd 100%)", "💎🎇"),
-            ("linear-gradient(135deg,#f77062 0%,#fe5196 100%)", "❤️🎈"),
-            ("linear-gradient(135deg,#5ee7df 0%,#b490ca 100%)", "🦋✨"),
-            ("linear-gradient(135deg,#c79081 0%,#dfa579 100%)", "🍁🌟"),
-            ("linear-gradient(135deg,#3f51b1 0%,#5a55ae 33%,#7b5fac 66%,#a16fab 100%)", "🌌⭐"),
+            ("linear-gradient(135deg,#ff9a9e 0%,#fecfef 40%,#a18cd1 100%)", "🎉🌸", "今日も一日お疲れさまでした！"),
+            ("linear-gradient(135deg,#f093fb 0%,#f5576c 100%)", "💖🎆", "本日も全力、お疲れさまでした！"),
+            ("linear-gradient(135deg,#4facfe 0%,#00f2fe 100%)", "🌊⭐", "今日のがんばり、しっかり届いてます！"),
+            ("linear-gradient(135deg,#43cea2 0%,#185a9d 100%)", "🌿✨", "よく頑張りました！ゆっくり休んでね"),
+            ("linear-gradient(135deg,#fa709a 0%,#fee140 100%)", "🌅🎊", "今日もナイスファイト！お疲れさま"),
+            ("linear-gradient(135deg,#7028e4 0%,#e5b2ca 100%)", "💜🌟", "あなたの努力に感謝！お疲れさまでした"),
+            ("linear-gradient(135deg,#ff6a88 0%,#ff99ac 100%)", "🌸💫", "今日も大活躍お疲れさま！素敵な夜を"),
+            ("linear-gradient(135deg,#0ba360 0%,#3cba92 100%)", "🍀🎉", "お疲れさま！明日もマイペースでいきましょう"),
+            ("linear-gradient(135deg,#ee9ca7 0%,#ffdde1 100%)", "🌷🎀", "がんばり屋さん、今日もお疲れさま！"),
+            ("linear-gradient(135deg,#2af598 0%,#009efd 100%)", "💎🎇", "今日のあなた、最高でした！お疲れさま"),
+            ("linear-gradient(135deg,#f77062 0%,#fe5196 100%)", "❤️🎈", "今日も一日ありがとう、お疲れさまでした"),
+            ("linear-gradient(135deg,#5ee7df 0%,#b490ca 100%)", "🦋✨", "お疲れさまでした！ひと息ついてね"),
+            ("linear-gradient(135deg,#c79081 0%,#dfa579 100%)", "🍁🌟", "あなたのおかげで今日も前進！お疲れさま"),
+            ("linear-gradient(135deg,#3f51b1 0%,#5a55ae 33%,#7b5fac 66%,#a16fab 100%)", "🌌⭐", "今日も本当にお疲れさまでした！"),
         ]
         _bv = _BANNER_VARIANTS[_ccr_now.timetuple().tm_yday % len(_BANNER_VARIANTS)]
         st.markdown(
@@ -4288,9 +4288,9 @@ if selected_key == "ccr":
             f'background:{_bv[0]};'
             'padding:18px 34px;border-radius:18px;box-shadow:0 6px 18px rgba(0,0,0,.35);'
             'border:3px solid #fff;">'
-            '<span style="font-size:38px;font-weight:900;color:#fff;'
+            '<span style="font-size:36px;font-weight:900;color:#fff;'
             'text-shadow:0 2px 6px rgba(0,0,0,.35);letter-spacing:1px;">'
-            f'{_bv[1]} 本日もお仕事お疲れ様でした {_bv[1]}</span>'
+            f'{_bv[1]} {_bv[2]} {_bv[1]}</span>'
             '</div></div>',
             unsafe_allow_html=True,
         )

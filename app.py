@@ -4053,7 +4053,7 @@ if selected_key == "ccr":
     except ImportError:
         pass
 
-    _CCR_PROC = 3.0       # 有効対話1件あたりの処理時間(分)
+    _CCR_PROC = 1.5       # 有効対話1件あたりの処理時間(分)=1分30秒
     _CCR_RUSU_PROC = 1.0  # 無効(留守/履歴なし)1件あたりの処理時間(分)
     # 表示順（このリストの種別のみ対象）
     _CCR_ORDER = [
@@ -4251,7 +4251,7 @@ if selected_key == "ccr":
     for _norm, _p in _ccr.items():
         _eff_total = sum(v[0] - v[1] for v in _p["types"].values())
         _rusu_total = sum(v[1] for v in _p["types"].values())
-        # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理3分）
+        # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理1分30秒）
         _talk_min = sum((v[0] - v[1]) * (_CCR_AVG.get(lb, 3.5) + _CCR_PROC) for lb, v in _p["types"].items())
         # 対象11種以外（その他）: 通話履歴あり=実通話+処理3分の有効／履歴なし=処理3分の無効
         _o = _p.get("other", {"eff_n": 0, "eff_sec": 0, "rusu_n": 0})
@@ -4316,7 +4316,7 @@ if selected_key == "ccr":
             f'経過時間：{_ccr_fmt(_p["raw"])}　／　シフト {_shift_lbl}<br>'
             f'<span style="color:#ff5252;">■空白の時間：<b style="color:#ff5252;">{_ccr_fmt(_p["blank"])}</b></span><br>'
             f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
-            f'<span style="color:#7a8a99;font-size:11px;">（有効{_p["eff"]}件×(各平均+処理3分)）</span></span><br>'
+            f'<span style="color:#7a8a99;font-size:11px;">（有効{_p["eff"]}件×(各平均+処理1分30秒)）</span></span><br>'
             f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
             f'<span style="color:#7a8a99;font-size:11px;">（無効{_p["rusu"]}件×1分）</span></span></div>'
             '<div style="border-top:1px solid #33414d;margin-top:7px;padding-top:3px;">'

@@ -120,7 +120,25 @@ from user_auth_store import (
     verify_credentials as _auth_verify,
     record_login as _auth_record_login,
     ensure_seeded as _auth_ensure_seeded,
+    find_user as _auth_find_user,
 )
+
+# CS1（キオスク表示用）だけは URL ?kiosk=cs1 で自動ログインし、再読込・スリープ復帰でも
+# ログインを維持する（常時表示のボード用。再ログインの手間をなくす）
+if not st.session_state.get("logged_in_user"):
+    try:
+        _kiosk = st.query_params.get("kiosk")
+    except Exception:
+        _kiosk = None
+    if _kiosk == "cs1":
+        _auth_ensure_seeded()
+        _ku = _auth_find_user("cs1")
+        if _ku and _ku.get("active", True):
+            st.session_state["logged_in_user"] = {
+                "id": _ku["id"],
+                "display_name": _ku.get("display_name", "CS1"),
+            }
+            st.rerun()
 
 if not st.session_state.get("logged_in_user"):
     _auth_ensure_seeded()
@@ -371,6 +389,12 @@ if not st.session_state.get("logged_in_user"):
                 "display_name": _user.get("display_name", _user["id"]),
             }
             _auth_record_login(_user["id"])
+            # CS1はキオスク維持のためURLに ?kiosk=cs1 を付与（再読込でも自動ログイン）
+            if _user["id"] == "cs1":
+                try:
+                    st.query_params["kiosk"] = "cs1"
+                except Exception:
+                    pass
             st.rerun()
         else:
             with _form_col:
@@ -877,6 +901,11 @@ if _current_name:
 if st.sidebar.button("🚪 ログアウト", key="btn_logout", use_container_width=True):
     for _k in list(st.session_state.keys()):
         del st.session_state[_k]
+    # キオスク自動ログイン用のURLパラメータも消す（消さないと即再ログインされる）
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
     st.rerun()
 
 

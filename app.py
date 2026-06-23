@@ -4046,30 +4046,43 @@ if selected_key == "ccr":
     from datetime import datetime as _ccr_dt, timezone as _ccr_tz, timedelta as _ccr_td
 
     _CCR_JST = _ccr_tz(_ccr_td(hours=9))
-    # 5分ごとに自動更新（経過時間・通話以外時間を進める）
+    # 1分ごとに自動更新（時刻・業務経過時間・空白時間を進める）
     try:
         from streamlit_autorefresh import st_autorefresh as _ccr_ar
-        _ccr_ar(interval=300000, key="ccr_autorefresh")
+        _ccr_ar(interval=60000, key="ccr_autorefresh")
     except ImportError:
         pass
 
-    # 対応ステータス(Field2_del__c)ごとの標準平均通話(分)。Zoom実測の定期更新値。留守は通話0
-    _CCR_TALK = {
-        "対応": 4.6,
-        "フォローコール（その他）": 3.2,
-        "フォローコール（1週間後FC）": 5.2,
-        "フォローコール（代コン）": 3.8,
-        "フォローコール（代コン窓口）": 2.45,
-        "フォローコール（工事取得）": 5.7,
-        "キャンセル対応": 3.47,
-        "フォローコール（決済促進）": 3.22,
-        "フォローコール（開通後①）": 3.61,
-        "フォローコール（開通後②）": 3.72,
+    _CCR_PROC = 3.0  # 無効(留守)1件あたりの処理時間(分)
+    # 表示順（このリストの種別のみ対象）
+    _CCR_ORDER = [
+        "開通後対応", "開通前対応", "キャンセル対応", "工事取得", "1週間後FC",
+        "代コン", "代コン窓口", "自社OP", "管理会社", "消セン", "開通後①",
+    ]
+    # 種別ごとの標準平均通話(分)。Zoom実測の定期更新値。未計測は3.5の仮値
+    _CCR_AVG = {
+        "開通後対応": 4.6, "開通前対応": 4.6, "キャンセル対応": 3.47, "工事取得": 5.7,
+        "1週間後FC": 5.2, "代コン": 3.8, "代コン窓口": 2.45, "自社OP": 3.5,
+        "管理会社": 3.5, "消セン": 3.5, "開通後①": 3.61,
     }
-    _CCR_TALK_DEFAULT = 3.5
+    # Field2_del__c(全角/半角カッコ正規化後) → 表示ラベル
+    _CCR_LABEL = {
+        "キャンセル対応": "キャンセル対応",
+        "フォローコール(工事取得)": "工事取得",
+        "フォローコール(1週間後FC)": "1週間後FC",
+        "フォローコール(代コン)": "代コン",
+        "フォローコール(代コン窓口)": "代コン窓口",
+        "自社OP": "自社OP",
+        "管理会社": "管理会社",
+        "消セン": "消セン",
+        "フォローコール(開通後①)": "開通後①",
+    }
 
-    @st.cache_data(ttl=300, show_spinner="CCRを集計中...")
-    def _ccr_load(v=1):
+    def _ccr_np(s):
+        return (s or "").replace("（", "(").replace("）", ")")
+
+    @st.cache_data(ttl=180, show_spinner="CCRを集計中...")
+    def _ccr_load(v=2):
         from metrics import DAY_CALLS_INCLUDE, DAY_CALLS_EXCLUDE
         rs_m = _sf().query_all(
             "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
@@ -4078,26 +4091,41 @@ if selected_key == "ccr":
         cs_names.discard("")
         cs_names = {n for n in cs_names if not any(ex in n for ex in DAY_CALLS_EXCLUDE)}
         cs_names |= DAY_CALLS_INCLUDE
-        rows = _sf().query_all(
-            "SELECT Owner.Name oname, Field2_del__c status, Field4_del__c result, COUNT(Id) cnt "
-            "FROM Task WHERE ActivityDate = TODAY "
-            "GROUP BY Owner.Name, Field2_del__c, Field4_del__c"
-        )["records"]
         data = {}
-        for r in rows:
-            status = r.get("status")
-            if not status:
-                continue
-            owner = r.get("oname") or ""
-            norm = owner.replace(" ", "").replace("　", "")
+
+        def _acc(owner, label, cnt, rusu):
+            norm = (owner or "").replace(" ", "").replace("　", "")
             if norm not in cs_names:
+                return
+            p = data.setdefault(norm, {"name": owner, "types": {}})
+            t = p["types"].setdefault(label, [0, 0])
+            t[0] += cnt
+            t[1] += rusu
+
+        # 対応以外（指定11種のうち対応を除く）
+        for r in _sf().query_all(
+            "SELECT Owner.Name oname, Field2_del__c status, Field4_del__c result, COUNT(Id) cnt "
+            "FROM Task WHERE ActivityDate = TODAY AND Field2_del__c != '対応' "
+            "GROUP BY Owner.Name, Field2_del__c, Field4_del__c"
+        )["records"]:
+            label = _CCR_LABEL.get(_ccr_np(r.get("status")))
+            if not label:
                 continue
             cnt = int(r["cnt"])
-            p = data.setdefault(norm, {"name": owner, "types": {}})
-            t = p["types"].setdefault(status, [0, 0])
-            t[0] += cnt
-            if r.get("result") == "留守":
-                t[1] += cnt
+            _acc(r.get("oname"), label, cnt, cnt if r.get("result") == "留守" else 0)
+
+        # 「対応」を開通日(Account.Field130__c)有無で 開通前対応/開通後対応 に分割
+        for _cond, _label in (
+            ("AND Account.Field130__c = null", "開通前対応"),
+            ("AND Account.Field130__c != null", "開通後対応"),
+        ):
+            for r in _sf().query_all(
+                "SELECT Owner.Name oname, Field4_del__c result, COUNT(Id) cnt "
+                f"FROM Task WHERE ActivityDate = TODAY AND Field2_del__c = '対応' {_cond} "
+                "GROUP BY Owner.Name, Field4_del__c"
+            )["records"]:
+                cnt = int(r["cnt"])
+                _acc(r.get("oname"), _label, cnt, cnt if r.get("result") == "留守" else 0)
         return data
 
     try:
@@ -4106,77 +4134,116 @@ if selected_key == "ccr":
         st.error(f"CCRの集計に失敗しました: {_e}")
         st.stop()
 
+    # ── 時刻・業務経過時間（休憩を除く）──
     _ccr_now = _ccr_dt.now(_CCR_JST)
-    _ccr_start = _ccr_now.replace(hour=10, minute=0, second=0, microsecond=0)
-    _ccr_elapsed = max(0.0, (_ccr_now - _ccr_start).total_seconds() / 60.0)
+    _now_min = _ccr_now.hour * 60 + _ccr_now.minute + _ccr_now.second / 60.0
+    _WORK_START = 600  # 10:00
+    _WORK_END = 1140   # 19:00
+    # 休憩区間（分）: 各架電後の10分休憩×6 ＋ 昼休憩(14:00-15:00)
+    _BREAKS = [(650, 660), (710, 720), (770, 780), (840, 900),
+               (950, 960), (1010, 1020), (1070, 1080)]
+    _cap_now = min(_now_min, _WORK_END)
+    _raw_elapsed = max(0.0, _cap_now - _WORK_START)
+    _break_elapsed = sum(
+        max(0.0, min(_cap_now, b) - max(_WORK_START, a)) for a, b in _BREAKS
+    )
+    _work_elapsed = max(0.0, _raw_elapsed - _break_elapsed)
 
     def _ccr_fmt(mins):
         m = int(round(mins))
         return f"{m // 60}時間{m % 60}分" if m >= 60 else f"{m}分"
 
-    st.title("CCR（コールランニング・試作）")
-    st.caption(
-        f"始業10:00からの稼働を個人別に表示。現在 {_ccr_now.strftime('%H:%M')} ／ "
-        f"経過 {_ccr_fmt(_ccr_elapsed)} ／ 対象 {len(_ccr)}名　"
-        "※通話時間は種別ごとの標準平均(Zoom実測の定期更新値)×有効対話数で推定。留守は通話0。"
-        "「通話以外」＝経過時間−推定通話時間（事務・受電・待機等）。"
+    def _ccr_avgfmt(avg_min):
+        mm = int(avg_min)
+        ss = int(round((avg_min - mm) * 60))
+        if ss == 60:
+            mm += 1
+            ss = 0
+        return f"{mm}分{ss:02d}秒"
+
+    # ── 上部: でかい時計＋業務経過時間 ──
+    st.markdown(
+        '<div style="text-align:center;margin:2px 0 6px;">'
+        f'<div style="font-size:48px;font-weight:800;letter-spacing:3px;color:#fff;line-height:1.1;">'
+        f'{_ccr_now.strftime("%H:%M")}</div>'
+        f'<div style="font-size:17px;font-weight:700;color:#8bd6a0;margin-top:2px;">'
+        f'業務経過時間（休憩除く）{_ccr_fmt(_work_elapsed)}</div></div>',
+        unsafe_allow_html=True,
     )
-    if _ccr_elapsed <= 0:
+    st.markdown(
+        '<div style="text-align:center;font-size:15px;font-weight:700;color:#9fb3c8;'
+        'margin:0 0 10px;">CCR（コールランニング・試作）</div>',
+        unsafe_allow_html=True,
+    )
+
+    if _work_elapsed <= 0:
         st.info("始業（10:00）前です。")
         st.stop()
     if not _ccr:
         st.info("本日の対象データがありません。")
         st.stop()
 
+    # 個人別に集計
     _ccr_people = []
     for _norm, _p in _ccr.items():
-        _total = sum(v[0] for v in _p["types"].values())
-        _eff = sum(v[0] - v[1] for v in _p["types"].values())
-        _talk = sum((v[0] - v[1]) * _CCR_TALK.get(s, _CCR_TALK_DEFAULT) for s, v in _p["types"].items())
+        _eff_total = sum(v[0] - v[1] for v in _p["types"].values())
+        _rusu_total = sum(v[1] for v in _p["types"].values())
+        _talk_min = sum((v[0] - v[1]) * _CCR_AVG.get(lb, 3.5) for lb, v in _p["types"].items())
+        _proc_min = _rusu_total * _CCR_PROC
+        _blank_min = max(0.0, _work_elapsed - _talk_min - _proc_min)
         _ccr_people.append({
-            "name": _p["name"], "types": _p["types"], "total": _total, "eff": _eff,
-            "talk": _talk, "non_call": max(0.0, _ccr_elapsed - _talk),
+            "name": _p["name"], "types": _p["types"],
+            "eff": _eff_total, "rusu": _rusu_total,
+            "talk": _talk_min, "proc": _proc_min, "blank": _blank_min,
+            "calls": sum(v[0] for v in _p["types"].values()),
         })
-    _ccr_people.sort(key=lambda x: -x["total"])
+    _ccr_people.sort(key=lambda x: -x["calls"])
 
     for _p in _ccr_people:
-        _talk_pct = min(100.0, _p["talk"] / _ccr_elapsed * 100) if _ccr_elapsed else 0.0
-        _nc_pct = max(0.0, 100.0 - _talk_pct)
+        _denom = max(_work_elapsed, _p["talk"] + _p["proc"], 1.0)
+        _tw = _p["talk"] / _denom * 100
+        _pw = _p["proc"] / _denom * 100
+        _bw = _p["blank"] / _denom * 100
+        # 種別内訳（指定順・件数0は非表示）
+        _detail = ""
+        for _lb in _CCR_ORDER:
+            _v = _p["types"].get(_lb)
+            if not _v or _v[0] == 0:
+                continue
+            _e = _v[0] - _v[1]
+            _detail += (
+                f'<div style="margin:6px 0 0;font-size:13px;color:#e6edf3;">'
+                f'<b>{_lb}</b>：有効{_e}件／無効{_v[1]}件<br>'
+                f'<span style="color:#9fb3c8;">有効平均対話時間：{_ccr_avgfmt(_CCR_AVG.get(_lb, 3.5))}</span></div>'
+            )
+        if not _detail:
+            _detail = '<div style="font-size:13px;color:#9fb3c8;margin-top:6px;">対象種別の架電はまだありません。</div>'
+
         st.markdown(
-            f'<div style="background:#1e2730;border-radius:10px;padding:12px 14px;margin:8px 0;">'
-            f'<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
-            f'<div style="font-weight:700;font-size:16px;color:#fff;">{_p["name"]}</div>'
-            f'<div style="font-size:13px;color:#9fb3c8;">架電 <b style="color:#fff;">{_p["total"]}</b>件 ・ '
-            f'有効対話 <b style="color:#8bd6a0;">{_p["eff"]}</b>件</div></div>'
-            f'<div style="height:24px;border-radius:6px;overflow:hidden;display:flex;margin:8px 0 4px;background:#33414d;">'
-            f'<div style="width:{_talk_pct:.1f}%;background:#43a047;"></div>'
-            f'<div style="width:{_nc_pct:.1f}%;background:#78909c;"></div></div>'
-            f'<div style="font-size:12.5px;color:#cdd6e0;">経過 {_ccr_fmt(_ccr_elapsed)}　／　'
-            f'<span style="color:#8bd6a0;">通話 {_ccr_fmt(_p["talk"])}（{_talk_pct:.0f}%）</span>　／　'
-            f'<span style="color:#cfd8dc;">通話以外 {_ccr_fmt(_p["non_call"])}（{_nc_pct:.0f}%）</span></div>'
+            f'<div style="background:#1e2730;border-radius:12px;padding:14px 16px;margin:10px 0;">'
+            f'<div style="font-weight:800;font-size:18px;color:#fff;margin-bottom:6px;">{_p["name"]}</div>'
+            f'<div style="font-size:13px;color:#cdd6e0;">'
+            f'現在の業務時間：<b style="color:#fff;">{_ccr_fmt(_work_elapsed)}</b>　／　'
+            f'経過時間：{_ccr_fmt(_raw_elapsed)}</div>'
+            # 帯（有効対話=緑／無効処理=黄／空白=灰）
+            f'<div style="height:26px;border-radius:6px;overflow:hidden;display:flex;margin:9px 0 8px;background:#33414d;">'
+            f'<div style="width:{_tw:.1f}%;background:#43a047;"></div>'
+            f'<div style="width:{_pw:.1f}%;background:#fbc02d;"></div>'
+            f'<div style="width:{_bw:.1f}%;background:#78909c;"></div></div>'
+            f'<div style="font-size:14px;color:#cfd8dc;">'
+            f'<span style="color:#90a4ae;">■空白の時間：<b style="font-size:16px;">{_ccr_fmt(_p["blank"])}</b></span><br>'
+            f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
+            f'<span style="color:#7a8a99;font-size:12px;">（有効{_p["eff"]}件×各平均）</span></span><br>'
+            f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
+            f'<span style="color:#7a8a99;font-size:12px;">（無効{_p["rusu"]}件×3分）</span></span></div>'
+            f'<div style="border-top:1px solid #33414d;margin-top:10px;padding-top:4px;">{_detail}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
-        with st.expander(f"{_p['name']} の種別内訳（平均対話時間）"):
-            _rh = ""
-            for s, v in sorted(_p["types"].items(), key=lambda kv: -(kv[1][0])):
-                _t_total, _t_rusu = v
-                _t_eff = _t_total - _t_rusu
-                _avg = _CCR_TALK.get(s, _CCR_TALK_DEFAULT)
-                _rh += (
-                    f'<tr><td style="text-align:left;">{s}</td><td>{_t_total}</td>'
-                    f'<td>{_t_eff}</td><td>{_t_rusu}</td><td>{_avg:.1f}分</td>'
-                    f'<td>{_ccr_fmt(_t_eff * _avg)}</td></tr>'
-                )
-            st.markdown(
-                '<style>.ccr-tbl{border-collapse:collapse;width:100%;font-size:13px;}'
-                '.ccr-tbl th,.ccr-tbl td{border:1px solid #44515d;padding:5px 8px;text-align:center;color:#e6edf3;}'
-                '.ccr-tbl th{background:#33414d;}</style>'
-                '<table class="ccr-tbl"><tr><th>種別</th><th>件数</th><th>有効</th><th>留守</th>'
-                '<th>平均対話</th><th>推定通話時間</th></tr>'
-                f'{_rh}</table>',
-                unsafe_allow_html=True,
-            )
+    st.caption(
+        "※有効平均対話時間は種別ごとの標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。"
+        "「対応」は開通日有無で開通前/開通後に分割。対象は指定11種別のみ集計。"
+    )
     st.stop()
 
 # 周知ボード: マルチユーザー・リアルタイム編集

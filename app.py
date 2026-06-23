@@ -4242,8 +4242,8 @@ if selected_key == "ccr":
         brk = sum(max(0.0, min(cap, b) - max(start_min, a)) for a, b in _BREAKS)
         return raw, max(0.0, raw - brk)
 
-    # 上部の標準(10:00-19:00)業務経過（全体の目安）
-    _raw_elapsed, _work_elapsed = _ccr_biz(600, 1140)
+    # 上部の標準業務経過（全体の目安）。20:00(1200分)でカウント停止
+    _raw_elapsed, _work_elapsed = _ccr_biz(600, 1200)
 
     def _ccr_fmt(mins):
         m = int(round(mins))
@@ -4267,6 +4267,21 @@ if selected_key == "ccr":
         '</div>',
         unsafe_allow_html=True,
     )
+
+    # 19:00〜19:30 と 20:00〜20:30 に「お疲れ様」バナーを表示
+    if (1140 <= _now_min < 1170) or (1200 <= _now_min < 1230):
+        st.markdown(
+            '<div style="text-align:center;margin:6px 0 14px;">'
+            '<div style="display:inline-block;'
+            'background:linear-gradient(135deg,#ff9a9e 0%,#fecfef 40%,#a18cd1 100%);'
+            'padding:18px 34px;border-radius:18px;box-shadow:0 6px 18px rgba(0,0,0,.35);'
+            'border:3px solid #fff;">'
+            '<span style="font-size:38px;font-weight:900;color:#fff;'
+            'text-shadow:0 2px 6px rgba(0,0,0,.35);letter-spacing:1px;">'
+            '🎉🌸 本日もお仕事お疲れ様でした 🌸🎉</span>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
 
     if _work_elapsed <= 0:
         st.info("始業（10:00）前です。")

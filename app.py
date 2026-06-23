@@ -4129,6 +4129,45 @@ if selected_key == "ccr":
                 cnt = int(r["cnt"])
                 _acc(r.get("oname"), _label, cnt, cnt if r.get("result") == "留守" else 0)
 
+        # 対象11種以外のコール（顧客以外/LINE/その他/ステータス空欄/区分なし 等）。
+        # Zoom通話履歴(CallDurationInSeconds)があれば有効対話(実通話時間)、無ければ留守と同じ処理3分扱い
+        _TARGET_F2 = [
+            "対応", "キャンセル対応", "自社OP", "管理会社", "消セン",
+            "フォローコール（工事取得）", "フォローコール(工事取得)",
+            "フォローコール（1週間後FC）", "フォローコール(1週間後FC)",
+            "フォローコール（代コン）", "フォローコール(代コン)",
+            "フォローコール（代コン窓口）", "フォローコール(代コン窓口)",
+            "フォローコール（開通後①）", "フォローコール(開通後①)",
+        ]
+        _tin = ", ".join("'" + s + "'" for s in _TARGET_F2)
+        _nott = f"(Field2_del__c = null OR Field2_del__c NOT IN ({_tin}))"
+
+        def _acc_other(owner, eff_n, eff_sec, rusu_n):
+            norm = (owner or "").replace(" ", "").replace("　", "")
+            if norm not in cs_names:
+                return
+            p = data.setdefault(norm, {"name": owner, "types": {}})
+            o = p.setdefault("other", {"eff_n": 0, "eff_sec": 0, "rusu_n": 0})
+            o["eff_n"] += eff_n
+            o["eff_sec"] += eff_sec
+            o["rusu_n"] += rusu_n
+
+        # 通話履歴あり（CallDurationInSeconds>0）＝有効対話。実通話秒数を合算
+        for r in _sf().query_all(
+            "SELECT Owner.Name oname, SUM(CallDurationInSeconds) dur, COUNT(Id) n FROM Task "
+            f"WHERE ActivityDate = TODAY AND {_nott} AND CallDurationInSeconds > 0 "
+            "GROUP BY Owner.Name"
+        )["records"]:
+            _acc_other(r.get("oname"), int(r["n"]), int(r.get("dur") or 0), 0)
+        # 通話履歴なし（0秒/未記録）＝留守と同じ処理のみ
+        for r in _sf().query_all(
+            "SELECT Owner.Name oname, COUNT(Id) n FROM Task "
+            f"WHERE ActivityDate = TODAY AND {_nott} "
+            "AND (CallDurationInSeconds = null OR CallDurationInSeconds <= 0) "
+            "GROUP BY Owner.Name"
+        )["records"]:
+            _acc_other(r.get("oname"), 0, 0, int(r["n"]))
+
         # 今日のシフト(開始,終了)を取得（CS促進＋追加メンバー）。各人の業務時間算出に使う
         shifts = {}
         _sef = next(((s, e) for d, s, e in SHIFT_DAY_FIELDS if d == day), None)
@@ -4213,6 +4252,12 @@ if selected_key == "ccr":
         _rusu_total = sum(v[1] for v in _p["types"].values())
         # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理3分）
         _talk_min = sum((v[0] - v[1]) * (_CCR_AVG.get(lb, 3.5) + _CCR_PROC) for lb, v in _p["types"].items())
+        # 対象11種以外（その他）: 通話履歴あり=実通話+処理3分の有効／履歴なし=処理3分の無効
+        _o = _p.get("other", {"eff_n": 0, "eff_sec": 0, "rusu_n": 0})
+        _o_avg = (_o["eff_sec"] / _o["eff_n"] / 60.0) if _o["eff_n"] else 0.0
+        _talk_min += _o["eff_sec"] / 60.0 + _o["eff_n"] * _CCR_PROC
+        _eff_total += _o["eff_n"]
+        _rusu_total += _o["rusu_n"]
         _proc_min = _rusu_total * _CCR_PROC
         # シフトに合わせた業務時間（シフト未登録→標準10:00-19:00）
         _sh = _ccr_shifts.get(_norm)
@@ -4227,7 +4272,8 @@ if selected_key == "ccr":
             "eff": _eff_total, "rusu": _rusu_total,
             "talk": _talk_min, "proc": _proc_min, "blank": _blank_min,
             "work": _work_p, "raw": _raw_p, "shift": _sh,
-            "calls": sum(v[0] for v in _p["types"].values()),
+            "calls": sum(v[0] for v in _p["types"].values()) + _o["eff_n"] + _o["rusu_n"],
+            "other": _o, "other_avg": _o_avg,
         })
     _ccr_people.sort(key=lambda x: -x["calls"])
 
@@ -4251,6 +4297,14 @@ if selected_key == "ccr":
                 f'<div style="margin:5px 0 0;font-size:12.5px;color:#e6edf3;">'
                 f'<b>{_lb}</b>：有効{_e}件／無効{_v[1]}件<br>'
                 f'<span style="color:#9fb3c8;">有効平均対話時間：{_ccr_avgfmt(_CCR_AVG.get(_lb, 3.5))}</span></div>'
+            )
+        _od = _p.get("other", {"eff_n": 0, "eff_sec": 0, "rusu_n": 0})
+        if _od["eff_n"] or _od["rusu_n"]:
+            _oavg = _ccr_avgfmt(_p.get("other_avg", 0.0)) if _od["eff_n"] else "—"
+            _types_html += (
+                f'<div style="margin:5px 0 0;font-size:12.5px;color:#e6edf3;">'
+                f'<b>その他(11種以外)</b>：有効{_od["eff_n"]}件／無効{_od["rusu_n"]}件<br>'
+                f'<span style="color:#9fb3c8;">有効=Zoom通話履歴あり(実通話 平均{_oavg})／無効=履歴なし3分</span></div>'
             )
         if not _types_html:
             _types_html = '<div style="font-size:12px;color:#9fb3c8;">対象種別の架電はまだありません。</div>'

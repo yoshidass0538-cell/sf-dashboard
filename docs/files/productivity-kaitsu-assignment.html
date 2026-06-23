@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>個人生産性の可視化と開通担当制への移行</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --ink:#1f2733; --sub:#5b6675;
+    --line:#e2e6ec; --accent:#2563eb; --accent-soft:#eef3ff;
+    --good:#0a7d4d; --good-bg:#e8f6ee; --bad:#b4413c; --bad-bg:#fdeceb;
+    --warn:#9a6700; --warn-bg:#fff6e0;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+    line-height:1.7; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:40px 20px 80px;}
+  header{margin-bottom:32px;}
+  .eyebrow{
+    display:inline-block; font-size:12px; letter-spacing:.08em;
+    color:var(--accent); background:var(--accent-soft);
+    padding:4px 12px; border-radius:999px; font-weight:700; margin-bottom:14px;
+  }
+  h1{font-size:26px; margin:0 0 8px; line-height:1.35;}
+  .lead{color:var(--sub); font-size:15px; margin:0;}
+  section{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:26px 28px; margin-top:22px; box-shadow:0 1px 2px rgba(20,30,50,.03);
+  }
+  .sec-no{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; border-radius:8px; background:var(--ink);
+    color:#fff; font-size:14px; font-weight:700; margin-right:10px;
+  }
+  h2{font-size:19px; margin:0 0 16px; display:flex; align-items:center;}
+  h3{font-size:15px; margin:22px 0 10px; color:var(--ink);
+     border-left:4px solid var(--accent); padding-left:10px;}
+  p{margin:0 0 12px;}
+  .arrow{
+    margin-top:14px; background:var(--accent-soft); border-radius:10px;
+    padding:12px 16px; font-size:14px; font-weight:600; color:#1e3a8a;
+  }
+  table{width:100%; border-collapse:collapse; margin:8px 0 4px; font-size:14px;}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top;}
+  th{background:#fafbfc; color:var(--sub); font-weight:700; font-size:13px;}
+  td:first-child{font-weight:600; white-space:nowrap;}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:8px;}
+  .box{border-radius:10px; padding:14px 16px; font-size:14px;}
+  .box h4{margin:0 0 8px; font-size:13px; letter-spacing:.03em;}
+  .box ul{margin:0; padding-left:18px;}
+  .box li{margin-bottom:5px;}
+  .good{background:var(--good-bg); border:1px solid #c5e8d3;}
+  .good h4{color:var(--good);}
+  .bad{background:var(--bad-bg); border:1px solid #f3cfcd;}
+  .bad h4{color:var(--bad);}
+  .role-card{
+    border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-top:12px;
+  }
+  .role-card .names{font-size:16px; font-weight:700; margin:4px 0 8px; color:var(--accent);}
+  .role-card.alt .names{color:var(--warn);}
+  .tag{
+    display:inline-block; font-size:11px; font-weight:700; padding:2px 8px;
+    border-radius:6px; background:var(--accent-soft); color:var(--accent);
+  }
+  .tag.warn{background:var(--warn-bg); color:var(--warn);}
+  ol.flow{margin:6px 0 0; padding-left:22px;}
+  ol.flow li{margin-bottom:10px; font-size:14px;}
+  ol.flow b{color:var(--accent);}
+  .note{font-size:13px; color:var(--sub); margin-top:14px;}
+  footer{margin-top:28px; text-align:center; color:var(--sub); font-size:12px;}
+  @media(max-width:640px){.two{grid-template-columns:1fr;} h1{font-size:22px;}}
+  @media print{body{background:#fff;} section{box-shadow:none; break-inside:avoid;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow">業務棚卸し ＆ 体制提案</span>
+    <h1>個人生産性の可視化と<br>開通担当制への移行</h1>
+    <p class="lead">「測れない生産性」をどう評価軸に変えるか —— 現状整理から体制案まで</p>
+  </header>
+
+  <!-- 1 -->
+  <section>
+    <h2><span class="sec-no">1</span>現状：集計できること・できないこと</h2>
+    <h3>集計できる（システムに残る）</h3>
+    <p>SFの活動履歴 → 業務の動線は追える。</p>
+    <h3>集計できない（システムに残らない＝空白の時間）</h3>
+    <table>
+      <tr><th>空白の正体</th><th>なぜ測れないか</th></tr>
+      <tr><td>事務処理<br>（スプレッドシート・チャットワーク）</td><td>システムに痕跡が残らない</td></tr>
+      <tr><td>現場での質疑応答</td><td>同上</td></tr>
+      <tr><td>SF活動記録・履歴の処理</td><td>引き継ぎ記載か、フォーマット添削だけかで処理量が大きく違う＝タイピング／処理時間が人により変動</td></tr>
+      <tr><td>個人スキル差による通話時間</td><td>同じ対応でも人によって所要時間が違う</td></tr>
+    </table>
+    <div class="arrow">→ 個人ごとの「生産性」を測りたいのに、空白時間と個人差が見えず測れていない。</div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <h2><span class="sec-no">2</span>「生産性」を測る指標の検討</h2>
+    <p><b>測りたいもの＝個人の生産性</b>（1時間に何の種別を何件こなせるか／種別ごとのベストスコア）。<br>
+    検討した指標は、いずれも<b>単純比較が成立しない</b>。</p>
+    <table>
+      <tr><th>候補指標</th><th>不成立の理由</th></tr>
+      <tr><td>コール数</td><td>種別で結果が変わる。留守／ETのかけ方で変動。NURO即決とSO三者間通話は比較不能</td></tr>
+      <tr><td>完了率</td><td>種別ごとに難易度が違う。タイミーでもできる業務の完了と、既存社員の業務完了は同列評価できない</td></tr>
+    </table>
+    <div class="arrow">→ 作業量ベースの指標は、種別の難易度差を吸収できず評価に使えない。</div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <h2><span class="sec-no">3</span>視点の転換：ROI（会社目線の生産性）</h2>
+    <p><b>会社にとっての生産性＝いかにキャッシュを生み出せるか。</b></p>
+    <ul>
+      <li>人件費を上回るキャッシュを生む人材か</li>
+      <li>評価軸＝「入金（キャッシュ）にどれだけ直結できる人材か」が個人のKPIになりうる</li>
+    </ul>
+    <p style="margin-top:14px;">ただし現場には「入金」ではなく、それとイコールになる<b>「開通」</b>を追わせる。</p>
+    <ul>
+      <li>「今の業務を他人事として分業する体制」を撤廃</li>
+      <li>評価は<b>個人ごとの開通率</b>を見る</li>
+    </ul>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <h2><span class="sec-no">4</span>打ち手：案件乱数による担当制（フルコミット体制）</h2>
+
+    <div class="role-card">
+      <span class="tag">社員4名</span>
+      <div class="names">原田 ／ 金澤 ／ 菊地 ／ 佐々木</div>
+      <p style="margin:0;">ETから<b>開通まで</b>フルコミット。個人別担当制で「ET → 促進 → 開通」を一気通貫で追わせる。抱えるのは開通まで。</p>
+    </div>
+
+    <div class="role-card">
+      <span class="tag">開通後の受け皿</span>
+      <div class="names" style="color:var(--ink);">既存の開通後対応チーム ＋ 室谷</div>
+      <ul style="margin:0; padding-left:18px;">
+        <li>開通後FCは<b>今の開通後対応チームにタスクを渡す</b></li>
+        <li><b>室谷もそのチームに人員としてアサイン</b>してもらう</li>
+        <li>対応は<b>そのチーム側で完結</b>させる</li>
+      </ul>
+      <p class="note" style="margin-bottom:0;">→ 社員4名は「開通させること」だけに集中でき、開通率での評価がクリーンになる。</p>
+    </div>
+
+    <div class="two" style="margin-top:18px;">
+      <div class="box good">
+        <h4>メリット</h4>
+        <ul>
+          <li>個人別のCX率・開通率が見える</li>
+          <li>管理・評価がしやすい</li>
+        </ul>
+      </div>
+      <div class="box bad">
+        <h4>デメリット</h4>
+        <ul>
+          <li>個人間の件数管理・スケジューリングが必須</li>
+          <li>休日出勤などで労働時間に差 → 時間数を踏まえた評価が必要</li>
+          <li>休みで案件消化が滞り、FC必要案件が漏れるリスク</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="role-card alt">
+      <span class="tag warn">アルバイト</span>
+      <div class="names">葛西 ／ 天貝 ／ 角田</div>
+      <p style="margin:0 0 6px;">架電以外の業務が主：LINE、代コン確認、チャット確認、開通後FC、現行SOの促進。</p>
+      <p class="note" style="margin:0;"><b>角田</b>：勤怠面で雇用継続を検討中。リソース的に不要なら継続見直し。</p>
+    </div>
+  </section>
+
+  <!-- 流れ -->
+  <section>
+    <h2><span class="sec-no">★</span>全体の論理の流れ</h2>
+    <ol class="flow">
+      <li>個人の生産性を測りたいが、<b>空白時間と個人差</b>で測れない</li>
+      <li>コール数・完了率は<b>種別の難易度差</b>で評価軸にならない</li>
+      <li>ならば視点を変え、<b>会社目線＝キャッシュ＝開通</b>で追う</li>
+      <li>分業をやめ、<b>社員4名に個人別フルコミット担当制（開通前まで）</b>を敷き、<b>開通前対応は既存の柳原チーム＋室谷</b>へ引き渡す</li>
+      <li>→ 個人別の開通率・CX率で<b>管理と評価を成立させる</b></li>
+    </ol>
+  </section>
+
+  <footer>業務棚卸し資料 ／ 社内検討用</footer>
+
+</div>
+</body>
+</html>

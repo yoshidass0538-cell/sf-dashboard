@@ -4083,7 +4083,8 @@ if selected_key == "ccr":
         pass
 
     _CCR_PROC = 1.5       # 有効対話1件あたりの処理時間(分)=1分30秒
-    _CCR_RUSU_PROC = 0.5  # 無効(留守/履歴なし)1件あたりの処理時間(分)=30秒
+    _CCR_RUSU_PROC = 0.5  # 無効(留守)1件あたりの処理時間(分)=30秒
+    _CCR_OTHER_AVG = 3.5  # 11種以外(その他)の標準平均通話(分)
     # 表示順（このリストの種別のみ対象）
     _CCR_ORDER = [
         "開通後対応", "開通前対応", "キャンセル対応", "工事取得", "1週間後FC",
@@ -4159,8 +4160,9 @@ if selected_key == "ccr":
                 cnt = int(r["cnt"])
                 _acc(r.get("oname"), _label, cnt, cnt if r.get("result") == "留守" else 0)
 
-        # 対象11種以外のコール（顧客以外/LINE/その他/ステータス空欄/区分なし 等）。
-        # Zoom通話履歴(CallDurationInSeconds)があれば有効対話(実通話時間)、無ければ留守と同じ処理3分扱い
+        # 対象11種以外のコール（前確架電/後確架電/決済促進/その他/顧客以外/LINE 等）。
+        # ステータス入力済の手動記録のみ対象（Zoom自動ログ=ステータス空欄は二重計上になるため除外）。
+        # 11種と同様、コール結果が留守=無効、それ以外=有効として標準平均で計上
         _TARGET_F2 = [
             "対応", "キャンセル対応", "自社OP", "管理会社", "消セン",
             "フォローコール（工事取得）", "フォローコール(工事取得)",
@@ -4170,33 +4172,26 @@ if selected_key == "ccr":
             "フォローコール（開通後①）", "フォローコール(開通後①)",
         ]
         _tin = ", ".join("'" + s + "'" for s in _TARGET_F2)
-        _nott = f"(Field2_del__c = null OR Field2_del__c NOT IN ({_tin}))"
+        # ステータス入力済 かつ 11種以外（空欄=自動ログは除外）
+        _nott = f"(Field2_del__c != null AND Field2_del__c NOT IN ({_tin}))"
 
-        def _acc_other(owner, eff_n, eff_sec, rusu_n):
+        def _acc_other(owner, eff_n, rusu_n):
             norm = (owner or "").replace(" ", "").replace("　", "")
             if norm not in cs_names:
                 return
             p = data.setdefault(norm, {"name": owner, "types": {}})
-            o = p.setdefault("other", {"eff_n": 0, "eff_sec": 0, "rusu_n": 0})
+            o = p.setdefault("other", {"eff_n": 0, "rusu_n": 0})
             o["eff_n"] += eff_n
-            o["eff_sec"] += eff_sec
             o["rusu_n"] += rusu_n
 
-        # 通話履歴あり（CallDurationInSeconds>0）＝有効対話。実通話秒数を合算
         for r in _sf().query_all(
-            "SELECT Owner.Name oname, SUM(CallDurationInSeconds) dur, COUNT(Id) n FROM Task "
-            f"WHERE ActivityDate = TODAY AND {_nott} AND CallDurationInSeconds > 0 "
-            "GROUP BY Owner.Name"
-        )["records"]:
-            _acc_other(r.get("oname"), int(r["n"]), int(r.get("dur") or 0), 0)
-        # 通話履歴なし（0秒/未記録）＝留守と同じ処理のみ
-        for r in _sf().query_all(
-            "SELECT Owner.Name oname, COUNT(Id) n FROM Task "
+            "SELECT Owner.Name oname, Field4_del__c result, COUNT(Id) n FROM Task "
             f"WHERE ActivityDate = TODAY AND {_nott} "
-            "AND (CallDurationInSeconds = null OR CallDurationInSeconds <= 0) "
-            "GROUP BY Owner.Name"
+            "GROUP BY Owner.Name, Field4_del__c"
         )["records"]:
-            _acc_other(r.get("oname"), 0, 0, int(r["n"]))
+            _n = int(r["n"])
+            _is_rusu = r.get("result") == "留守"
+            _acc_other(r.get("oname"), 0 if _is_rusu else _n, _n if _is_rusu else 0)
 
         # 今日のシフト(開始,終了)を取得（CS促進＋追加メンバー）。各人の業務時間算出に使う
         shifts = {}
@@ -4316,10 +4311,9 @@ if selected_key == "ccr":
         _rusu_total = sum(v[1] for v in _p["types"].values())
         # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理1分30秒）
         _talk_min = sum((v[0] - v[1]) * (_CCR_AVG.get(lb, 3.5) + _CCR_PROC) for lb, v in _p["types"].items())
-        # 対象11種以外（その他）: 通話履歴あり=実通話+処理3分の有効／履歴なし=処理3分の無効
-        _o = _p.get("other", {"eff_n": 0, "eff_sec": 0, "rusu_n": 0})
-        _o_avg = (_o["eff_sec"] / _o["eff_n"] / 60.0) if _o["eff_n"] else 0.0
-        _talk_min += _o["eff_sec"] / 60.0 + _o["eff_n"] * _CCR_PROC
+        # 対象11種以外（その他・ステータス入力済の手動記録のみ）: 標準平均×件数で計上
+        _o = _p.get("other", {"eff_n": 0, "rusu_n": 0})
+        _talk_min += _o["eff_n"] * (_CCR_OTHER_AVG + _CCR_PROC)
         _eff_total += _o["eff_n"]
         _rusu_total += _o["rusu_n"]
         _proc_min = _rusu_total * _CCR_RUSU_PROC
@@ -4337,7 +4331,7 @@ if selected_key == "ccr":
             "talk": _talk_min, "proc": _proc_min, "blank": _blank_min,
             "work": _work_p, "raw": _raw_p, "shift": _sh,
             "calls": sum(v[0] for v in _p["types"].values()) + _o["eff_n"] + _o["rusu_n"],
-            "other": _o, "other_avg": _o_avg,
+            "other": _o,
         })
     _ccr_people.sort(key=lambda x: -x["calls"])
 
@@ -4362,13 +4356,12 @@ if selected_key == "ccr":
                 f'<b>{_lb}</b>：有効{_e}件／無効{_v[1]}件<br>'
                 f'<span style="color:#9fb3c8;">有効平均対話時間：{_ccr_avgfmt(_CCR_AVG.get(_lb, 3.5))}</span></div>'
             )
-        _od = _p.get("other", {"eff_n": 0, "eff_sec": 0, "rusu_n": 0})
+        _od = _p.get("other", {"eff_n": 0, "rusu_n": 0})
         if _od["eff_n"] or _od["rusu_n"]:
-            _oavg = _ccr_avgfmt(_p.get("other_avg", 0.0)) if _od["eff_n"] else "—"
             _types_html += (
                 f'<div style="margin:5px 0 0;font-size:12.5px;color:#e6edf3;">'
                 f'<b>その他(11種以外)</b>：有効{_od["eff_n"]}件／無効{_od["rusu_n"]}件<br>'
-                f'<span style="color:#9fb3c8;">有効=Zoom通話履歴あり(実通話 平均{_oavg})／無効=履歴なし30秒</span></div>'
+                f'<span style="color:#9fb3c8;">前確架電・後確架電・決済促進等。標準平均{_ccr_avgfmt(_CCR_OTHER_AVG)}</span></div>'
             )
         if not _types_html:
             _types_html = '<div style="font-size:12px;color:#9fb3c8;">対象種別の架電はまだありません。</div>'
@@ -4418,13 +4411,14 @@ if selected_key == "ccr":
         '<b style="color:#fff;">業務時間</b>＝シフトの開始〜現在（終了まで）− 休憩'
         '<span style="color:#7a8a99;">（休憩=昼休憩14:00-15:00＋各架電後の10分休憩×6。本日シフトのある稼働メンバーのみ表示）</span><br>'
         '<b style="color:#8bd6a0;">有効対話時間</b>＝Σ［ 有効件数 ×（種別の平均通話時間 ＋ 処理1分30秒）］'
-        '<span style="color:#7a8a99;">＋ その他(11種以外)で通話履歴ありは「実通話時間＋件数×1分30秒」</span><br>'
-        '<b style="color:#ffd54f;">無効処理時間</b>＝留守（無効）件数 × 30秒'
-        '<span style="color:#7a8a99;">（通話履歴なしのコールも同じく30秒）</span><br>'
+        '<span style="color:#7a8a99;">（11種以外も同様に標準平均3分30秒＋処理1分30秒）</span><br>'
+        '<b style="color:#ffd54f;">無効処理時間</b>＝留守（無効）件数 × 30秒<br>'
         '<b style="color:#ff5252;">空白の時間</b>＝業務時間 −（有効対話時間 ＋ 無効処理時間）<br>'
         '<span style="color:#7a8a99;">'
-        '・有効/無効の判定＝ZoomのCallDurationInSeconds（&gt;0で履歴あり＝有効／0・未記録＝無効）。<br>'
-        '・平均通話時間：11種別は標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。その他は実通話時間。<br>'
+        '・有効/無効＝コール結果が留守=無効、それ以外=有効。<br>'
+        '・対象は<b>ステータス入力済の手動記録のみ</b>。Zoom自動発信ログ（ステータス空欄）は'
+        '手動記録と二重計上になるため集計しません。<br>'
+        '・平均通話時間：11種別は標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消セン・その他は標準平均。<br>'
         '・「対応」は開通日の有無で開通前/開通後に分割。</span>'
         '</div>',
         unsafe_allow_html=True,

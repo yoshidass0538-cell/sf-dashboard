@@ -4360,6 +4360,38 @@ if selected_key == "ccr":
         unsafe_allow_html=True,
     )
 
+    # 9:30〜10:00 に「今日もがんばろう」系の前向きバナーを表示。デザインは日替わり
+    if 570 <= _now_min < 600:
+        _MORNING_VARIANTS = [
+            ("linear-gradient(135deg,#f6d365 0%,#fda085 100%)", "☀️🌅", "今日も一日がんばろう！"),
+            ("linear-gradient(135deg,#4facfe 0%,#00c6fb 100%)", "🌤️✨", "おはよう！今日もはりきっていきましょう"),
+            ("linear-gradient(135deg,#84fab0 0%,#8fd3f4 100%)", "🌱💪", "今日もあなたのペースでいこう！"),
+            ("linear-gradient(135deg,#ff9a9e 0%,#fad0c4 100%)", "🌸😊", "今日も笑顔でいきましょう！"),
+            ("linear-gradient(135deg,#fbc2eb 0%,#a6c1ee 100%)", "🌈☀️", "今日も良い一日になりますように"),
+            ("linear-gradient(135deg,#f7971e 0%,#ffb347 100%)", "🔥💪", "元気にスタート！今日もファイト"),
+            ("linear-gradient(135deg,#ff8177 0%,#ff867a 100%)", "🌞✨", "さあ今日も一日、よろしくお願いします！"),
+            ("linear-gradient(135deg,#0ba360 0%,#3cba92 100%)", "🍀🌟", "今日もコツコツいきましょう！"),
+            ("linear-gradient(135deg,#f093fb 0%,#f5576c 100%)", "💖🔥", "今日もナイスファイトでいこう！"),
+            ("linear-gradient(135deg,#5ee7df 0%,#b490ca 100%)", "🦋🌈", "今日の頑張りが明日につながる！"),
+            ("linear-gradient(135deg,#fa709a 0%,#fee140 100%)", "🌅⭐", "新しい一日、今日もがんばろう！"),
+            ("linear-gradient(135deg,#43e97b 0%,#38f9d7 100%)", "🌿😊", "今日も無理せず全力で！"),
+            ("linear-gradient(135deg,#ff6a88 0%,#ff99ac 100%)", "🌷💫", "おはよう！今日も一緒にがんばろう"),
+            ("linear-gradient(135deg,#fccb90 0%,#d57eeb 100%)", "🌄✨", "朝のひと踏ん張り、今日もがんばろう！"),
+        ]
+        _mv = _MORNING_VARIANTS[_ccr_now.timetuple().tm_yday % len(_MORNING_VARIANTS)]
+        st.markdown(
+            '<div style="text-align:center;margin:6px 0 14px;">'
+            '<div style="display:inline-block;'
+            f'background:{_mv[0]};'
+            'padding:18px 34px;border-radius:18px;box-shadow:0 6px 18px rgba(0,0,0,.35);'
+            'border:3px solid #fff;">'
+            '<span style="font-size:36px;font-weight:900;color:#fff;'
+            'text-shadow:0 2px 6px rgba(0,0,0,.35);letter-spacing:1px;">'
+            f'{_mv[1]} {_mv[2]} {_mv[1]}</span>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+
     # 19:00〜19:30 と 20:00〜20:30 に「お疲れ様」バナーを表示。デザインは日替わり
     if (1140 <= _now_min < 1170) or (1200 <= _now_min < 1230):
         _BANNER_VARIANTS = [

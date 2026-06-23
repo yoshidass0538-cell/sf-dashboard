@@ -4082,8 +4082,10 @@ if selected_key == "ccr":
         return (s or "").replace("（", "(").replace("）", ")")
 
     @st.cache_data(ttl=180, show_spinner="CCRを集計中...")
-    def _ccr_load(v=2):
-        from metrics import DAY_CALLS_INCLUDE, DAY_CALLS_EXCLUDE
+    def _ccr_load(year, month, day, v=3):
+        from metrics import (
+            DAY_CALLS_INCLUDE, DAY_CALLS_EXCLUDE, SHIFT_DAY_FIELDS, CS_SHIFT_INCLUDE_NAMES,
+        )
         rs_m = _sf().query_all(
             "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
         )["records"]
@@ -4126,28 +4128,53 @@ if selected_key == "ccr":
             )["records"]:
                 cnt = int(r["cnt"])
                 _acc(r.get("oname"), _label, cnt, cnt if r.get("result") == "留守" else 0)
-        return data
 
+        # 今日のシフト(開始,終了)を取得（CS促進＋追加メンバー）。各人の業務時間算出に使う
+        shifts = {}
+        _sef = next(((s, e) for d, s, e in SHIFT_DAY_FIELDS if d == day), None)
+        if _sef:
+            _inl = ", ".join("'" + n + "'" for n in CS_SHIFT_INCLUDE_NAMES)
+            for r in _sf().query_all(
+                f"SELECT Field128__r.Name, {_sef[0]}, {_sef[1]} FROM CustomObject11__c "
+                f"WHERE Field1__c = '{year}年' AND Field2__c = '{month}月' "
+                f"AND (Field128__r.Field13__c = 'CS促進' OR Field128__r.Name IN ({_inl}))"
+            )["records"]:
+                _snm = (r.get("Field128__r") or {}).get("Name") or ""
+                _snorm = _snm.replace(" ", "").replace("　", "")
+                _ss = str(r.get(_sef[0]) or "")[:5]
+                _se = str(r.get(_sef[1]) or "")[:5]
+                if _ss and _se and not (_ss in ("00:00", "0:00") and _se in ("00:00", "0:00")):
+                    shifts[_snorm] = (_ss, _se)
+        return data, shifts
+
+    _ccr_now = _ccr_dt.now(_CCR_JST)
+    _now_min = _ccr_now.hour * 60 + _ccr_now.minute + _ccr_now.second / 60.0
     try:
-        _ccr = _ccr_load()
+        _ccr, _ccr_shifts = _ccr_load(_ccr_now.year, _ccr_now.month, _ccr_now.day)
     except Exception as _e:
         st.error(f"CCRの集計に失敗しました: {_e}")
         st.stop()
 
-    # ── 時刻・業務経過時間（休憩を除く）──
-    _ccr_now = _ccr_dt.now(_CCR_JST)
-    _now_min = _ccr_now.hour * 60 + _ccr_now.minute + _ccr_now.second / 60.0
-    _WORK_START = 600  # 10:00
-    _WORK_END = 1140   # 19:00
-    # 休憩区間（分）: 各架電後の10分休憩×6 ＋ 昼休憩(14:00-15:00)
+    # 休憩区間（分）: 各架電後の10分休憩×6 ＋ 昼休憩(14:00-15:00)。標準10:00-19:00基準
     _BREAKS = [(650, 660), (710, 720), (770, 780), (840, 900),
                (950, 960), (1010, 1020), (1070, 1080)]
-    _cap_now = min(_now_min, _WORK_END)
-    _raw_elapsed = max(0.0, _cap_now - _WORK_START)
-    _break_elapsed = sum(
-        max(0.0, min(_cap_now, b) - max(_WORK_START, a)) for a, b in _BREAKS
-    )
-    _work_elapsed = max(0.0, _raw_elapsed - _break_elapsed)
+
+    def _hm2min(s):
+        try:
+            h, m = str(s).split(":")
+            return int(h) * 60 + int(m)
+        except Exception:
+            return None
+
+    def _ccr_biz(start_min, end_min):
+        """(経過時間raw, 休憩除く業務時間) を返す。シフトの[開始,終了]と現在時刻で算出。"""
+        cap = min(_now_min, end_min)
+        raw = max(0.0, cap - start_min)
+        brk = sum(max(0.0, min(cap, b) - max(start_min, a)) for a, b in _BREAKS)
+        return raw, max(0.0, raw - brk)
+
+    # 上部の標準(10:00-19:00)業務経過（全体の目安）
+    _raw_elapsed, _work_elapsed = _ccr_biz(600, 1140)
 
     def _ccr_fmt(mins):
         m = int(round(mins))
@@ -4191,17 +4218,25 @@ if selected_key == "ccr":
         # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理3分）
         _talk_min = sum((v[0] - v[1]) * (_CCR_AVG.get(lb, 3.5) + _CCR_PROC) for lb, v in _p["types"].items())
         _proc_min = _rusu_total * _CCR_PROC
-        _blank_min = max(0.0, _work_elapsed - _talk_min - _proc_min)
+        # シフトに合わせた業務時間（シフト未登録→標準10:00-19:00）
+        _sh = _ccr_shifts.get(_norm)
+        _st = _hm2min(_sh[0]) if _sh else None
+        _en = _hm2min(_sh[1]) if _sh else None
+        if _st is None or _en is None:
+            _st, _en = 600, 1140
+        _raw_p, _work_p = _ccr_biz(_st, _en)
+        _blank_min = max(0.0, _work_p - _talk_min - _proc_min)
         _ccr_people.append({
             "name": _p["name"], "types": _p["types"],
             "eff": _eff_total, "rusu": _rusu_total,
             "talk": _talk_min, "proc": _proc_min, "blank": _blank_min,
+            "work": _work_p, "raw": _raw_p, "shift": _sh,
             "calls": sum(v[0] for v in _p["types"].values()),
         })
     _ccr_people.sort(key=lambda x: -x["calls"])
 
     for _p in _ccr_people:
-        _denom = max(_work_elapsed, _p["talk"] + _p["proc"], 1.0)
+        _denom = max(_p["work"], _p["talk"] + _p["proc"], 1.0)
         _tw = _p["talk"] / _denom * 100
         _pw = _p["proc"] / _denom * 100
         _bw = _p["blank"] / _denom * 100
@@ -4219,13 +4254,14 @@ if selected_key == "ccr":
             )
         if not _detail:
             _detail = '<div style="font-size:13px;color:#9fb3c8;margin-top:6px;">対象種別の架電はまだありません。</div>'
+        _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10:00-19:00(既定)"
 
         st.markdown(
             f'<div style="background:#1e2730;border-radius:12px;padding:14px 16px;margin:10px 0;">'
             f'<div style="font-weight:800;font-size:18px;color:#fff;margin-bottom:6px;">{_p["name"]}</div>'
             f'<div style="font-size:13px;color:#cdd6e0;">'
-            f'現在の業務時間：<b style="color:#fff;">{_ccr_fmt(_work_elapsed)}</b>　／　'
-            f'経過時間：{_ccr_fmt(_raw_elapsed)}</div>'
+            f'現在の業務時間：<b style="color:#fff;">{_ccr_fmt(_p["work"])}</b>　／　'
+            f'経過時間：{_ccr_fmt(_p["raw"])}　／　シフト {_shift_lbl}</div>'
             # 帯（有効対話=緑／無効処理=黄／空白=灰）
             f'<div style="height:26px;border-radius:6px;overflow:hidden;display:flex;margin:9px 0 8px;background:#33414d;">'
             f'<div style="width:{_tw:.1f}%;background:#43a047;"></div>'
@@ -4242,7 +4278,8 @@ if selected_key == "ccr":
             unsafe_allow_html=True,
         )
     st.caption(
-        "※有効平均対話時間は種別ごとの標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。"
+        "※現在の業務時間は各人のシフト（開始-終了）に合わせて算出（休憩除く・シフト未登録は10:00-19:00）。"
+        "有効平均対話時間は種別ごとの標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。"
         "「対応」は開通日有無で開通前/開通後に分割。対象は指定11種別のみ集計。"
     )
     st.stop()

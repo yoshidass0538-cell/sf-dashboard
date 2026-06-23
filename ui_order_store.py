@@ -133,7 +133,16 @@ def build_initial_board_order(metrics_list) -> list:
         if cat in used_cats:
             for entry in order:
                 if entry["header"] == cat:
-                    entry["items"].extend(leftover)
+                    # METRICS順の隣接を保って挿入（新規ボードは元の前隣の直後に入る）
+                    merged = entry["items"]
+                    for item in leftover:
+                        idx = items.index(item)
+                        pos = len(merged)
+                        for j in range(idx - 1, -1, -1):
+                            if items[j] in merged:
+                                pos = merged.index(items[j]) + 1
+                                break
+                        merged.insert(pos, item)
                     break
         else:
             order.append({"header": cat, "items": leftover})

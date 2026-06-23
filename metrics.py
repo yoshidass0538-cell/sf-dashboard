@@ -1462,9 +1462,9 @@ def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
         _add_split(r.get("oname"), "開通後対応", r["cnt"])
 
     empty = pd.DataFrame(columns=["担当者", "対応ステータス", "コール数"])
+    # タイミーコール数は2026-06-23に廃止（UIから非表示）。DAYコール数のみ返す
     return {
         "DAYコール数": pd.DataFrame(cs_rows) if cs_rows else empty.copy(),
-        "タイミーコール数": pd.DataFrame(timee_rows) if timee_rows else empty.copy(),
     }
 
 

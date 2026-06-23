@@ -4188,18 +4188,15 @@ if selected_key == "ccr":
             ss = 0
         return f"{mm}分{ss:02d}秒"
 
-    # ── 上部: でかい時計＋業務経過時間 ──
+    # ── 上部: コンパクトな時計＋業務経過時間（1行）──
     st.markdown(
-        '<div style="text-align:center;margin:2px 0 6px;">'
-        f'<div style="font-size:48px;font-weight:800;letter-spacing:3px;color:#fff;line-height:1.1;">'
-        f'{_ccr_now.strftime("%H:%M")}</div>'
-        f'<div style="font-size:17px;font-weight:700;color:#8bd6a0;margin-top:2px;">'
-        f'業務経過時間（休憩除く）{_ccr_fmt(_work_elapsed)}</div></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div style="text-align:center;font-size:15px;font-weight:700;color:#9fb3c8;'
-        'margin:0 0 10px;">CCR（コールランニング・試作）</div>',
+        '<div style="text-align:center;margin:0 0 6px;line-height:1.2;">'
+        f'<span style="font-size:34px;font-weight:800;letter-spacing:2px;color:#fff;vertical-align:middle;">'
+        f'{_ccr_now.strftime("%H:%M")}</span>'
+        f'<span style="font-size:14px;font-weight:700;color:#8bd6a0;margin-left:12px;">'
+        f'業務経過(標準) {_ccr_fmt(_work_elapsed)}</span>'
+        '<span style="font-size:12px;color:#9fb3c8;margin-left:12px;">CCR（コールランニング・試作）</span>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -4235,7 +4232,10 @@ if selected_key == "ccr":
         })
     _ccr_people.sort(key=lambda x: -x["calls"])
 
-    for _p in _ccr_people:
+    # コンパクトなグリッド（横並び）で表示
+    _ncol = 4 if len(_ccr_people) >= 4 else max(1, len(_ccr_people))
+    _cols = st.columns(_ncol)
+    for _i, _p in enumerate(_ccr_people):
         _denom = max(_p["work"], _p["talk"] + _p["proc"], 1.0)
         _tw = _p["talk"] / _denom * 100
         _pw = _p["proc"] / _denom * 100
@@ -4248,36 +4248,35 @@ if selected_key == "ccr":
                 continue
             _e = _v[0] - _v[1]
             _detail += (
-                f'<div style="margin:6px 0 0;font-size:13px;color:#e6edf3;">'
-                f'<b>{_lb}</b>：有効{_e}件／無効{_v[1]}件<br>'
-                f'<span style="color:#9fb3c8;">有効平均対話時間：{_ccr_avgfmt(_CCR_AVG.get(_lb, 3.5))}</span></div>'
+                f'<div style="margin:5px 0 0;font-size:12px;color:#e6edf3;">'
+                f'<b>{_lb}</b>：有効{_e}／無効{_v[1]}'
+                f'<span style="color:#9fb3c8;"> ・平均{_ccr_avgfmt(_CCR_AVG.get(_lb, 3.5))}</span></div>'
             )
         if not _detail:
-            _detail = '<div style="font-size:13px;color:#9fb3c8;margin-top:6px;">対象種別の架電はまだありません。</div>'
-        _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10:00-19:00(既定)"
+            _detail = '<div style="font-size:12px;color:#9fb3c8;">対象種別の架電はまだありません。</div>'
+        _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
 
-        st.markdown(
-            f'<div style="background:#1e2730;border-radius:12px;padding:14px 16px;margin:10px 0;">'
-            f'<div style="font-weight:800;font-size:18px;color:#fff;margin-bottom:6px;">{_p["name"]}</div>'
-            f'<div style="font-size:13px;color:#cdd6e0;">'
-            f'現在の業務時間：<b style="color:#fff;">{_ccr_fmt(_p["work"])}</b>　／　'
-            f'経過時間：{_ccr_fmt(_p["raw"])}　／　シフト {_shift_lbl}</div>'
-            # 帯（有効対話=緑／無効処理=黄／空白=灰）
-            f'<div style="height:26px;border-radius:6px;overflow:hidden;display:flex;margin:9px 0 8px;background:#33414d;">'
-            f'<div style="width:{_tw:.1f}%;background:#43a047;"></div>'
-            f'<div style="width:{_pw:.1f}%;background:#fbc02d;"></div>'
-            f'<div style="width:{_bw:.1f}%;background:#78909c;"></div></div>'
-            f'<div style="font-size:14px;color:#cfd8dc;">'
-            f'<span style="color:#90a4ae;">■空白の時間：<b style="font-size:16px;">{_ccr_fmt(_p["blank"])}</b></span><br>'
-            f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
-            f'<span style="color:#7a8a99;font-size:12px;">（有効{_p["eff"]}件×(各平均+処理3分)）</span></span><br>'
-            f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
-            f'<span style="color:#7a8a99;font-size:12px;">（無効{_p["rusu"]}件×3分）</span></span></div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-        with st.expander(f"詳細（種別内訳）　{_p['name']}"):
-            st.markdown(_detail, unsafe_allow_html=True)
+        with _cols[_i % _ncol]:
+            st.markdown(
+                f'<div style="background:#1e2730;border-radius:9px;padding:8px 10px;margin:0 0 8px;">'
+                f'<div style="font-weight:800;font-size:14px;color:#fff;white-space:nowrap;'
+                f'overflow:hidden;text-overflow:ellipsis;">{_p["name"]}'
+                f'<span style="font-size:11px;color:#9fb3c8;font-weight:400;"> {_p["calls"]}件</span></div>'
+                f'<div style="font-size:10px;color:#9fb3c8;margin:1px 0 4px;">'
+                f'{_shift_lbl}・業務{_ccr_fmt(_p["work"])}</div>'
+                f'<div style="height:14px;border-radius:4px;overflow:hidden;display:flex;background:#33414d;">'
+                f'<div style="width:{_tw:.1f}%;background:#43a047;"></div>'
+                f'<div style="width:{_pw:.1f}%;background:#fbc02d;"></div>'
+                f'<div style="width:{_bw:.1f}%;background:#78909c;"></div></div>'
+                f'<div style="font-size:11.5px;margin-top:4px;line-height:1.5;">'
+                f'<span style="color:#b0bec5;">空白<b style="color:#fff;">{_ccr_fmt(_p["blank"])}</b></span><br>'
+                f'<span style="color:#8bd6a0;">通話<b>{_ccr_fmt(_p["talk"])}</b></span>'
+                f'<span style="color:#ffd54f;"> 処理<b>{_ccr_fmt(_p["proc"])}</b></span></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            with st.expander("詳細"):
+                st.markdown(_detail, unsafe_allow_html=True)
     st.caption(
         "※現在の業務時間は各人のシフト（開始-終了）に合わせて算出（休憩除く・シフト未登録は10:00-19:00）。"
         "有効平均対話時間は種別ごとの標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消センは未計測のため仮値3分00秒。"

@@ -4193,6 +4193,103 @@ if selected_key == "ccr":
             _is_rusu = r.get("result") == "留守"
             _acc_other(r.get("oname"), 0 if _is_rusu else _n, _n if _is_rusu else 0)
 
+        # ── 有効(留守以外)の実通話時間をZoom通話履歴と突合（電話番号＋時刻±20分）──
+        # 認証情報が無い/失敗時は突合せず、呼び出し側で標準平均にフォールバック
+        import os as _os, base64 as _b64, re as _re2
+        import requests as _rq2
+        from datetime import datetime as _dt2, timezone as _tz2, timedelta as _td2
+        _UTC = _tz2.utc
+        _JSTz = _tz2(_td2(hours=9))
+        zoom_ok = False
+
+        def _zc(k):
+            v = None
+            try:
+                if hasattr(st, "secrets"):
+                    v = st.secrets.get(k)
+            except Exception:
+                v = None
+            if not v:
+                v = _os.environ.get(k)
+            if not v:
+                try:
+                    from dotenv import dotenv_values as _dv
+                    v = _dv(".env").get(k)
+                except Exception:
+                    v = None
+            return v
+
+        _zaid, _zcid, _zsec = _zc("ZOOM_ACCOUNT_ID"), _zc("ZOOM_CLIENT_ID"), _zc("ZOOM_CLIENT_SECRET")
+        if _zaid and _zcid and _zsec:
+            try:
+                def _e164(p):
+                    d = _re2.sub(r"\D", "", p or "")
+                    return "+81" + d[1:] if d.startswith("0") and len(d) >= 10 else None
+
+                _eff_recs = {}
+                for r in _sf().query_all(
+                    "SELECT Owner.Name, Account.X1__c, Field1_del__c FROM Task "
+                    "WHERE ActivityDate = TODAY AND Field2_del__c != null "
+                    "AND (Field4_del__c = null OR Field4_del__c != '留守')"
+                )["records"]:
+                    _nm = ((r.get("Owner") or {}).get("Name") or "").replace(" ", "").replace("　", "")
+                    if _nm not in cs_names:
+                        continue
+                    _ph = _e164((r.get("Account") or {}).get("X1__c"))
+                    _dt = r.get("Field1_del__c")
+                    if _ph and _dt:
+                        _eff_recs.setdefault(_nm, []).append(
+                            (_ph, _dt2.fromisoformat(_dt.replace("Z", "+00:00")).astimezone(_UTC))
+                        )
+
+                _tok = _rq2.post(
+                    "https://zoom.us/oauth/token",
+                    params={"grant_type": "account_credentials", "account_id": _zaid},
+                    headers={"Authorization": "Basic " + _b64.b64encode(f"{_zcid}:{_zsec}".encode()).decode()},
+                    timeout=30,
+                ).json().get("access_token")
+                if _tok:
+                    _H = {"Authorization": "Bearer " + _tok}
+                    _tstr = _dt2.now(_JSTz).strftime("%Y-%m-%d")
+                    _zidx = {}
+                    _tkn = None
+                    for _pg in range(30):
+                        _pr = {"from": _tstr, "to": _tstr, "page_size": 300}
+                        if _tkn:
+                            _pr["next_page_token"] = _tkn
+                        _j = _rq2.get(
+                            "https://api.zoom.us/v2/phone/call_logs", headers=_H, params=_pr, timeout=60
+                        ).json()
+                        for _c in _j.get("call_logs", []):
+                            if _c.get("direction") != "outbound":
+                                continue
+                            _cn = _c.get("callee_number")
+                            _cd = _dt2.fromisoformat(_c["date_time"].replace("Z", "+00:00")).astimezone(_UTC)
+                            _zidx.setdefault(_cn, []).append((_cd, int(_c.get("duration") or 0)))
+                        _tkn = _j.get("next_page_token")
+                        if not _tkn:
+                            break
+                    _WIN = 20 * 60
+                    for _nm, _recs in _eff_recs.items():
+                        _sec = 0
+                        _mn = 0
+                        for (_ph, _sd) in _recs:
+                            _best = None
+                            _bd = None
+                            for (_zd, _du) in _zidx.get(_ph, []):
+                                _df = abs((_zd - _sd).total_seconds())
+                                if _df <= _WIN and (_bd is None or _df < _bd):
+                                    _bd = _df
+                                    _best = _du
+                            if _best is not None:
+                                _sec += _best
+                                _mn += 1
+                        if _nm in data:
+                            data[_nm]["matched"] = {"sec": _sec, "n": _mn}
+                    zoom_ok = True
+            except Exception:
+                zoom_ok = False
+
         # 今日のシフト(開始,終了)を取得（CS促進＋追加メンバー）。各人の業務時間算出に使う
         shifts = {}
         _sef = next(((s, e) for d, s, e in SHIFT_DAY_FIELDS if d == day), None)
@@ -4209,12 +4306,12 @@ if selected_key == "ccr":
                 _se = str(r.get(_sef[1]) or "")[:5]
                 if _ss and _se and not (_ss in ("00:00", "0:00") and _se in ("00:00", "0:00")):
                     shifts[_snorm] = (_ss, _se)
-        return data, shifts
+        return data, shifts, zoom_ok
 
     _ccr_now = _ccr_dt.now(_CCR_JST)
     _now_min = _ccr_now.hour * 60 + _ccr_now.minute + _ccr_now.second / 60.0
     try:
-        _ccr, _ccr_shifts = _ccr_load(_ccr_now.year, _ccr_now.month, _ccr_now.day)
+        _ccr, _ccr_shifts, _ccr_zoomok = _ccr_load(_ccr_now.year, _ccr_now.month, _ccr_now.day)
     except Exception as _e:
         st.error(f"CCRの集計に失敗しました: {_e}")
         st.stop()
@@ -4307,15 +4404,23 @@ if selected_key == "ccr":
     for _norm, _p in _ccr.items():
         if _norm not in _ccr_shifts:
             continue
-        _eff_total = sum(v[0] - v[1] for v in _p["types"].values())
+        _eff_types = sum(v[0] - v[1] for v in _p["types"].values())
         _rusu_total = sum(v[1] for v in _p["types"].values())
-        # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理1分30秒）
-        _talk_min = sum((v[0] - v[1]) * (_CCR_AVG.get(lb, 3.5) + _CCR_PROC) for lb, v in _p["types"].items())
-        # 対象11種以外（その他・ステータス入力済の手動記録のみ）: 標準平均×件数で計上
         _o = _p.get("other", {"eff_n": 0, "rusu_n": 0})
-        _talk_min += _o["eff_n"] * (_CCR_OTHER_AVG + _CCR_PROC)
-        _eff_total += _o["eff_n"]
+        _eff_total = _eff_types + _o["eff_n"]
         _rusu_total += _o["rusu_n"]
+        # 標準平均ベースの通話時間（突合できない/Zoom未接続時のフォールバック）
+        _std_talk = sum((v[0] - v[1]) * _CCR_AVG.get(lb, 3.5) for lb, v in _p["types"].items()) \
+            + _o["eff_n"] * _CCR_OTHER_AVG
+        if _ccr_zoomok:
+            # Zoom実測: 突合できた有効コールは実通話、未突合はその人の標準平均で補完
+            _m = _p.get("matched", {"sec": 0, "n": 0})
+            _avg_per = (_std_talk / _eff_total) if _eff_total else 0.0
+            _actual_talk = _m["sec"] / 60.0 + max(0, _eff_total - _m["n"]) * _avg_per
+        else:
+            _actual_talk = _std_talk
+        # 有効対話時間 = 通話時間 ＋ 有効件数×処理1分30秒
+        _talk_min = _actual_talk + _eff_total * _CCR_PROC
         _proc_min = _rusu_total * _CCR_RUSU_PROC
         # シフトに合わせた業務時間（シフト未登録→標準10:00-19:00）
         _sh = _ccr_shifts.get(_norm)
@@ -4410,15 +4515,14 @@ if selected_key == "ccr":
         '<div style="font-weight:800;color:#fff;font-size:14px;margin-bottom:4px;">時間の集計ロジック</div>'
         '<b style="color:#fff;">業務時間</b>＝シフトの開始〜現在（終了まで）− 休憩'
         '<span style="color:#7a8a99;">（休憩=昼休憩14:00-15:00＋各架電後の10分休憩×6。本日シフトのある稼働メンバーのみ表示）</span><br>'
-        '<b style="color:#8bd6a0;">有効対話時間</b>＝Σ［ 有効件数 ×（種別の平均通話時間 ＋ 処理1分30秒）］'
-        '<span style="color:#7a8a99;">（11種以外も同様に標準平均3分30秒＋処理1分30秒）</span><br>'
+        '<b style="color:#8bd6a0;">有効対話時間</b>＝有効コールの<b>実通話時間</b>（Zoom通話履歴と電話番号＋時刻で突合）'
+        ' ＋ 有効件数×処理1分30秒<br>'
         '<b style="color:#ffd54f;">無効処理時間</b>＝留守（無効）件数 × 30秒<br>'
         '<b style="color:#ff5252;">空白の時間</b>＝業務時間 −（有効対話時間 ＋ 無効処理時間）<br>'
         '<span style="color:#7a8a99;">'
-        '・有効/無効＝コール結果が留守=無効、それ以外=有効。<br>'
-        '・対象は<b>ステータス入力済の手動記録のみ</b>。Zoom自動発信ログ（ステータス空欄）は'
-        '手動記録と二重計上になるため集計しません。<br>'
-        '・平均通話時間：11種別は標準平均（Zoom実測の定期更新値）。自社OP・管理会社・消セン・その他は標準平均。<br>'
+        '・有効/無効＝コール結果が留守=無効、それ以外（完了・再コール等）=有効。<br>'
+        '・対象は<b>ステータス入力済の手動記録のみ</b>。Zoom自動発信ログ（ステータス空欄）は二重計上になるため除外。<br>'
+        f'・通話時間の出し方：{"Zoom実測突合（突合できない分はその人の標準平均で補完）" if _ccr_zoomok else "Zoom未接続のため標準平均で推計（実測突合は無効）"}。<br>'
         '・「対応」は開通日の有無で開通前/開通後に分割。</span>'
         '</div>',
         unsafe_allow_html=True,

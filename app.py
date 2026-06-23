@@ -3589,6 +3589,9 @@ elif selected_key == "gyomu_seiri":
 elif selected_key == "kpi_call_target":
     # 適正コール数KPI資料 — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "ccr":
+    # CCR(試作) コールランニング — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -4036,6 +4039,144 @@ if selected_key == "day_calls":
     for chart_title, chart_df in fetched.items():
         _render_bar_chart(chart_title, chart_df)
         st.divider()
+    st.stop()
+
+# CCR(試作): コールランニング — 始業10時からの稼働を個人別に可視化
+if selected_key == "ccr":
+    from datetime import datetime as _ccr_dt, timezone as _ccr_tz, timedelta as _ccr_td
+
+    _CCR_JST = _ccr_tz(_ccr_td(hours=9))
+    # 5分ごとに自動更新（経過時間・通話以外時間を進める）
+    try:
+        from streamlit_autorefresh import st_autorefresh as _ccr_ar
+        _ccr_ar(interval=300000, key="ccr_autorefresh")
+    except ImportError:
+        pass
+
+    # 対応ステータス(Field2_del__c)ごとの標準平均通話(分)。Zoom実測の定期更新値。留守は通話0
+    _CCR_TALK = {
+        "対応": 4.6,
+        "フォローコール（その他）": 3.2,
+        "フォローコール（1週間後FC）": 5.2,
+        "フォローコール（代コン）": 3.8,
+        "フォローコール（代コン窓口）": 2.45,
+        "フォローコール（工事取得）": 5.7,
+        "キャンセル対応": 3.47,
+        "フォローコール（決済促進）": 3.22,
+        "フォローコール（開通後①）": 3.61,
+        "フォローコール（開通後②）": 3.72,
+    }
+    _CCR_TALK_DEFAULT = 3.5
+
+    @st.cache_data(ttl=300, show_spinner="CCRを集計中...")
+    def _ccr_load(v=1):
+        from metrics import DAY_CALLS_INCLUDE, DAY_CALLS_EXCLUDE
+        rs_m = _sf().query_all(
+            "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
+        )["records"]
+        cs_names = {(r.get("Name") or "").replace(" ", "").replace("　", "") for r in rs_m}
+        cs_names.discard("")
+        cs_names = {n for n in cs_names if not any(ex in n for ex in DAY_CALLS_EXCLUDE)}
+        cs_names |= DAY_CALLS_INCLUDE
+        rows = _sf().query_all(
+            "SELECT Owner.Name oname, Field2_del__c status, Field4_del__c result, COUNT(Id) cnt "
+            "FROM Task WHERE ActivityDate = TODAY "
+            "GROUP BY Owner.Name, Field2_del__c, Field4_del__c"
+        )["records"]
+        data = {}
+        for r in rows:
+            status = r.get("status")
+            if not status:
+                continue
+            owner = r.get("oname") or ""
+            norm = owner.replace(" ", "").replace("　", "")
+            if norm not in cs_names:
+                continue
+            cnt = int(r["cnt"])
+            p = data.setdefault(norm, {"name": owner, "types": {}})
+            t = p["types"].setdefault(status, [0, 0])
+            t[0] += cnt
+            if r.get("result") == "留守":
+                t[1] += cnt
+        return data
+
+    try:
+        _ccr = _ccr_load()
+    except Exception as _e:
+        st.error(f"CCRの集計に失敗しました: {_e}")
+        st.stop()
+
+    _ccr_now = _ccr_dt.now(_CCR_JST)
+    _ccr_start = _ccr_now.replace(hour=10, minute=0, second=0, microsecond=0)
+    _ccr_elapsed = max(0.0, (_ccr_now - _ccr_start).total_seconds() / 60.0)
+
+    def _ccr_fmt(mins):
+        m = int(round(mins))
+        return f"{m // 60}時間{m % 60}分" if m >= 60 else f"{m}分"
+
+    st.title("CCR（コールランニング・試作）")
+    st.caption(
+        f"始業10:00からの稼働を個人別に表示。現在 {_ccr_now.strftime('%H:%M')} ／ "
+        f"経過 {_ccr_fmt(_ccr_elapsed)} ／ 対象 {len(_ccr)}名　"
+        "※通話時間は種別ごとの標準平均(Zoom実測の定期更新値)×有効対話数で推定。留守は通話0。"
+        "「通話以外」＝経過時間−推定通話時間（事務・受電・待機等）。"
+    )
+    if _ccr_elapsed <= 0:
+        st.info("始業（10:00）前です。")
+        st.stop()
+    if not _ccr:
+        st.info("本日の対象データがありません。")
+        st.stop()
+
+    _ccr_people = []
+    for _norm, _p in _ccr.items():
+        _total = sum(v[0] for v in _p["types"].values())
+        _eff = sum(v[0] - v[1] for v in _p["types"].values())
+        _talk = sum((v[0] - v[1]) * _CCR_TALK.get(s, _CCR_TALK_DEFAULT) for s, v in _p["types"].items())
+        _ccr_people.append({
+            "name": _p["name"], "types": _p["types"], "total": _total, "eff": _eff,
+            "talk": _talk, "non_call": max(0.0, _ccr_elapsed - _talk),
+        })
+    _ccr_people.sort(key=lambda x: -x["total"])
+
+    for _p in _ccr_people:
+        _talk_pct = min(100.0, _p["talk"] / _ccr_elapsed * 100) if _ccr_elapsed else 0.0
+        _nc_pct = max(0.0, 100.0 - _talk_pct)
+        st.markdown(
+            f'<div style="background:#1e2730;border-radius:10px;padding:12px 14px;margin:8px 0;">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
+            f'<div style="font-weight:700;font-size:16px;color:#fff;">{_p["name"]}</div>'
+            f'<div style="font-size:13px;color:#9fb3c8;">架電 <b style="color:#fff;">{_p["total"]}</b>件 ・ '
+            f'有効対話 <b style="color:#8bd6a0;">{_p["eff"]}</b>件</div></div>'
+            f'<div style="height:24px;border-radius:6px;overflow:hidden;display:flex;margin:8px 0 4px;background:#33414d;">'
+            f'<div style="width:{_talk_pct:.1f}%;background:#43a047;"></div>'
+            f'<div style="width:{_nc_pct:.1f}%;background:#78909c;"></div></div>'
+            f'<div style="font-size:12.5px;color:#cdd6e0;">経過 {_ccr_fmt(_ccr_elapsed)}　／　'
+            f'<span style="color:#8bd6a0;">通話 {_ccr_fmt(_p["talk"])}（{_talk_pct:.0f}%）</span>　／　'
+            f'<span style="color:#cfd8dc;">通話以外 {_ccr_fmt(_p["non_call"])}（{_nc_pct:.0f}%）</span></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        with st.expander(f"{_p['name']} の種別内訳（平均対話時間）"):
+            _rh = ""
+            for s, v in sorted(_p["types"].items(), key=lambda kv: -(kv[1][0])):
+                _t_total, _t_rusu = v
+                _t_eff = _t_total - _t_rusu
+                _avg = _CCR_TALK.get(s, _CCR_TALK_DEFAULT)
+                _rh += (
+                    f'<tr><td style="text-align:left;">{s}</td><td>{_t_total}</td>'
+                    f'<td>{_t_eff}</td><td>{_t_rusu}</td><td>{_avg:.1f}分</td>'
+                    f'<td>{_ccr_fmt(_t_eff * _avg)}</td></tr>'
+                )
+            st.markdown(
+                '<style>.ccr-tbl{border-collapse:collapse;width:100%;font-size:13px;}'
+                '.ccr-tbl th,.ccr-tbl td{border:1px solid #44515d;padding:5px 8px;text-align:center;color:#e6edf3;}'
+                '.ccr-tbl th{background:#33414d;}</style>'
+                '<table class="ccr-tbl"><tr><th>種別</th><th>件数</th><th>有効</th><th>留守</th>'
+                '<th>平均対話</th><th>推定通話時間</th></tr>'
+                f'{_rh}</table>',
+                unsafe_allow_html=True,
+            )
     st.stop()
 
 # 周知ボード: マルチユーザー・リアルタイム編集

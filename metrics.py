@@ -1383,9 +1383,10 @@ def fetch_total_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
 # DAYコール数（本日・CS促進・対応ステータス別）
 # ======================================================================
 TIMEE_MEMBERS = {"CS1", "CS2", "CS3", "CS4", "CS5", "CS6", "CS7"}
-DAY_CALLS_EXCLUDE = {"柳原"} | EXCLUDED_OWNERS_NORM
+DAY_CALLS_EXCLUDE = set(EXCLUDED_OWNERS_NORM)
 # CS促進マスタ外(CS対応所属)だがDAYコール数に含めるメンバー（2026-06-22 指示）
-DAY_CALLS_INCLUDE = {"対馬拓人", "太田海斗", "早瀬太一", "杉山敏樹"}
+# 2026-06-23 開通後対応も集計対象化に伴い 柳原良久 を追加（旧DAY_CALLS_EXCLUDEから移動）
+DAY_CALLS_INCLUDE = {"対馬拓人", "太田海斗", "早瀬太一", "杉山敏樹", "柳原良久"}
 
 
 def fetch_day_calls(sf: Salesforce) -> dict[str, pd.DataFrame]:
@@ -2434,6 +2435,13 @@ METRICS: list[Metric] = [
         label="DAYコール数",
         description="本日のCS促進メンバーの対応ステータス別コール数（帯グラフ）",
         fetch=fetch_day_calls,
+        category="TOTAL",
+    ),
+    Metric(
+        key="ccr",
+        label="CCR(試作)",
+        description="コールランニング(試作)。始業10時からの架電数・有効対話数・種別別平均対話時間と、経過時間に対する通話以外の時間を個人別に可視化",
+        fetch=lambda sf: pd.DataFrame(),
         category="TOTAL",
     ),
     Metric(

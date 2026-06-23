@@ -2438,13 +2438,6 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
-        key="ccr",
-        label="CCR(試作)",
-        description="コールランニング(試作)。始業10時からの架電数・有効対話数・種別別平均対話時間と、経過時間に対する通話以外の時間を個人別に可視化",
-        fetch=lambda sf: pd.DataFrame(),
-        category="TOTAL",
-    ),
-    Metric(
         key="cs_shift_calendar",
         label="シフト表",
         description="CS促進全員の月間シフトをカレンダー形式で表示",

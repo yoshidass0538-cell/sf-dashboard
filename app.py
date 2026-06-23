@@ -4240,21 +4240,34 @@ if selected_key == "ccr":
         _tw = _p["talk"] / _denom * 100
         _pw = _p["proc"] / _denom * 100
         _bw = _p["blank"] / _denom * 100
+        _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
         # 種別内訳（指定順・件数0は非表示）
-        _detail = ""
+        _types_html = ""
         for _lb in _CCR_ORDER:
             _v = _p["types"].get(_lb)
             if not _v or _v[0] == 0:
                 continue
             _e = _v[0] - _v[1]
-            _detail += (
-                f'<div style="margin:5px 0 0;font-size:12px;color:#e6edf3;">'
-                f'<b>{_lb}</b>：有効{_e}／無効{_v[1]}'
-                f'<span style="color:#9fb3c8;"> ・平均{_ccr_avgfmt(_CCR_AVG.get(_lb, 3.5))}</span></div>'
+            _types_html += (
+                f'<div style="margin:5px 0 0;font-size:12.5px;color:#e6edf3;">'
+                f'<b>{_lb}</b>：有効{_e}件／無効{_v[1]}件<br>'
+                f'<span style="color:#9fb3c8;">有効平均対話時間：{_ccr_avgfmt(_CCR_AVG.get(_lb, 3.5))}</span></div>'
             )
-        if not _detail:
-            _detail = '<div style="font-size:12px;color:#9fb3c8;">対象種別の架電はまだありません。</div>'
-        _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
+        if not _types_html:
+            _types_html = '<div style="font-size:12px;color:#9fb3c8;">対象種別の架電はまだありません。</div>'
+        # 「詳細」には、コンパクト表示で省いた情報もすべて含める
+        _detail = (
+            '<div style="font-size:12.5px;color:#cdd6e0;line-height:1.8;">'
+            f'現在の業務時間：<b style="color:#fff;">{_ccr_fmt(_p["work"])}</b>　／　'
+            f'経過時間：{_ccr_fmt(_p["raw"])}　／　シフト {_shift_lbl}<br>'
+            f'<span style="color:#b0bec5;">■空白の時間：<b style="color:#fff;">{_ccr_fmt(_p["blank"])}</b></span><br>'
+            f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
+            f'<span style="color:#7a8a99;font-size:11px;">（有効{_p["eff"]}件×(各平均+処理3分)）</span></span><br>'
+            f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
+            f'<span style="color:#7a8a99;font-size:11px;">（無効{_p["rusu"]}件×3分）</span></span></div>'
+            '<div style="border-top:1px solid #33414d;margin-top:7px;padding-top:3px;">'
+            f'{_types_html}</div>'
+        )
 
         with _cols[_i % _ncol]:
             st.markdown(

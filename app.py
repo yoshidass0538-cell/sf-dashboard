@@ -4188,7 +4188,8 @@ if selected_key == "ccr":
     for _norm, _p in _ccr.items():
         _eff_total = sum(v[0] - v[1] for v in _p["types"].values())
         _rusu_total = sum(v[1] for v in _p["types"].values())
-        _talk_min = sum((v[0] - v[1]) * _CCR_AVG.get(lb, 3.5) for lb, v in _p["types"].items())
+        # 有効対話時間 = Σ 有効件数 ×（種別平均通話 ＋ 処理3分）
+        _talk_min = sum((v[0] - v[1]) * (_CCR_AVG.get(lb, 3.5) + _CCR_PROC) for lb, v in _p["types"].items())
         _proc_min = _rusu_total * _CCR_PROC
         _blank_min = max(0.0, _work_elapsed - _talk_min - _proc_min)
         _ccr_people.append({
@@ -4233,7 +4234,7 @@ if selected_key == "ccr":
             f'<div style="font-size:14px;color:#cfd8dc;">'
             f'<span style="color:#90a4ae;">■空白の時間：<b style="font-size:16px;">{_ccr_fmt(_p["blank"])}</b></span><br>'
             f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
-            f'<span style="color:#7a8a99;font-size:12px;">（有効{_p["eff"]}件×各平均）</span></span><br>'
+            f'<span style="color:#7a8a99;font-size:12px;">（有効{_p["eff"]}件×(各平均+処理3分)）</span></span><br>'
             f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
             f'<span style="color:#7a8a99;font-size:12px;">（無効{_p["rusu"]}件×3分）</span></span></div>'
             f'<div style="border-top:1px solid #33414d;margin-top:10px;padding-top:4px;">{_detail}</div>'

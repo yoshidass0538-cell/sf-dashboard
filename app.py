@@ -4195,7 +4195,6 @@ if selected_key == "ccr":
         f'{_ccr_now.strftime("%H:%M")}</span>'
         f'<span style="font-size:14px;font-weight:700;color:#8bd6a0;margin-left:12px;">'
         f'業務経過(標準) {_ccr_fmt(_work_elapsed)}</span>'
-        '<span style="font-size:12px;color:#9fb3c8;margin-left:12px;">CCR（コールランニング・試作）</span>'
         '</div>',
         unsafe_allow_html=True,
     )

@@ -2451,8 +2451,8 @@ METRICS: list[Metric] = [
     ),
     Metric(
         key="ccr",
-        label="CCR(試作)",
-        description="コールランニング(試作)。始業10時からの架電数・有効対話数・種別別平均対話時間と、経過時間に対する通話以外の時間を個人別に可視化",
+        label="時間効率表",
+        description="始業からの架電数・有効対話数・種別別平均対話時間と、業務時間に対する通話以外（空白）の時間を個人別に可視化",
         fetch=lambda sf: pd.DataFrame(),
         category="TOTAL",
     ),

@@ -4306,6 +4306,34 @@ if selected_key == "ccr":
                 _se = str(r.get(_sef[1]) or "")[:5]
                 if _ss and _se and not (_ss in ("00:00", "0:00") and _se in ("00:00", "0:00")):
                     shifts[_snorm] = (_ss, _se)
+
+        # 現在編集中(Field110__c=「〜さんが編集中です」)のAccount: 編集中ユーザー→電話番号＋最終更新時刻
+        try:
+            _editing = {}
+            for r in _sf().query_all(
+                "SELECT X1__c, Field110__c, LastModifiedDate FROM Account "
+                "WHERE Field110__c LIKE '%編集中です'"
+            )["records"]:
+                _f = r.get("Field110__c") or ""
+                _en = _f.replace("さんが編集中です", "").replace(" ", "").replace("　", "")
+                if _en not in cs_names:
+                    continue
+                _lm = r.get("LastModifiedDate")
+                _ep = None
+                if _lm:
+                    try:
+                        _ep = _dt2.fromisoformat(_lm[:23] + "+00:00").timestamp()
+                    except Exception:
+                        _ep = None
+                _editing.setdefault(_en, []).append((r.get("X1__c") or "", _ep))
+            for _en, _lst in _editing.items():
+                if _en in data:
+                    # 経過の長い順（最終更新が古い順）に並べる
+                    _lst.sort(key=lambda x: (x[1] is None, x[1] or 0))
+                    data[_en]["editing"] = _lst
+        except Exception:
+            pass
+
         return data, shifts, zoom_ok
 
     _ccr_now = _ccr_dt.now(_CCR_JST)
@@ -4481,6 +4509,22 @@ if selected_key == "ccr":
         _pw = _p["proc"] / _denom * 100
         _bw = _p["blank"] / _denom * 100
         _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
+        # 現在編集中の案件（電話番号＋編集中になってからの経過。複数は縦に並べる）
+        _ed_html = ""
+        _ed = _p.get("editing", [])
+        if _ed:
+            _now_ep = _ccr_now.timestamp()
+            _items = ""
+            for (_eph, _eep) in _ed:
+                _emin = max(0.0, (_now_ep - _eep) / 60.0) if _eep else None
+                _et = _ccr_fmt(_emin) if _emin is not None else "—"
+                _items += (
+                    '<div style="font-size:10.5px;color:#ffd54f;white-space:nowrap;'
+                    'overflow:hidden;text-overflow:ellipsis;">'
+                    f'📝{_eph or "番号なし"}'
+                    f'<span style="color:#cfd8dc;"> {_et}</span></div>'
+                )
+            _ed_html = f'<div style="margin:2px 0 3px;">{_items}</div>'
         # 種別内訳（指定順・件数0は非表示）
         _types_html = ""
         for _lb in _CCR_ORDER:
@@ -4522,6 +4566,7 @@ if selected_key == "ccr":
                 f'<div style="font-weight:800;font-size:14px;color:#fff;white-space:nowrap;'
                 f'overflow:hidden;text-overflow:ellipsis;">{_p["name"]}'
                 f'<span style="font-size:11px;color:#9fb3c8;font-weight:400;"> {_p["calls"]}件</span></div>'
+                f'{_ed_html}'
                 f'<div style="font-size:10px;color:#9fb3c8;margin:1px 0 4px;">'
                 f'{_shift_lbl}・業務{_ccr_fmt(_p["work"])}</div>'
                 f'<div style="height:20px;border-radius:4px;overflow:hidden;display:flex;background:#33414d;'

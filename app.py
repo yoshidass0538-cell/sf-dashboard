@@ -4307,34 +4307,42 @@ if selected_key == "ccr":
                 if _ss and _se and not (_ss in ("00:00", "0:00") and _se in ("00:00", "0:00")):
                     shifts[_snorm] = (_ss, _se)
 
-        # 現在編集中(Field110__c=「〜さんが編集中です」)のAccount: 編集中ユーザー→電話番号＋最終更新時刻
+        return data, shifts, zoom_ok
+
+    # 現在編集中(Field110__c=「〜さんが編集中です」)は短いキャッシュで別取得（ほぼリアルタイム）
+    @st.cache_data(ttl=45, show_spinner=False)
+    def _ccr_editing(v=1):
+        from metrics import DAY_CALLS_INCLUDE, DAY_CALLS_EXCLUDE
+        rs_m = _sf().query_all(
+            "SELECT Name FROM CustomObject10__c WHERE Field13__c = 'CS促進'"
+        )["records"]
+        cs = {(r.get("Name") or "").replace(" ", "").replace("　", "") for r in rs_m}
+        cs.discard("")
+        cs = {n for n in cs if not any(ex in n for ex in DAY_CALLS_EXCLUDE)}
+        cs |= DAY_CALLS_INCLUDE
+        out = {}
         try:
-            _editing = {}
             for r in _sf().query_all(
                 "SELECT X1__c, Field110__c, LastModifiedDate FROM Account "
                 "WHERE Field110__c LIKE '%編集中です'"
             )["records"]:
                 _f = r.get("Field110__c") or ""
                 _en = _f.replace("さんが編集中です", "").replace(" ", "").replace("　", "")
-                if _en not in cs_names:
+                if _en not in cs:
                     continue
                 _lm = r.get("LastModifiedDate")
                 _ep = None
                 if _lm:
                     try:
-                        _ep = _dt2.fromisoformat(_lm[:23] + "+00:00").timestamp()
+                        _ep = _ccr_dt.fromisoformat(_lm[:23] + "+00:00").timestamp()
                     except Exception:
                         _ep = None
-                _editing.setdefault(_en, []).append((r.get("X1__c") or "", _ep))
-            for _en, _lst in _editing.items():
-                if _en in data:
-                    # 経過の長い順（最終更新が古い順）に並べる
-                    _lst.sort(key=lambda x: (x[1] is None, x[1] or 0))
-                    data[_en]["editing"] = _lst
+                out.setdefault(_en, []).append((r.get("X1__c") or "", _ep))
+            for _en in out:
+                out[_en].sort(key=lambda x: (x[1] is None, x[1] or 0))
         except Exception:
             pass
-
-        return data, shifts, zoom_ok
+        return out
 
     _ccr_now = _ccr_dt.now(_CCR_JST)
     _now_min = _ccr_now.hour * 60 + _ccr_now.minute + _ccr_now.second / 60.0
@@ -4493,7 +4501,7 @@ if selected_key == "ccr":
         _raw_p, _work_p = _ccr_biz(_st, _en)
         _blank_min = max(0.0, _work_p - _talk_min - _proc_min)
         _ccr_people.append({
-            "name": _p["name"], "types": _p["types"],
+            "name": _p["name"], "norm": _norm, "types": _p["types"],
             "eff": _eff_total, "rusu": _rusu_total,
             "talk": _talk_min, "proc": _proc_min, "blank": _blank_min,
             "work": _work_p, "raw": _raw_p, "shift": _sh,
@@ -4505,6 +4513,10 @@ if selected_key == "ccr":
     # コンパクトなグリッド（横並び）で表示
     _ncol = 3 if len(_ccr_people) >= 3 else max(1, len(_ccr_people))
     _cols = st.columns(_ncol)
+    try:
+        _ed_map = _ccr_editing()
+    except Exception:
+        _ed_map = {}
     for _i, _p in enumerate(_ccr_people):
         _denom = max(_p["work"], _p["talk"] + _p["proc"], 1.0)
         _tw = _p["talk"] / _denom * 100
@@ -4513,7 +4525,7 @@ if selected_key == "ccr":
         _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
         # 現在編集中の案件（電話番号＋編集中になってからの経過。複数は縦に並べる）
         _ed_html = ""
-        _ed = _p.get("editing", [])
+        _ed = _ed_map.get(_p["norm"], [])
         if _ed:
             _now_ep = _ccr_now.timestamp()
             _items = ""

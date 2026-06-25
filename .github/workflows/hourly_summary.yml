@@ -15,10 +15,14 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install gspread google-auth requests
+        run: pip install gspread google-auth requests simple-salesforce
 
       - name: Send hourly summary
         env:
           CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
           GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_TOKEN: ${{ secrets.SF_TOKEN }}
+          SF_DOMAIN: login
         run: python send_hourly_summary.py

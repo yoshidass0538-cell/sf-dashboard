@@ -159,6 +159,60 @@ def get_orikaeshi_data(client) -> tuple[str, list[str], list[str], dict]:
     return today_str, time_slots, ordered_cats, counts
 
 
+def _get_sf():
+    from simple_salesforce import Salesforce
+    return Salesforce(
+        username=os.environ["SF_USERNAME"],
+        password=os.environ["SF_PASSWORD"],
+        security_token=os.environ["SF_TOKEN"],
+        domain=os.environ.get("SF_DOMAIN", "login"),
+    )
+
+
+# 折返し件数ボード(metrics.fetch_orikaeshi_kensu)と同一の Field109__c 折返し希望種別
+SF_CAT_MAP = {
+    "折返し希望（開通前）":   "(開通前)",
+    "折返し希望（開通後/自社OP）": "(開通後)",
+    "折返し希望（1週間後FC）": "(1週間後)",
+    "折返し希望（工事取得）": "(工事取得)",
+    "折返し希望（新設FC）":   "(新設FC)",
+}
+SF_DISPLAY_ORDER = ["(開通前)", "(開通後)", "(1週間後)", "(工事取得)", "(新設FC)"]
+
+
+def get_orikaeshi_data_sf(sf) -> tuple[str, list[str], list[str], dict]:
+    """折返し件数を Salesforce から直接取得（今日・時間帯×種別）。ボードと同一ロジック。"""
+    cats_soql = "(" + ", ".join(f"'{c}'" for c in SF_CAT_MAP) + ")"
+    records = sf.query_all(
+        f"SELECT Field97__c, Field109__c FROM Account "
+        f"WHERE Field109__c IN {cats_soql} AND Field97__c != null"
+    )["records"]
+    now = datetime.now(JST)
+    today = now.date()
+    today_str = now.strftime("%Y/%m/%d")
+    counts: dict = {}
+    hours: set = set()
+    for r in records:
+        cat = SF_CAT_MAP.get(r.get("Field109__c") or "")
+        raw = r.get("Field97__c")
+        if not cat or not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(JST)
+        except Exception:
+            continue
+        # 今日 かつ 0時(未定)以外
+        if dt.date() != today or dt.hour == 0:
+            continue
+        ts = f"{dt.hour}:00"
+        counts[(cat, ts)] = counts.get((cat, ts), 0) + 1
+        hours.add(dt.hour)
+    time_slots = [f"{h}:00" for h in sorted(hours)]
+    present = {c for (c, _ts) in counts}
+    categories = [c for c in SF_DISPLAY_ORDER if c in present]
+    return today_str, time_slots, categories, counts
+
+
 def build_summary(checks, date_str, time_slots, categories, counts):
     """サマリーメッセージを組み立てる。"""
     now = datetime.now(JST)
@@ -303,7 +357,14 @@ def main():
 
     client = get_gspread_client()
     checks = get_checks(client)
-    date_str, time_slots, categories, counts = get_orikaeshi_data(client)
+    # 折返しデータはボードと同じSF直読みを使用（失敗時のみシートにフォールバック）
+    try:
+        sf = _get_sf()
+        date_str, time_slots, categories, counts = get_orikaeshi_data_sf(sf)
+        print("折返しデータ: SF直読み")
+    except Exception as e:
+        print(f"WARNING: SF取得失敗、シートにフォールバック: {e}")
+        date_str, time_slots, categories, counts = get_orikaeshi_data(client)
 
     if not date_str or not categories:
         print("WARNING: No data found for today")

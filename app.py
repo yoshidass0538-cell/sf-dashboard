@@ -4379,12 +4379,14 @@ if selected_key == "ccr":
 
     # ── 上部: コンパクトな時計＋業務経過時間（1行）──
     st.markdown(
-        '<div style="text-align:center;margin:0 0 6px;line-height:1.2;">'
-        f'<span style="font-size:46px;font-weight:800;letter-spacing:2px;color:#fff;vertical-align:middle;">'
+        '<div style="text-align:center;margin:0 0 10px;">'
+        '<div style="display:inline-block;background:#1e2730;border:1px solid rgba(255,255,255,.12);'
+        'border-radius:12px;padding:8px 24px;box-shadow:0 2px 8px rgba(0,0,0,.25);line-height:1.15;">'
+        f'<span style="font-size:46px;font-weight:800;letter-spacing:2px;color:#ffffff;vertical-align:middle;">'
         f'{_ccr_now.strftime("%H:%M")}</span>'
-        f'<span style="font-size:22px;font-weight:700;color:#8bd6a0;margin-left:16px;">'
+        f'<span style="font-size:22px;font-weight:700;color:#7ee0a4;margin-left:16px;">'
         f'業務経過(標準) {_ccr_fmt(_work_elapsed)}</span>'
-        '</div>',
+        '</div></div>',
         unsafe_allow_html=True,
     )
 

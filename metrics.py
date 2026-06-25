@@ -2148,11 +2148,12 @@ def fetch_orikaeshi_kensu(sf: Salesforce) -> dict[str, pd.DataFrame]:
     # 対応ステータス(Field109__c) → 表示種別ラベル
     CAT_MAP = {
         "折返し希望（開通前）":   "(開通前)",
+        "折返し希望（開通後/自社OP）": "(開通後)",
         "折返し希望（1週間後FC）": "(1週間後)",
         "折返し希望（工事取得）": "(工事取得)",
         "折返し希望（新設FC）":   "(新設FC)",
     }
-    display_order = ["(開通前)", "(1週間後)", "(工事取得)", "(新設FC)"]
+    display_order = ["(開通前)", "(開通後)", "(1週間後)", "(工事取得)", "(新設FC)"]
 
     cats_soql = "(" + ", ".join(f"'{c}'" for c in CAT_MAP) + ")"
     soql = (

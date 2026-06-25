@@ -4524,25 +4524,19 @@ if selected_key == "ccr":
         _bw = _p["blank"] / _denom * 100
         _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
         # 現在編集中の案件（電話番号＋編集中になってからの経過。複数は縦に並べる）
-        _ed_html = ""
+        _ed_inline = ""
         _ed = _ed_map.get(_p["norm"], [])
         if _ed:
             _now_ep = _ccr_now.timestamp()
-            _items = ""
             for (_eph, _eep) in _ed:
                 _emin = max(0.0, (_now_ep - _eep) / 60.0) if _eep else None
                 _et = _ccr_fmt(_emin) if _emin is not None else "—"
-                _items += (
-                    '<div style="font-size:24px;font-weight:800;color:#ffd54f;white-space:nowrap;'
-                    'line-height:1.2;overflow:hidden;text-overflow:ellipsis;">'
-                    f'📝{_eph or "番号なし"}</div>'
-                    f'<div style="font-size:12px;color:#cfd8dc;margin:0 0 3px;">{_et}</div>'
+                _ed_inline += (
+                    '<span style="font-size:13px;font-weight:700;color:#ffd54f;'
+                    'margin-left:10px;white-space:nowrap;">'
+                    f'編集中案件📝{_eph or "番号なし"}'
+                    f'<span style="color:#cfd8dc;font-weight:400;"> {_et}</span></span>'
                 )
-            _ed_html = (
-                '<div style="margin:3px 0 4px;">'
-                '<div style="font-size:11px;color:#9fb3c8;line-height:1.2;">編集中案件</div>'
-                f'{_items}</div>'
-            )
         # 種別内訳（指定順・件数0は非表示）
         _types_html = ""
         for _lb in _CCR_ORDER:
@@ -4581,10 +4575,10 @@ if selected_key == "ccr":
         with _cols[_i % _ncol]:
             st.markdown(
                 f'<div style="background:#1e2730;border-radius:9px;padding:8px 10px;margin:0 0 8px;">'
-                f'<div style="font-weight:800;font-size:14px;color:#fff;white-space:nowrap;'
-                f'overflow:hidden;text-overflow:ellipsis;">{_p["name"]}'
-                f'<span style="font-size:11px;color:#9fb3c8;font-weight:400;"> {_p["calls"]}件</span></div>'
-                f'{_ed_html}'
+                f'<div style="font-size:14px;color:#fff;line-height:1.5;">'
+                f'<b>{_p["name"]}</b>'
+                f'<span style="font-size:11px;color:#9fb3c8;font-weight:400;"> {_p["calls"]}件</span>'
+                f'{_ed_inline}</div>'
                 f'<div style="font-size:10px;color:#9fb3c8;margin:1px 0 4px;">'
                 f'{_shift_lbl}・業務{_ccr_fmt(_p["work"])}</div>'
                 f'<div style="height:20px;border-radius:4px;overflow:hidden;display:flex;background:#33414d;'

@@ -4511,7 +4511,7 @@ if selected_key == "ccr":
     _ccr_people.sort(key=lambda x: -x["calls"])
 
     # コンパクトなグリッド（横並び）で表示
-    _ncol = 2 if len(_ccr_people) >= 2 else 1
+    _ncol = 3 if len(_ccr_people) >= 3 else max(1, len(_ccr_people))
     _cols = st.columns(_ncol)
     try:
         _ed_map = _ccr_editing()
@@ -4533,12 +4533,16 @@ if selected_key == "ccr":
                 _emin = max(0.0, (_now_ep - _eep) / 60.0) if _eep else None
                 _et = _ccr_fmt(_emin) if _emin is not None else "—"
                 _items += (
-                    '<div style="font-size:42px;font-weight:800;color:#ffd54f;white-space:nowrap;'
-                    'line-height:1.15;overflow:hidden;text-overflow:ellipsis;">'
-                    f'📝{_eph or "番号なし"}'
-                    f'<span style="font-size:18px;color:#cfd8dc;font-weight:400;"> {_et}</span></div>'
+                    '<div style="font-size:24px;font-weight:800;color:#ffd54f;white-space:nowrap;'
+                    'line-height:1.2;overflow:hidden;text-overflow:ellipsis;">'
+                    f'📝{_eph or "番号なし"}</div>'
+                    f'<div style="font-size:12px;color:#cfd8dc;margin:0 0 3px;">{_et}</div>'
                 )
-            _ed_html = f'<div style="margin:3px 0 4px;">{_items}</div>'
+            _ed_html = (
+                '<div style="margin:3px 0 4px;">'
+                '<div style="font-size:11px;color:#9fb3c8;line-height:1.2;">編集中案件</div>'
+                f'{_items}</div>'
+            )
         # 種別内訳（指定順・件数0は非表示）
         _types_html = ""
         for _lb in _CCR_ORDER:

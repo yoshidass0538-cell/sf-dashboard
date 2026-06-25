@@ -4533,9 +4533,9 @@ if selected_key == "ccr":
                 _emin = max(0.0, (_now_ep - _eep) / 60.0) if _eep else None
                 _et = _ccr_fmt(_emin) if _emin is not None else "—"
                 _items += (
-                    '<div style="font-size:9px;color:#ffd54f;white-space:nowrap;line-height:1.35;">'
+                    '<div style="font-size:14px;font-weight:700;color:#ffd54f;white-space:nowrap;line-height:1.4;">'
                     f'📝{_eph or "番号なし"}'
-                    f'<span style="color:#cfd8dc;"> {_et}</span></div>'
+                    f'<span style="color:#cfd8dc;font-weight:400;"> {_et}</span></div>'
                 )
             _ed_html = f'<div style="flex-shrink:0;text-align:right;">{_items}</div>'
         # 種別内訳（指定順・件数0は非表示）

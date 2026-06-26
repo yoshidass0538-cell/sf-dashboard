@@ -2458,6 +2458,13 @@ METRICS: list[Metric] = [
         category="TOTAL",
     ),
     Metric(
+        key="kpi_time_report",
+        label="時間効率レポート",
+        description="時間効率表の日次着地を保存した、1日・週間・月間の通話/処理/待機/空白/件数まとめ資料",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
         key="cs_shift_calendar",
         label="シフト表",
         description="CS促進全員の月間シフトをカレンダー形式で表示",

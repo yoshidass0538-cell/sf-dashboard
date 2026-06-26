@@ -3621,6 +3621,9 @@ elif selected_key == "kpi_call_target":
 elif selected_key == "ccr":
     # CCR(試作) コールランニング — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "kpi_time_report":
+    # 時間効率レポート — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -4535,6 +4538,33 @@ if selected_key == "ccr":
     _lu_ccr = st.session_state.get("logged_in_user") or {}
     _my_norm = (_lu_ccr.get("display_name") or "").replace(" ", "").replace("　", "")
     _now_epoch = _ccr_now.timestamp()
+
+    # 日次「着地」スナップショットを外部Sheetsに約15分間隔でappend保存（月次資料の元データ）
+    _snap_last = st.session_state.get("_ccr_snap_last", 0)
+    if _ccr_people and (_now_epoch - _snap_last >= 900):
+        try:
+            import kpi_snapshot_store as _snap
+            _snap_at = _ccr_now.strftime("%Y-%m-%d %H:%M:%S")
+            _snap_rows = []
+            for _pp in _ccr_people:
+                _kb = _kyu_day.get(_pp["norm"], [])
+                _ktot = sum(
+                    ((b.get("e") or _now_epoch) - b["s"]) / 60.0
+                    for b in _kb if b.get("s") is not None
+                )
+                _snap_rows.append({
+                    "date": _today_str, "person": _pp["name"],
+                    "work": round(_pp["work"]), "talk": round(_pp["talk"]),
+                    "proc": round(_pp["proc"]), "ring": round(_pp["ring"]),
+                    "blank": round(_pp["blank"]), "eff": _pp["eff"],
+                    "rusu": _pp["rusu"], "calls": _pp["calls"],
+                    "kyukei": round(_ktot), "updated_at": _snap_at,
+                })
+            _snap.append_rows(_snap_rows)
+            st.session_state["_ccr_snap_last"] = _now_epoch
+        except Exception:
+            pass
+
     for _i, _p in enumerate(_ccr_people):
         _denom = max(_p["work"], _p["talk"] + _p["proc"] + _p["ring"], 1.0)
         _tw = _p["talk"] / _denom * 100
@@ -4694,6 +4724,94 @@ if selected_key == "ccr":
         '</div>',
         unsafe_allow_html=True,
     )
+    st.stop()
+
+# 時間効率レポート: 日次着地スナップショットを 1日/週間/月間 で集計（資料）
+if selected_key == "kpi_time_report":
+    import kpi_snapshot_store as _rep
+    from datetime import datetime as _rep_dt, timezone as _rep_tz, timedelta as _rep_td
+
+    st.title("時間効率レポート")
+    st.caption(
+        "時間効率表の日次「着地」を外部保存し、1日・週間・月間でまとめた資料。"
+        "時間は分。各日の最新スナップショットを採用。"
+    )
+    if st.button("🔄 最新を取得", key="rep_reload"):
+        _rep.clear_cache()
+        st.rerun()
+
+    _rows = _rep.get_landings()
+    if not _rows:
+        st.info("まだ保存データがありません。時間効率表を稼働日に表示すると、約15分ごとに着地が保存されます。")
+        st.stop()
+
+    _rdf = pd.DataFrame(_rows)
+    _rdf["dt"] = pd.to_datetime(_rdf["date"], errors="coerce")
+    _rdf = _rdf.dropna(subset=["dt"])
+    _METnium = ["work", "talk", "proc", "ring", "blank", "kyukei", "eff", "rusu", "calls"]
+    for _c in _METnium:
+        _rdf[_c] = pd.to_numeric(_rdf[_c], errors="coerce").fillna(0)
+
+    def _mfmt(m):
+        m = int(round(m))
+        return f"{m // 60}時間{m % 60}分" if m >= 60 else f"{m}分"
+
+    _COLS = [
+        ("work", "業務時間"), ("talk", "通話"), ("proc", "処理"), ("ring", "発信待機"),
+        ("blank", "空白"), ("kyukei", "休憩"),
+    ]
+    _CNTCOLS = [("eff", "有効"), ("rusu", "無効"), ("calls", "件数")]
+
+    def _render_period(_sub: pd.DataFrame, _kp: str):
+        if _sub.empty:
+            st.info("該当期間のデータがありません。")
+            return
+        g = _sub.groupby("person", as_index=False)[_METnium].sum()
+        g = g.sort_values("calls", ascending=False)
+        disp = pd.DataFrame()
+        disp["担当者"] = g["person"]
+        for _k, _lbl in _COLS:
+            disp[_lbl] = g[_k].apply(_mfmt)
+        for _k, _lbl in _CNTCOLS:
+            disp[_lbl] = g[_k].astype(int)
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+        # 提出用CSV（分の数値）
+        raw = pd.DataFrame()
+        raw["担当者"] = g["person"]
+        for _k, _lbl in _COLS:
+            raw[f"{_lbl}(分)"] = g[_k].round().astype(int)
+        for _k, _lbl in _CNTCOLS:
+            raw[_lbl] = g[_k].astype(int)
+        st.download_button(
+            "CSVダウンロード", raw.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"time_report_{_kp}.csv", mime="text/csv", key=f"dl_{_kp}",
+        )
+
+    _tab_d, _tab_w, _tab_m = st.tabs(["📅 1日", "🗓 週間", "📆 月間"])
+
+    with _tab_d:
+        _dates = sorted(_rdf["date"].unique(), reverse=True)
+        _d = st.selectbox("日付", _dates, index=0, key="rep_day")
+        st.markdown(f"#### {_d} の着地")
+        _render_period(_rdf[_rdf["date"] == _d], "d")
+
+    with _tab_w:
+        _rdf["week"] = _rdf["dt"].dt.strftime("%G年 第%V週")
+        _weeks = sorted(_rdf["week"].unique(), reverse=True)
+        _w = st.selectbox("週", _weeks, index=0, key="rep_week")
+        _wsub = _rdf[_rdf["week"] == _w]
+        _wdays = sorted(_wsub["date"].unique())
+        st.markdown(f"#### {_w}（{_wdays[0]}〜{_wdays[-1]}・{len(_wdays)}日分の合計）")
+        _render_period(_wsub, "w")
+
+    with _tab_m:
+        _rdf["month"] = _rdf["dt"].dt.strftime("%Y年%m月")
+        _months = sorted(_rdf["month"].unique(), reverse=True)
+        _mo = st.selectbox("月", _months, index=0, key="rep_month")
+        _msub = _rdf[_rdf["month"] == _mo]
+        _mdays = sorted(_msub["date"].unique())
+        st.markdown(f"#### {_mo}（{len(_mdays)}日分の合計）")
+        _render_period(_msub, "m")
     st.stop()
 
 # 周知ボード: マルチユーザー・リアルタイム編集

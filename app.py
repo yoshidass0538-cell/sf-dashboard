@@ -4547,6 +4547,19 @@ if selected_key == "ccr":
     except Exception:
         _ccr_ua = ""
     _is_mobile = any(_k in _ccr_ua for _k in ("Mobile", "Android", "iPhone", "iPad", "iPod", "Windows Phone"))
+    # タッチ主体の端末（スマホ/タブレット/iPadのデスクトップ表示含む）は休憩ボタンをCSSで非表示。
+    # User-Agentでは Mac に偽装される iPad デスクトップ表示も pointer:coarse で確実に捕捉できる。
+    st.markdown(
+        "<style>"
+        ".ccr-kyu-note{display:none;}"
+        "@media (pointer: coarse){"
+        "[class*='st-key-kyu_start_'] button,[class*='st-key-kyu_end_'] button{display:none !important;}"
+        ".ccr-kyu-note{display:block;background:#3a2a2a;color:#ffcc80;font-size:11px;"
+        "border-radius:6px;padding:5px 6px;text-align:center;margin:1px 0 4px;}"
+        "}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
 
     # 日次「着地」スナップショットを外部Sheetsに約15分間隔でappend保存（月次資料の元データ）
     _snap_last = st.session_state.get("_ccr_snap_last", 0)
@@ -4712,8 +4725,12 @@ if selected_key == "ccr":
                              disabled=(not _is_me) or _is_mobile, use_container_width=True):
                     _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     st.rerun()
-            if _is_me and _is_mobile:
-                st.caption("※ 休憩の開始/終了はPCから操作してください（携帯端末では無効）")
+            if _is_me:
+                st.markdown(
+                    '<div class="ccr-kyu-note">※ 休憩の開始/終了はPCから操作してください'
+                    '（携帯・タブレットでは無効）</div>',
+                    unsafe_allow_html=True,
+                )
             with st.expander("詳細"):
                 st.markdown(_detail, unsafe_allow_html=True)
     st.markdown(

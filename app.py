@@ -4681,7 +4681,7 @@ if selected_key == "ccr":
                 f'</div>',
                 unsafe_allow_html=True,
             )
-            # 休憩ボタン（本人＝ログイン者のカードのみ操作可）。休憩中は全員に状態表示
+            # 休憩ボタン（常に表示。本人＝ログイン者のカードのみ押せる／他人は無効）
             _has_open = any(b.get("e") is None for b in _breaks)
             _is_me = bool(_my_norm) and (_my_norm == _p["norm"])
             if _has_open:
@@ -4694,12 +4694,13 @@ if selected_key == "ccr":
                     f'<span style="color:#fff;font-weight:800;font-size:18px;">{_ccr_fmt(_open_min)}</span></div>',
                     unsafe_allow_html=True,
                 )
-                if _is_me:
-                    if st.button("■ 休憩終了", key=f"kyu_end_{_p['norm']}", use_container_width=True):
-                        _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
-                        st.rerun()
-            elif _is_me:
-                if st.button("☕ 休憩する", key=f"kyu_start_{_p['norm']}", type="primary", use_container_width=True):
+                if st.button("■ 休憩終了", key=f"kyu_end_{_p['norm']}",
+                             disabled=not _is_me, use_container_width=True):
+                    _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
+                    st.rerun()
+            else:
+                if st.button("☕ 休憩する", key=f"kyu_start_{_p['norm']}", type="primary",
+                             disabled=not _is_me, use_container_width=True):
                     _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     st.rerun()
             with st.expander("詳細"):

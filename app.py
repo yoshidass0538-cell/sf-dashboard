@@ -4525,6 +4525,16 @@ if selected_key == "ccr":
         _ed_map = _ccr_editing()
     except Exception:
         _ed_map = {}
+    # 休憩ボタン用: 今日の休憩記録＋ログインユーザー
+    import kyukei_store as _kyu
+    _today_str = _ccr_now.strftime("%Y-%m-%d")
+    try:
+        _kyu_day = _kyu.get_day(_today_str)
+    except Exception:
+        _kyu_day = {}
+    _lu_ccr = st.session_state.get("logged_in_user") or {}
+    _my_norm = (_lu_ccr.get("display_name") or "").replace(" ", "").replace("　", "")
+    _now_epoch = _ccr_now.timestamp()
     for _i, _p in enumerate(_ccr_people):
         _denom = max(_p["work"], _p["talk"] + _p["proc"] + _p["ring"], 1.0)
         _tw = _p["talk"] / _denom * 100
@@ -4583,6 +4593,37 @@ if selected_key == "ccr":
             f'{_types_html}</div>'
         )
 
+        # 休憩の記録（詳細内）
+        _breaks = _kyu_day.get(_p["norm"], [])
+        if _breaks:
+            _bl = ""
+            _btot = 0.0
+            _bn = 0
+            for _b in _breaks:
+                _bs = _b.get("s")
+                if _bs is None:
+                    continue
+                _bn += 1
+                _be = _b.get("e")
+                _dur = ((_be if _be else _now_epoch) - _bs) / 60.0
+                _btot += _dur
+                _from = _ccr_dt.fromtimestamp(_bs, _CCR_JST).strftime("%H:%M")
+                _to = _ccr_dt.fromtimestamp(_be, _CCR_JST).strftime("%H:%M") if _be else "進行中"
+                _bcol = "#ffcc80" if _be else "#ffa726"
+                _bsuf = "" if _be else "… 計測中"
+                _bl += (
+                    '<div style="font-size:12.5px;color:#e6edf3;">'
+                    f'<span style="display:inline-block;width:152px;">休憩{_bn}（{_from}〜{_to}）</span>'
+                    f'<b style="color:{_bcol};">{_ccr_fmt(_dur)}{_bsuf}</b></div>'
+                )
+            _detail += (
+                '<div style="border-top:1px solid #33414d;margin-top:7px;padding-top:4px;">'
+                '<div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:3px;">休憩の記録</div>'
+                f'{_bl}'
+                '<div style="font-size:12.5px;color:#9fb3c8;margin-top:2px;">'
+                f'休憩 合計 <b style="color:#fff;">{_ccr_fmt(_btot)}</b></div></div>'
+            )
+
         with _cols[_i % _ncol]:
             st.markdown(
                 f'<div style="background:#1e2730;border-radius:9px;padding:8px 10px;margin:0 0 8px;">'
@@ -4610,6 +4651,27 @@ if selected_key == "ccr":
                 f'</div>',
                 unsafe_allow_html=True,
             )
+            # 休憩ボタン（本人＝ログイン者のカードのみ操作可）。休憩中は全員に状態表示
+            _has_open = any(b.get("e") is None for b in _breaks)
+            _is_me = bool(_my_norm) and (_my_norm == _p["norm"])
+            if _has_open:
+                _open_b = next((b for b in _breaks if b.get("e") is None), None)
+                _open_min = ((_now_epoch - _open_b["s"]) / 60.0) if _open_b else 0.0
+                _bn_open = sum(1 for b in _breaks if b.get("s") is not None)
+                st.markdown(
+                    '<div style="background:#2c3a45;border-radius:7px;padding:5px 6px;text-align:center;margin:1px 0 4px;">'
+                    f'<span style="color:#ffcc80;font-weight:700;font-size:12px;">休憩中（休憩{_bn_open}）</span> '
+                    f'<span style="color:#fff;font-weight:800;font-size:18px;">{_ccr_fmt(_open_min)}</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if _is_me:
+                    if st.button("■ 休憩終了", key=f"kyu_end_{_p['norm']}", use_container_width=True):
+                        _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
+                        st.rerun()
+            elif _is_me:
+                if st.button("☕ 休憩する", key=f"kyu_start_{_p['norm']}", type="primary", use_container_width=True):
+                    _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
+                    st.rerun()
             with st.expander("詳細"):
                 st.markdown(_detail, unsafe_allow_html=True)
     st.markdown(

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>業務棚卸マップ</title>
+<style>
+  :root{
+    --bg:#0f1320; --panel:#161b2e; --panel2:#1b2138; --ink:#e8ecf5; --sub:#9aa6c4;
+    --line:#2a3252; --accent:#5b8cff;
+    --taiou:#3f7fff; --sokushin:#22b07d; --et:#e0902b; --renkei:#c45cff;
+    --chip:#222a44; --chipink:#cdd6f4;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:linear-gradient(180deg,#0d111c,#11162a 40%,#0d111c);
+    color:var(--ink);
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",Meiryo,sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:28px 22px 60px}
+  header.top{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    flex-wrap:wrap; gap:12px; border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:8px;
+  }
+  h1{font-size:26px; margin:0; letter-spacing:.04em}
+  h1 .sub{display:block; font-size:13px; color:var(--sub); font-weight:400; margin-top:6px; letter-spacing:.02em}
+  .meta{font-size:12px; color:var(--sub); text-align:right}
+
+  /* 凡例 */
+  .legend{
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; margin:18px 0 26px;
+  }
+  .legend .lg-title{font-size:12px; color:var(--sub); margin-right:6px}
+  .tag{
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11.5px; padding:3px 9px; border-radius:999px;
+    background:var(--chip); color:var(--chipink); border:1px solid var(--line); white-space:nowrap;
+  }
+  .tag b{font-weight:700}
+  .tag.sf{background:#1c2b4a; color:#9cc0ff; border-color:#2c4a7a}
+  .tag.spsh{background:#16331f; color:#86e0a8; border-color:#1f5a32}
+  .tag.cb{background:#3a2230; color:#ff9bc4; border-color:#5a2c41}
+  .tag.cx{background:#3a2420; color:#ffb38a; border-color:#5a3326}
+  .tag.cw{background:#1f2a44; color:#a9c2ff; border-color:#33436e}
+  .tag.line{background:#13331c; color:#7fe39a; border-color:#1f5a30}
+  .tag.sys{background:#2c2740; color:#c9b3ff; border-color:#463a6b}
+  .tag.call{background:#22324d; color:#bcd4ff; border-color:#36507d}
+
+  /* セクション */
+  .section{margin:0 0 30px}
+  .sec-head{
+    display:flex; align-items:center; gap:12px; margin:0 0 14px;
+  }
+  .sec-bar{width:8px; height:30px; border-radius:6px}
+  .sec-head h2{font-size:20px; margin:0; letter-spacing:.03em}
+  .sec-head .note{font-size:12px; color:var(--sub); margin-left:4px}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:14px}
+
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px 16px 14px; position:relative; overflow:hidden;
+  }
+  .card::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--accent)}
+  .card h3{
+    font-size:15.5px; margin:0 0 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .card h3 .idx{
+    font-size:11px; color:#0d111c; background:var(--accent);
+    width:20px; height:20px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-weight:700;
+  }
+  ol.steps{margin:0 0 12px; padding:0; list-style:none; counter-reset:s}
+  ol.steps li{
+    position:relative; padding:5px 0 5px 26px; font-size:13.2px; color:#dfe5f5;
+    border-bottom:1px dashed rgba(120,135,180,.14);
+  }
+  ol.steps li:last-child{border-bottom:none}
+  ol.steps li::before{
+    counter-increment:s; content:counter(s);
+    position:absolute; left:0; top:6px; width:18px; height:18px; border-radius:50%;
+    background:var(--chip); color:var(--sub); font-size:10.5px; display:flex; align-items:center; justify-content:center; border:1px solid var(--line);
+  }
+  ol.steps li .arrow{color:var(--sub); font-weight:700; padding:0 3px}
+  .opt{color:var(--sub); font-size:11px; border:1px dashed var(--line); border-radius:5px; padding:0 5px; margin-right:5px}
+  .card .tags{display:flex; flex-wrap:wrap; gap:6px; padding-top:4px; border-top:1px solid var(--line); margin-top:auto}
+
+  /* セクション別アクセント */
+  .s-taiou .sec-bar{background:var(--taiou)} .s-taiou .card::before{background:var(--taiou)} .s-taiou .card h3 .idx{background:var(--taiou)}
+  .s-sokushin .sec-bar{background:var(--sokushin)} .s-sokushin .card::before{background:var(--sokushin)} .s-sokushin .card h3 .idx{background:var(--sokushin)}
+  .s-et .sec-bar{background:var(--et)} .s-et .card::before{background:var(--et)} .s-et .card h3 .idx{background:var(--et)}
+  .s-renkei .sec-bar{background:var(--renkei)} .s-renkei .card::before{background:var(--renkei)} .s-renkei .card h3 .idx{background:var(--renkei)}
+
+  .card{display:flex; flex-direction:column}
+
+  footer{margin-top:30px; padding-top:16px; border-top:1px solid var(--line); font-size:12px; color:var(--sub)}
+
+  @media print{
+    body{background:#fff; color:#111}
+    .wrap{max-width:none}
+    .card,.legend{background:#fff; border-color:#ccc; break-inside:avoid}
+    .sec-head h2,h1{color:#111}
+    .tag{background:#f0f0f0; color:#222; border-color:#ccc}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>業務棚卸マップ
+      <span class="sub">CS部門の全業務と作業フロー一覧 — 「何の業務で・どこに・何を残すか」を一目で</span>
+    </h1>
+    <div class="meta">
+      作成日 2026-06-26<br>
+      区分：対応 / 促進 / 再ET処理 / キャリア・上位店連携
+    </div>
+  </header>
+
+  <!-- 凡例 -->
+  <div class="legend">
+    <span class="lg-title">タグ凡例（作業で触れるツール・連携先）：</span>
+    <span class="tag sf"><b>SF</b> 活動の記録</span>
+    <span class="tag spsh"><b>スプシ</b></span>
+    <span class="tag cb"><b>CB</b> 処理/申請書</span>
+    <span class="tag cx"><b>CX</b> キャンセル</span>
+    <span class="tag cw"><b>CW</b> チャットワーク</span>
+    <span class="tag line"><b>LINE</b></span>
+    <span class="tag call"><b>次回コール</b> 設定</span>
+    <span class="tag sys"><b>外部システム</b> キャリア/金剛 等</span>
+  </div>
+
+  <!-- ■ 対応 -->
+  <section class="section s-taiou">
+    <div class="sec-head">
+      <span class="sec-bar"></span>
+      <h2>■ 対応</h2>
+      <span class="note">開通前 ／ 開通後 ／ 自社OP</span>
+    </div>
+    <div class="grid">
+
+      <div class="card">
+        <h3><span class="idx">1</span>開通前 顧客対応</h3>
+        <ol class="steps">
+          <li>架電 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す</li>
+          <li>CB処理（SF・スプシ・申請書処理）</li>
+          <li>CX処理（キャリアシステムにてキャンセルリクエスト）</li>
+          <li>チャットワーク もしくは LINE で上位店報告</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag cb">CB</span><span class="tag spsh">スプシ</span>
+          <span class="tag cx">CX</span><span class="tag cw">CW</span><span class="tag line">LINE</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">2</span>開通後 顧客対応</h3>
+        <ol class="steps">
+          <li>架電 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す</li>
+          <li>CB処理（SF・スプシ・申請書手配処理）</li>
+          <li>CX処理（キャリアシステムにてキャンセルリクエスト）</li>
+          <li>チャットワーク もしくは LINE で上位店報告</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag cb">CB</span><span class="tag spsh">スプシ</span>
+          <span class="tag cx">CX</span><span class="tag cw">CW</span><span class="tag line">LINE</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">3</span>自社OP</h3>
+        <ol class="steps">
+          <li>架電 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す</li>
+          <li>CB処理（SF・スプシ・申請書手配処理）</li>
+          <li>OP解除手続き</li>
+          <li>チャットワーク もしくは LINE で上位店報告</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag cb">CB</span><span class="tag spsh">スプシ</span>
+          <span class="tag sys">OP解除</span><span class="tag cw">CW</span><span class="tag line">LINE</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ■ 促進 -->
+  <section class="section s-sokushin">
+    <div class="sec-head">
+      <span class="sec-bar"></span>
+      <h2>■ 促進</h2>
+      <span class="note">コンサル対応・SO促進・開通後FC・工事取得・代理店コンサル架電・NIFTY支払い方法変更FC</span>
+    </div>
+    <div class="grid">
+
+      <div class="card">
+        <h3><span class="idx">1</span>代理店コンサル架電</h3>
+        <ol class="steps">
+          <li>代理店コンサル窓口に架電 <span class="arrow">→</span> 専用項目に確認内容を入力 <span class="arrow">→</span> ステータス変更 <span class="arrow">→</span> 次回コール設定</li>
+          <li>SO促進で確認した内容をコンサルに報告</li>
+          <li><span class="opt">必要時</span>LINE送信</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">専用項目</span><span class="tag call">次回コール</span><span class="tag line">LINE</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">2</span>SOコンサル</h3>
+        <ol class="steps">
+          <li>顧客架電 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す <span class="arrow">→</span> 次回コール設定</li>
+          <li>コンサル連携用スプシに案件と連携内容を記載</li>
+          <li><span class="opt">必要時</span>LINE送信</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag spsh">連携スプシ</span><span class="tag call">次回コール</span><span class="tag line">LINE</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">3</span>NIFTYコンサル</h3>
+        <ol class="steps">
+          <li>顧客架電 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す <span class="arrow">→</span> 次回コール設定</li>
+          <li>上位店にチャットワーク連携</li>
+          <li>コンサル連携用スプシに入力</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag cw">CW</span><span class="tag spsh">連携スプシ</span><span class="tag call">次回コール</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">4</span>開通後FC</h3>
+        <ol class="steps">
+          <li>顧客架電 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す <span class="arrow">→</span> 次回コール設定</li>
+          <li>スプシに案件を控え、自動配信されているか定期的に確認</li>
+          <li><span class="opt">必要時</span>CB申請書手配（スプシ）</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag spsh">スプシ</span><span class="tag cb">CB申請書</span><span class="tag call">次回コール</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">5</span>SO工事取得</h3>
+        <ol class="steps">
+          <li>顧客架電 <span class="arrow">→</span> 三者間通話 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す <span class="arrow">→</span> 次回コール設定</li>
+          <li><span class="opt">必要時</span>LINE送信</li>
+        </ol>
+        <div class="tags">
+          <span class="tag call">三者間通話</span><span class="tag sf">SF</span><span class="tag call">次回コール</span><span class="tag line">LINE</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">6</span>NIFTY工事取得</h3>
+        <ol class="steps">
+          <li>顧客架電（コンサル窓口へ誘導）<span class="arrow">→</span> 活動の記録にてSFに履歴を残す <span class="arrow">→</span> 次回コール設定</li>
+          <li>チャットワークにて上位店連携</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag cw">CW</span><span class="tag call">次回コール</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">7</span>NIFTY 支払い方法変更FC</h3>
+        <ol class="steps">
+          <li>支払い方法とルーター付帯状況に相違がある人へFC（対象抽出）</li>
+          <li>お客様架電 <span class="arrow">→</span> 活動の記録にてSFに履歴を残す <span class="arrow">→</span> 次回コール設定</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sf">SF</span><span class="tag call">次回コール</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ■ 再ET処理 -->
+  <section class="section s-et">
+    <div class="sec-head">
+      <span class="sec-bar"></span>
+      <h2>■ 再ET処理</h2>
+      <span class="note">対象：名前 / 生年月日 / 固定電話付帯状況 / プランが3年になっていない / OPの付帯ミス</span>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="idx">1</span>再ET処理</h3>
+        <ol class="steps">
+          <li>金剛システムにて再ET処理</li>
+          <li><span class="opt">必要時</span>上位店にチャットワーク連携</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sys">金剛システム</span><span class="tag cw">CW</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ■ キャリア連携・上位店連携 -->
+  <section class="section s-renkei">
+    <div class="sec-head">
+      <span class="sec-bar"></span>
+      <h2>■ キャリア連携・上位店連携</h2>
+      <span class="note">グランコミュニケーション ／ アプクロ</span>
+    </div>
+    <div class="grid">
+
+      <div class="card">
+        <h3><span class="idx">1</span>グランコミュニケーションからの連携</h3>
+        <ol class="steps">
+          <li>連携区分：消セン / 自社OP / 代サポ</li>
+          <li>顧客 もしくは 事業者との電話対応 <span class="arrow">→</span> SFに履歴を残す <span class="arrow">→</span> LINE もしくは チャットワークにて報告</li>
+          <li><span class="opt">必要時</span>CB処理（SF・スプシ・申請書手配処理）</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sys">消セン/OP/代サポ</span><span class="tag sf">SF</span><span class="tag line">LINE</span>
+          <span class="tag cw">CW</span><span class="tag cb">CB</span><span class="tag spsh">スプシ</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">2</span>アプクロ連携</h3>
+        <ol class="steps">
+          <li>NIFTY申し込み情報の変更依頼</li>
+          <li><span class="opt">必要時</span>SFの項目変更</li>
+        </ol>
+        <div class="tags">
+          <span class="tag sys">アプクロ</span><span class="tag sf">SF項目変更</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    ※ 本資料はCS部門の業務棚卸を一覧化したものです。各業務の共通動線は「架電 → SF（活動の記録）→ 必要に応じてCB/CX処理・上位店報告」。<br>
+    タグは各業務で触れるツール・連携先を示します（SF=Salesforce、スプシ=Googleスプレッドシート、CW=チャットワーク）。
+  </footer>
+
+</div>
+</body>
+</html>

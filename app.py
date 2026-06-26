@@ -4085,6 +4085,7 @@ if selected_key == "ccr":
     _CCR_PROC = 1.5       # 有効対話1件あたりの処理時間(分)=1分30秒
     _CCR_RUSU_PROC = 0.5  # 無効(留守)1件あたりの処理時間(分)=30秒
     _CCR_OTHER_AVG = 3.5  # 11種以外(その他)の標準平均通話(分)
+    _CCR_RING_SEC = 40    # 1発信あたりの発信待機時間(秒)=コール音が鳴っている時間。結果問わず加算
     # 表示順（このリストの種別のみ対象）
     _CCR_ORDER = [
         "開通後対応", "開通前対応", "キャンセル対応", "工事取得", "1週間後FC",
@@ -4497,6 +4498,8 @@ if selected_key == "ccr":
         # 有効対話時間 = 通話時間 ＋ 有効件数×処理1分30秒
         _talk_min = _actual_talk + _eff_total * _CCR_PROC
         _proc_min = _rusu_total * _CCR_RUSU_PROC
+        # 発信待機時間 = 全発信件数（有効＋無効）× 40秒（コール音が鳴っている時間）
+        _ring_min = (_eff_total + _rusu_total) * (_CCR_RING_SEC / 60.0)
         # シフトに合わせた業務時間（シフト未登録→標準10:00-19:00）
         _sh = _ccr_shifts.get(_norm)
         _st = _hm2min(_sh[0]) if _sh else None
@@ -4504,11 +4507,11 @@ if selected_key == "ccr":
         if _st is None or _en is None:
             _st, _en = 600, 1140
         _raw_p, _work_p = _ccr_biz(_st, _en)
-        _blank_min = max(0.0, _work_p - _talk_min - _proc_min)
+        _blank_min = max(0.0, _work_p - _talk_min - _proc_min - _ring_min)
         _ccr_people.append({
             "name": _p["name"], "norm": _norm, "types": _p["types"],
             "eff": _eff_total, "rusu": _rusu_total,
-            "talk": _talk_min, "proc": _proc_min, "blank": _blank_min,
+            "talk": _talk_min, "proc": _proc_min, "ring": _ring_min, "blank": _blank_min,
             "work": _work_p, "raw": _raw_p, "shift": _sh,
             "calls": sum(v[0] for v in _p["types"].values()) + _o["eff_n"] + _o["rusu_n"],
             "other": _o,
@@ -4523,9 +4526,10 @@ if selected_key == "ccr":
     except Exception:
         _ed_map = {}
     for _i, _p in enumerate(_ccr_people):
-        _denom = max(_p["work"], _p["talk"] + _p["proc"], 1.0)
+        _denom = max(_p["work"], _p["talk"] + _p["proc"] + _p["ring"], 1.0)
         _tw = _p["talk"] / _denom * 100
         _pw = _p["proc"] / _denom * 100
+        _rw = _p["ring"] / _denom * 100
         _bw = _p["blank"] / _denom * 100
         _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
         # 現在編集中の案件（電話番号＋編集中になってからの経過。複数は縦に並べる）
@@ -4572,7 +4576,9 @@ if selected_key == "ccr":
             f'<span style="color:#8bd6a0;">■有効対話時間：<b>{_ccr_fmt(_p["talk"])}</b>'
             f'<span style="color:#7a8a99;font-size:11px;">（有効{_p["eff"]}件×(各平均+処理1分30秒)）</span></span><br>'
             f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
-            f'<span style="color:#7a8a99;font-size:11px;">（無効{_p["rusu"]}件×30秒）</span></span></div>'
+            f'<span style="color:#7a8a99;font-size:11px;">（無効{_p["rusu"]}件×30秒）</span></span><br>'
+            f'<span style="color:#64b5f6;">■発信待機時間：<b>{_ccr_fmt(_p["ring"])}</b>'
+            f'<span style="color:#7a8a99;font-size:11px;">（全{_p["eff"] + _p["rusu"]}件×40秒）</span></span></div>'
             '<div style="border-top:1px solid #33414d;margin-top:7px;padding-top:3px;">'
             f'{_types_html}</div>'
         )
@@ -4592,12 +4598,15 @@ if selected_key == "ccr":
                 f'{(str(round(_tw))+"%") if _tw >= 9 else ""}</div>'
                 f'<div style="width:{_pw:.1f}%;background:#fbc02d;color:#3a2f00;overflow:hidden;">'
                 f'{(str(round(_pw))+"%") if _pw >= 9 else ""}</div>'
+                f'<div style="width:{_rw:.1f}%;background:#42a5f5;color:#fff;overflow:hidden;">'
+                f'{(str(round(_rw))+"%") if _rw >= 9 else ""}</div>'
                 f'<div style="width:{_bw:.1f}%;background:#ff5252;color:#fff;overflow:hidden;">'
                 f'{(str(round(_bw))+"%") if _bw >= 9 else ""}</div></div>'
                 f'<div style="font-size:11.5px;margin-top:4px;line-height:1.5;">'
                 f'<span style="color:#ff5252;">空白<b style="color:#ff5252;">{_ccr_fmt(_p["blank"])}</b></span><br>'
                 f'<span style="color:#8bd6a0;">通話<b>{_ccr_fmt(_p["talk"])}</b></span>'
-                f'<span style="color:#ffd54f;"> 処理<b>{_ccr_fmt(_p["proc"])}</b></span></div>'
+                f'<span style="color:#ffd54f;"> 処理<b>{_ccr_fmt(_p["proc"])}</b></span>'
+                f'<span style="color:#64b5f6;"> 待機<b>{_ccr_fmt(_p["ring"])}</b></span></div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
@@ -4612,7 +4621,9 @@ if selected_key == "ccr":
         '<b style="color:#8bd6a0;">有効対話時間</b>＝有効コールの<b>実通話時間</b>（Zoom通話履歴と電話番号＋時刻で突合）'
         ' ＋ 有効件数×処理1分30秒<br>'
         '<b style="color:#ffd54f;">無効処理時間</b>＝留守（無効）件数 × 30秒<br>'
-        '<b style="color:#ff5252;">空白の時間</b>＝業務時間 −（有効対話時間 ＋ 無効処理時間）<br>'
+        '<b style="color:#64b5f6;">発信待機時間</b>＝全発信件数（有効＋無効）× 40秒'
+        '<span style="color:#7a8a99;">（コール音が鳴っている時間。結果問わず加算）</span><br>'
+        '<b style="color:#ff5252;">空白の時間</b>＝業務時間 −（有効対話時間 ＋ 無効処理時間 ＋ 発信待機時間）<br>'
         '<span style="color:#7a8a99;">'
         '・有効/無効＝コール結果が留守=無効、それ以外（完了・再コール等）=有効。<br>'
         '・対象は<b>ステータス入力済の手動記録のみ</b>。Zoom自動発信ログ（ステータス空欄）は二重計上になるため除外。<br>'

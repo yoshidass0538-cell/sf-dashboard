@@ -4540,6 +4540,8 @@ if selected_key == "ccr":
         _kyu_day = {}
     _lu_ccr = st.session_state.get("logged_in_user") or {}
     _my_norm = (_lu_ccr.get("display_name") or "").replace(" ", "").replace("　", "")
+    # 吉田 颯 でログイン時は管理者として他メンバーの休憩ボタンも操作できる
+    _ccr_admin = (_my_norm == "吉田颯")
     _now_epoch = _ccr_now.timestamp()
     # 携帯端末（スマホ等）からは休憩ボタンを押せないようにする（User-Agent判定）
     try:
@@ -4717,12 +4719,12 @@ if selected_key == "ccr":
                     unsafe_allow_html=True,
                 )
                 if st.button("■ 休憩終了", key=f"kyu_end_{_p['norm']}",
-                             disabled=(not _is_me) or _is_mobile, use_container_width=True):
+                             disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile, use_container_width=True):
                     _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     st.rerun()
             else:
                 if st.button("☕ 休憩する", key=f"kyu_start_{_p['norm']}", type="primary",
-                             disabled=(not _is_me) or _is_mobile, use_container_width=True):
+                             disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile, use_container_width=True):
                     _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     st.rerun()
             if _is_me:

@@ -4741,6 +4741,17 @@ if selected_key == "kpi_time_report":
         _rep.clear_cache()
         st.rerun()
 
+    with st.expander("📖 指標の定義", expanded=False):
+        st.markdown(
+            "- **業務時間** ＝ シフト稼働（開始〜終了）− 休憩\n"
+            "- **<span style='color:#8bd6a0'>有効対話</span>** ＝ 有効コールの実通話時間（Zoom突合）＋ 件数あたり事務処理\n"
+            "- **<span style='color:#ffd54f'>無効処理</span>** ＝ 留守コールの処理時間\n"
+            "- **<span style='color:#64b5f6'>発信待機</span>** ＝ 全発信件数 × コール音40秒\n"
+            "- **<span style='color:#ff5252'>空白</span>** ＝ 業務時間 −（有効対話＋無効処理＋発信待機）= 手の空いていた時間\n"
+            "- **稼働率** ＝ (有効対話＋無効処理＋発信待機) ÷ 業務時間　／　**有効率** ＝ 有効対話数 ÷ 総コール数",
+            unsafe_allow_html=True,
+        )
+
     _rows = _rep.get_landings()
     if not _rows:
         st.info("まだ保存データがありません。時間効率表を稼働日に表示すると、約15分ごとに着地が保存されます。")
@@ -4762,21 +4773,100 @@ if selected_key == "kpi_time_report":
         ("blank", "空白"), ("kyukei", "休憩"),
     ]
     _CNTCOLS = [("eff", "有効"), ("rusu", "無効"), ("calls", "件数")]
+    # 時間構成の内訳（キー, ラベル, 色）— 元の時間効率表(CCR)と同配色
+    _COMP = [
+        ("talk", "有効対話", "#8bd6a0"),
+        ("proc", "無効処理", "#ffd54f"),
+        ("ring", "発信待機", "#64b5f6"),
+        ("blank", "空白", "#ff5252"),
+    ]
+
+    def _pct(n, d):
+        return (n / d * 100.0) if d else 0.0
 
     def _render_period(_sub: pd.DataFrame, _kp: str):
         if _sub.empty:
             st.info("該当期間のデータがありません。")
             return
+        import plotly.graph_objects as go
         g = _sub.groupby("person", as_index=False)[_METnium].sum()
-        g = g.sort_values("calls", ascending=False)
+        g = g.sort_values("calls", ascending=False).reset_index(drop=True)
+        n_people = len(g)
+
+        # ---- 全体サマリー ----
+        t_work = g["work"].sum(); t_talk = g["talk"].sum(); t_proc = g["proc"].sum()
+        t_ring = g["ring"].sum(); t_blank = g["blank"].sum()
+        t_calls = g["calls"].sum(); t_eff = g["eff"].sum(); t_rusu = g["rusu"].sum()
+        t_katsu = t_talk + t_proc + t_ring  # 稼働（空白以外）
+
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("対象人数", f"{n_people}人")
+        m2.metric("総コール数", f"{int(t_calls):,}")
+        m3.metric("有効対話数", f"{int(t_eff):,}", f"有効率 {_pct(t_eff, t_calls):.0f}%", delta_color="off")
+        m4.metric("合計業務時間", _mfmt(t_work))
+        m5.metric("平均稼働率", f"{_pct(t_katsu, t_work):.0f}%", f"空白 {_pct(t_blank, t_work):.0f}%", delta_color="off")
+
+        # ---- 全体の時間構成（ドーナツ）＋ 個人別 時間構成（積み上げ横棒）----
+        cL, cR = st.columns([1, 2])
+        with cL:
+            st.markdown("**全体の時間構成**")
+            _pie = go.Figure(go.Pie(
+                labels=[l for _, l, _ in _COMP],
+                values=[t_talk, t_proc, t_ring, t_blank],
+                marker_colors=[c for *_, c in _COMP], hole=0.55, sort=False,
+                textinfo="percent", textfont_size=12,
+            ))
+            _pie.update_layout(
+                template="plotly_dark", height=280, showlegend=True,
+                margin=dict(t=10, b=10, l=10, r=10), paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center", font=dict(size=11)),
+            )
+            st.plotly_chart(_pie, use_container_width=True, key=f"pie_{_kp}")
+        with cR:
+            st.markdown("**個人別 時間構成（分）**")
+            _bar = go.Figure()
+            for _k, _lbl, _col in _COMP:
+                _bar.add_bar(y=g["person"], x=g[_k], name=_lbl, orientation="h",
+                             marker_color=_col, hovertemplate="%{y}<br>" + _lbl + " %{x:.0f}分<extra></extra>")
+            _bar.update_layout(
+                template="plotly_dark", barmode="stack", height=max(260, 44 * n_people + 90),
+                margin=dict(t=30, b=10, l=10, r=10), paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)", bargap=0.28,
+                legend=dict(orientation="h", y=1.07, x=0, font=dict(size=11)),
+                xaxis_title="分", yaxis=dict(autorange="reversed"),
+            )
+            st.plotly_chart(_bar, use_container_width=True, key=f"bar_{_kp}")
+
+        # ---- 個人別 稼働効率テーブル（バー付き）----
+        st.markdown("**個人別 稼働効率**")
+        _wk = g["work"].replace(0, 1)
         disp = pd.DataFrame()
         disp["担当者"] = g["person"]
-        for _k, _lbl in _COLS:
-            disp[_lbl] = g[_k].apply(_mfmt)
-        for _k, _lbl in _CNTCOLS:
-            disp[_lbl] = g[_k].astype(int)
-        st.dataframe(disp, use_container_width=True, hide_index=True)
-        # 提出用CSV（分の数値）
+        disp["業務時間"] = g["work"].apply(_mfmt)
+        disp["稼働率"] = ((g["talk"] + g["proc"] + g["ring"]) / _wk * 100).round().astype(int)
+        disp["空白率"] = (g["blank"] / _wk * 100).round().astype(int)
+        disp["有効対話"] = g["talk"].apply(_mfmt)
+        disp["件数"] = g["calls"].astype(int)
+        disp["有効/無効"] = g["eff"].astype(int).astype(str) + " / " + g["rusu"].astype(int).astype(str)
+        disp["有効率"] = (g["eff"] / g["calls"].replace(0, 1) * 100).round().astype(int)
+        st.dataframe(
+            disp, use_container_width=True, hide_index=True,
+            column_config={
+                "稼働率": st.column_config.ProgressColumn("稼働率", format="%d%%", min_value=0, max_value=100),
+                "空白率": st.column_config.ProgressColumn("空白率", format="%d%%", min_value=0, max_value=100),
+                "有効率": st.column_config.ProgressColumn("有効率", format="%d%%", min_value=0, max_value=100),
+            },
+        )
+
+        # ---- 詳細データ（全項目）＋ 提出用CSV ----
+        with st.expander("詳細データ（全項目・分）", expanded=False):
+            det = pd.DataFrame()
+            det["担当者"] = g["person"]
+            for _k, _lbl in _COLS:
+                det[_lbl] = g[_k].apply(_mfmt)
+            for _k, _lbl in _CNTCOLS:
+                det[_lbl] = g[_k].astype(int)
+            st.dataframe(det, use_container_width=True, hide_index=True)
         raw = pd.DataFrame()
         raw["担当者"] = g["person"]
         for _k, _lbl in _COLS:

@@ -3624,6 +3624,9 @@ elif selected_key == "ccr":
 elif selected_key == "kpi_time_report":
     # 時間効率レポート — 後の専用ブロックで表示
     fetched = None
+elif selected_key in ("ext_seisansei_kaitsu", "ext_gyomu_tanaoshi"):
+    # 外部公開資料(Cloudflare Pages)の埋め込み — 後の専用ブロックで表示
+    fetched = None
 elif selected_key == "skill_tree":
     # スキルツリー — 後の専用ブロックで表示
     fetched = None
@@ -4725,6 +4728,30 @@ if selected_key == "ccr":
         '</div>',
         unsafe_allow_html=True,
     )
+    st.stop()
+
+# 外部公開資料(Cloudflare Pages)の埋め込み表示（資料）
+_EXT_RESOURCES = {
+    "ext_seisansei_kaitsu": ("生産性開通資料", "https://seisansei-kaitsu-shiryo.pages.dev/"),
+    "ext_gyomu_tanaoshi": ("業務棚卸マップ", "https://gyomu-tanaoshi.pages.dev/"),
+}
+if selected_key in _EXT_RESOURCES:
+    import streamlit.components.v1 as _ext_components
+    _ext_title, _ext_url = _EXT_RESOURCES[selected_key]
+    st.title(_ext_title)
+    st.markdown(
+        f'<a href="{_ext_url}" target="_blank" rel="noopener" '
+        'style="display:inline-block;background:#1565c0;color:#fff;padding:8px 18px;'
+        'border-radius:6px;text-decoration:none;font-weight:700;margin-bottom:10px;">'
+        '🔗 別タブで開く</a>'
+        f'<span style="font-size:12px;color:#888;margin-left:10px;">{_ext_url}</span>',
+        unsafe_allow_html=True,
+    )
+    try:
+        _ext_components.iframe(_ext_url, height=1000, scrolling=True)
+    except Exception as _ext_e:
+        st.error(f"埋め込み表示に失敗しました: {_ext_e}")
+        st.info("上の「別タブで開く」からご覧ください。")
     st.stop()
 
 # 時間効率レポート: 日次着地スナップショットを 1日/週間/月間 で集計（資料）

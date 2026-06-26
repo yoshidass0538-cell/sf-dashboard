@@ -2465,6 +2465,20 @@ METRICS: list[Metric] = [
         category="資料",
     ),
     Metric(
+        key="ext_seisansei_kaitsu",
+        label="生産性開通資料",
+        description="外部公開資料（Cloudflare Pages）を埋め込み表示",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
+        key="ext_gyomu_tanaoshi",
+        label="業務棚卸マップ",
+        description="外部公開資料（Cloudflare Pages）を埋め込み表示",
+        fetch=lambda sf: pd.DataFrame(),
+        category="資料",
+    ),
+    Metric(
         key="cs_shift_calendar",
         label="シフト表",
         description="CS促進全員の月間シフトをカレンダー形式で表示",

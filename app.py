@@ -4091,7 +4091,7 @@ if selected_key == "ccr":
     _CCR_PROC = 1.5       # 有効対話1件あたりの処理時間(分)=1分30秒
     _CCR_RUSU_PROC = 0.5  # 無効(留守)1件あたりの処理時間(分)=30秒
     _CCR_OTHER_AVG = 3.5  # 11種以外(その他)の標準平均通話(分)
-    _CCR_RING_SEC = 40    # 1発信あたりの発信待機時間(秒)=コール音が鳴っている時間。結果問わず加算
+    _CCR_RING_SEC = 90    # 1発信あたりの発信待機時間(秒)=1分30秒。コール音が鳴っている時間。結果問わず加算
     # 表示順（このリストの種別のみ対象）
     _CCR_ORDER = [
         "開通後対応", "開通前対応", "キャンセル対応", "工事取得", "1週間後FC",
@@ -4504,7 +4504,7 @@ if selected_key == "ccr":
         # 有効対話時間 = 通話時間 ＋ 有効件数×処理1分30秒
         _talk_min = _actual_talk + _eff_total * _CCR_PROC
         _proc_min = _rusu_total * _CCR_RUSU_PROC
-        # 発信待機時間 = 全発信件数（有効＋無効）× 40秒（コール音が鳴っている時間）
+        # 発信待機時間 = 全発信件数（有効＋無効）× 90秒（コール音が鳴っている時間）
         _ring_min = (_eff_total + _rusu_total) * (_CCR_RING_SEC / 60.0)
         # シフトに合わせた業務時間（シフト未登録→標準10:00-19:00）
         _sh = _ccr_shifts.get(_norm)
@@ -4621,7 +4621,7 @@ if selected_key == "ccr":
             f'<span style="color:#ffd54f;">■無効処理時間：<b>{_ccr_fmt(_p["proc"])}</b>'
             f'<span style="color:#7a8a99;font-size:11px;">（無効{_p["rusu"]}件×30秒）</span></span><br>'
             f'<span style="color:#64b5f6;">■発信待機時間：<b>{_ccr_fmt(_p["ring"])}</b>'
-            f'<span style="color:#7a8a99;font-size:11px;">（全{_p["eff"] + _p["rusu"]}件×40秒）</span></span></div>'
+            f'<span style="color:#7a8a99;font-size:11px;">（全{_p["eff"] + _p["rusu"]}件×90秒）</span></span></div>'
             '<div style="border-top:1px solid #33414d;margin-top:7px;padding-top:3px;">'
             f'{_types_html}</div>'
         )
@@ -4717,7 +4717,7 @@ if selected_key == "ccr":
         '<b style="color:#8bd6a0;">有効対話時間</b>＝有効コールの<b>実通話時間</b>（Zoom通話履歴と電話番号＋時刻で突合）'
         ' ＋ 有効件数×処理1分30秒<br>'
         '<b style="color:#ffd54f;">無効処理時間</b>＝留守（無効）件数 × 30秒<br>'
-        '<b style="color:#64b5f6;">発信待機時間</b>＝全発信件数（有効＋無効）× 40秒'
+        '<b style="color:#64b5f6;">発信待機時間</b>＝全発信件数（有効＋無効）× 90秒'
         '<span style="color:#7a8a99;">（コール音が鳴っている時間。結果問わず加算）</span><br>'
         '<b style="color:#ff5252;">空白の時間</b>＝業務時間 −（有効対話時間 ＋ 無効処理時間 ＋ 発信待機時間）<br>'
         '<span style="color:#7a8a99;">'
@@ -4773,7 +4773,7 @@ if selected_key == "kpi_time_report":
             "- **業務時間** ＝ シフト稼働（開始〜終了）− 休憩\n"
             "- **<span style='color:#8bd6a0'>有効対話</span>** ＝ 有効コールの実通話時間（Zoom突合）＋ 件数あたり事務処理\n"
             "- **<span style='color:#ffd54f'>無効処理</span>** ＝ 留守コールの処理時間\n"
-            "- **<span style='color:#64b5f6'>発信待機</span>** ＝ 全発信件数 × コール音40秒\n"
+            "- **<span style='color:#64b5f6'>発信待機</span>** ＝ 全発信件数 × コール音90秒（1分30秒）\n"
             "- **<span style='color:#ff5252'>空白</span>** ＝ 業務時間 −（有効対話＋無効処理＋発信待機）= 手の空いていた時間\n"
             "- **稼働率** ＝ (有効対話＋無効処理＋発信待機) ÷ 業務時間　／　**有効率** ＝ 有効対話数 ÷ 総コール数",
             unsafe_allow_html=True,

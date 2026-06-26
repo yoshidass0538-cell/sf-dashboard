@@ -4541,6 +4541,12 @@ if selected_key == "ccr":
     _lu_ccr = st.session_state.get("logged_in_user") or {}
     _my_norm = (_lu_ccr.get("display_name") or "").replace(" ", "").replace("　", "")
     _now_epoch = _ccr_now.timestamp()
+    # 携帯端末（スマホ等）からは休憩ボタンを押せないようにする（User-Agent判定）
+    try:
+        _ccr_ua = st.context.headers.get("User-Agent") or ""
+    except Exception:
+        _ccr_ua = ""
+    _is_mobile = any(_k in _ccr_ua for _k in ("Mobile", "Android", "iPhone", "iPad", "iPod", "Windows Phone"))
 
     # 日次「着地」スナップショットを外部Sheetsに約15分間隔でappend保存（月次資料の元データ）
     _snap_last = st.session_state.get("_ccr_snap_last", 0)
@@ -4698,14 +4704,16 @@ if selected_key == "ccr":
                     unsafe_allow_html=True,
                 )
                 if st.button("■ 休憩終了", key=f"kyu_end_{_p['norm']}",
-                             disabled=not _is_me, use_container_width=True):
+                             disabled=(not _is_me) or _is_mobile, use_container_width=True):
                     _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     st.rerun()
             else:
                 if st.button("☕ 休憩する", key=f"kyu_start_{_p['norm']}", type="primary",
-                             disabled=not _is_me, use_container_width=True):
+                             disabled=(not _is_me) or _is_mobile, use_container_width=True):
                     _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     st.rerun()
+            if _is_me and _is_mobile:
+                st.caption("※ 休憩の開始/終了はPCから操作してください（携帯端末では無効）")
             with st.expander("詳細"):
                 st.markdown(_detail, unsafe_allow_html=True)
     st.markdown(

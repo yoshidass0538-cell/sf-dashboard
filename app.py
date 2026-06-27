@@ -4317,7 +4317,7 @@ if selected_key == "ccr":
                 _ss = str(r.get(_sef[0]) or "")[:5]
                 _se = str(r.get(_sef[1]) or "")[:5]
                 if _ss and _se and not (_ss in ("00:00", "0:00") and _se in ("00:00", "0:00")):
-                    shifts[_snorm] = (_ss, _se)
+                    shifts[_snorm] = (_ss, _se, _snm)
 
         return data, shifts, zoom_ok
 
@@ -4477,26 +4477,28 @@ if selected_key == "ccr":
     if _work_elapsed <= 0:
         st.info("始業（10:00）前です。")
         st.stop()
-    if not _ccr:
-        st.info("本日の対象データがありません。")
+    if not _ccr_shifts:
+        st.info("本日シフトのメンバーがいません。")
         st.stop()
 
     # 個人別に集計（本日シフトのある＝稼働メンバーのみ表示。シフト無しは除外）
     _ccr_people = []
-    for _norm, _p in _ccr.items():
-        if _norm not in _ccr_shifts:
-            continue
-        _eff_types = sum(v[0] - v[1] for v in _p["types"].values())
-        _rusu_total = sum(v[1] for v in _p["types"].values())
-        _o = _p.get("other", {"eff_n": 0, "rusu_n": 0})
+    # 本日シフトのある人は全員表示（未架電＝タスク0でも0件で表示）
+    for _norm, _shv in _ccr_shifts.items():
+        _p = _ccr.get(_norm)
+        _types = _p["types"] if _p else {}
+        _o = (_p.get("other") if _p else None) or {"eff_n": 0, "rusu_n": 0}
+        _name = _p["name"] if _p else (_shv[2] if len(_shv) > 2 else _norm)
+        _eff_types = sum(v[0] - v[1] for v in _types.values())
+        _rusu_total = sum(v[1] for v in _types.values())
         _eff_total = _eff_types + _o["eff_n"]
         _rusu_total += _o["rusu_n"]
         # 標準平均ベースの通話時間（突合できない/Zoom未接続時のフォールバック）
-        _std_talk = sum((v[0] - v[1]) * _CCR_AVG.get(lb, 3.5) for lb, v in _p["types"].items()) \
+        _std_talk = sum((v[0] - v[1]) * _CCR_AVG.get(lb, 3.5) for lb, v in _types.items()) \
             + _o["eff_n"] * _CCR_OTHER_AVG
         if _ccr_zoomok:
             # Zoom実測: 突合できた有効コールは実通話、未突合はその人の標準平均で補完
-            _m = _p.get("matched", {"sec": 0, "n": 0})
+            _m = (_p.get("matched") if _p else None) or {"sec": 0, "n": 0}
             _avg_per = (_std_talk / _eff_total) if _eff_total else 0.0
             _actual_talk = _m["sec"] / 60.0 + max(0, _eff_total - _m["n"]) * _avg_per
         else:
@@ -4506,20 +4508,19 @@ if selected_key == "ccr":
         _proc_min = _rusu_total * _CCR_RUSU_PROC
         # 発信待機時間 = 全発信件数（有効＋無効）× 90秒（コール音が鳴っている時間）
         _ring_min = (_eff_total + _rusu_total) * (_CCR_RING_SEC / 60.0)
-        # シフトに合わせた業務時間（シフト未登録→標準10:00-19:00）
-        _sh = _ccr_shifts.get(_norm)
-        _st = _hm2min(_sh[0]) if _sh else None
-        _en = _hm2min(_sh[1]) if _sh else None
+        # シフトに合わせた業務時間
+        _st = _hm2min(_shv[0])
+        _en = _hm2min(_shv[1])
         if _st is None or _en is None:
             _st, _en = 600, 1140
         _raw_p, _work_p = _ccr_biz(_st, _en)
         _blank_min = max(0.0, _work_p - _talk_min - _proc_min - _ring_min)
         _ccr_people.append({
-            "name": _p["name"], "norm": _norm, "types": _p["types"],
+            "name": _name, "norm": _norm, "types": _types,
             "eff": _eff_total, "rusu": _rusu_total,
             "talk": _talk_min, "proc": _proc_min, "ring": _ring_min, "blank": _blank_min,
-            "work": _work_p, "raw": _raw_p, "shift": _sh,
-            "calls": sum(v[0] for v in _p["types"].values()) + _o["eff_n"] + _o["rusu_n"],
+            "work": _work_p, "raw": _raw_p, "shift": (_shv[0], _shv[1]),
+            "calls": sum(v[0] for v in _types.values()) + _o["eff_n"] + _o["rusu_n"],
             "other": _o,
         })
     _ccr_people.sort(key=lambda x: -x["calls"])

@@ -4483,8 +4483,11 @@ if selected_key == "ccr":
 
     # 個人別に集計（本日シフトのある＝稼働メンバーのみ表示。シフト無しは除外）
     _ccr_people = []
-    # 本日シフトのある人は全員表示（未架電＝タスク0でも0件で表示）
+    # 本日シフトのある人は全員表示（未架電＝タスク0でも0件で表示）。一部は非表示
+    _CCR_HIDE = {"吉田颯", "堀田輝斗"}
     for _norm, _shv in _ccr_shifts.items():
+        if _norm in _CCR_HIDE:
+            continue
         _p = _ccr.get(_norm)
         _types = _p["types"] if _p else {}
         _o = (_p.get("other") if _p else None) or {"eff_n": 0, "rusu_n": 0}

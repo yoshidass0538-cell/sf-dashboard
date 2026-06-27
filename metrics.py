@@ -902,7 +902,7 @@ CS_SHIFT_CALENDAR_EXTRA_EXCLUDED_NORM = {"吉田颯"}
 
 # CS促進(部署)以外だがシフト表に含めるメンバー（CS対応所属）。指定年月以降のみ。
 # Field128__r.Name はマスタ氏名（全角スペース）と完全一致させる
-CS_SHIFT_INCLUDE_FROM = (2026, 7)
+CS_SHIFT_INCLUDE_FROM = (2026, 6)
 CS_SHIFT_INCLUDE_NAMES = [
     "柳原　良久", "対馬　拓人", "杉山　敏樹", "太田　海斗", "早瀬　太一",
 ]

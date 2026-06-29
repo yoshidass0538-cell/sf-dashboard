@@ -131,8 +131,16 @@ def verify_credentials(user_id: str, password: str) -> tuple[bool, str, dict | N
     """
     認証チェック。
     戻り値: (成功フラグ, メッセージ, ユーザー辞書 or None)
+
+    キャッシュが古いと復元直後のユーザーがログインできないため、認証は必ず
+    Sheetsの最新を直読みして判定する（読込失敗時のみキャッシュにフォールバック）。
     """
-    user = find_user(user_id)
+    user_id = (user_id or "").strip()
+    try:
+        users = _read_live_users()
+    except Exception:
+        users = get_users()
+    user = next((u for u in users if u.get("id") == user_id), None)
     if user is None:
         return False, "IDまたはパスワードが違います", None
     if user.get("password") != password:
@@ -261,16 +269,27 @@ def delete_user(user_id: str) -> tuple[bool, str]:
 
 
 def record_login(user_id: str) -> None:
-    """ログイン成功時刻を記録（保存失敗してもログインは通す）。"""
+    """ログイン成功時刻を記録（保存失敗してもログインは通す）。
+
+    重要: 古いキャッシュで全上書きすると他メンバーが脱落する事故になるため、
+    必ずSheetsの最新を直読みしてから該当者のlast_loginだけ更新して保存する。
+    最新が読めない場合は保存しない（履歴更新を諦める＝データ消失より安全側）。
+    """
     try:
-        users = get_users()
-        for u in users:
-            if u.get("id") == user_id:
-                u["last_login"] = _now_jst()
-                break
-        _save_users(users, force=True)
+        users = _read_live_users()
     except Exception:
-        pass
+        return
+    changed = False
+    for u in users:
+        if u.get("id") == user_id:
+            u["last_login"] = _now_jst()
+            changed = True
+            break
+    if changed:
+        try:
+            _save_users(users, force=True)
+        except Exception:
+            pass
 
 
 def clear_users_cache() -> None:

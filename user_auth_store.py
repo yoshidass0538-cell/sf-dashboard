@@ -165,13 +165,35 @@ def save_users(users: list[dict]) -> tuple[bool, str]:
     return _save_users(users)
 
 
+def _read_live_users() -> list[dict]:
+    """Sheetsから最新のユーザーリストを直接読む（キャッシュ非経由）。
+
+    古い画面（キャッシュ）のまま保存すると、他者が追加したユーザーが脱落する事故が
+    起きるため、追加/削除/更新の直前は必ずこれで最新を取得してから差分を適用する。
+    読込結果が空や失敗の場合は、データ消失防止のため例外を投げて保存を中止させる
+    （[[feedback_load_fail_never_silent_empty]] の方針）。
+    """
+    ws = _get_ws()
+    raw = ws.acell(CELL).value
+    if not raw or not str(raw).strip():
+        raise RuntimeError("最新ユーザーの読込結果が空でした")
+    data = json.loads(raw)
+    users = data.get("users")
+    if not isinstance(users, list) or not users:
+        raise RuntimeError("最新ユーザーが空/不正でした")
+    return users
+
+
 def add_user(user_id: str, password: str, display_name: str) -> tuple[bool, str]:
     user_id = (user_id or "").strip()
     password = (password or "").strip()
     display_name = (display_name or "").strip()
     if not user_id or not password or not display_name:
         return False, "ID・パスワード・表示名はすべて必須です"
-    users = get_users()
+    try:
+        users = _read_live_users()
+    except Exception as e:
+        return False, f"最新ユーザーの読込に失敗したため保存を中止しました: {e}"
     if any(u.get("id") == user_id for u in users):
         return False, f"ID「{user_id}」は既に登録されています"
     users.append({
@@ -189,7 +211,10 @@ def update_password(user_id: str, new_password: str) -> tuple[bool, str]:
     new_password = (new_password or "").strip()
     if not new_password:
         return False, "新しいパスワードを入力してください"
-    users = get_users()
+    try:
+        users = _read_live_users()
+    except Exception as e:
+        return False, f"最新ユーザーの読込に失敗したため保存を中止しました: {e}"
     for u in users:
         if u.get("id") == user_id:
             u["password"] = new_password
@@ -201,7 +226,10 @@ def update_display_name(user_id: str, new_name: str) -> tuple[bool, str]:
     new_name = (new_name or "").strip()
     if not new_name:
         return False, "表示名を入力してください"
-    users = get_users()
+    try:
+        users = _read_live_users()
+    except Exception as e:
+        return False, f"最新ユーザーの読込に失敗したため保存を中止しました: {e}"
     for u in users:
         if u.get("id") == user_id:
             u["display_name"] = new_name
@@ -210,7 +238,10 @@ def update_display_name(user_id: str, new_name: str) -> tuple[bool, str]:
 
 
 def set_active(user_id: str, active: bool) -> tuple[bool, str]:
-    users = get_users()
+    try:
+        users = _read_live_users()
+    except Exception as e:
+        return False, f"最新ユーザーの読込に失敗したため保存を中止しました: {e}"
     for u in users:
         if u.get("id") == user_id:
             u["active"] = bool(active)
@@ -219,7 +250,10 @@ def set_active(user_id: str, active: bool) -> tuple[bool, str]:
 
 
 def delete_user(user_id: str) -> tuple[bool, str]:
-    users = get_users()
+    try:
+        users = _read_live_users()
+    except Exception as e:
+        return False, f"最新ユーザーの読込に失敗したため保存を中止しました: {e}"
     new_users = [u for u in users if u.get("id") != user_id]
     if len(new_users) == len(users):
         return False, f"ID「{user_id}」が見つかりません"

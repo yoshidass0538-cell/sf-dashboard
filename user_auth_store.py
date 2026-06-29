@@ -153,12 +153,44 @@ def verify_credentials(user_id: str, password: str) -> tuple[bool, str, dict | N
 _last_save = {"t": 0.0}
 
 
+_BACKUP_WS = "user_auth_backup"
+
+
 def _save_users(users: list[dict], *, force: bool = False) -> tuple[bool, str]:
     now = time.time()
     if not force and now - _last_save["t"] < 5:
         return False, "保存スキップ（5秒以内の連続保存）"
     try:
         ws = _get_ws()
+        # 現在のライブ内容を取得（ドロップガード＋バックアップ用）
+        try:
+            live_raw = ws.acell(CELL).value
+            live_users = json.loads(live_raw).get("users", []) if live_raw else []
+        except Exception:
+            live_raw, live_users = None, []
+
+        # 安全装置①: 既存より2名以上減る保存は脱落事故の疑いとして中止
+        if live_users and (len(live_users) - len(users)) >= 2:
+            return False, (
+                f"保存中止: ユーザーが{len(live_users)}→{len(users)}名へ大幅減少しました"
+                "（脱落事故防止のためブロック）。意図的な一括削除なら管理者へご連絡ください。"
+            )
+
+        # 安全装置②: 構成（ID集合）が変わる時は書き込み前にバックアップ(append-only)
+        if live_raw:
+            try:
+                _live_ids = {u.get("id") for u in live_users}
+                _new_ids = {u.get("id") for u in users}
+                if _live_ids != _new_ids:
+                    sh = ws.spreadsheet
+                    try:
+                        bws = sh.worksheet(_BACKUP_WS)
+                    except Exception:
+                        bws = sh.add_worksheet(title=_BACKUP_WS, rows=4000, cols=2)
+                    bws.append_row([_now_jst(), live_raw], value_input_option="RAW")
+            except Exception:
+                pass
+
         ws.update_acell(CELL, json.dumps({"users": users}, ensure_ascii=False))
         cache = _shared_cache()
         cache["users"] = users

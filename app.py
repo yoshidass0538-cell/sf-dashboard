@@ -4567,10 +4567,31 @@ if selected_key == "ccr":
     # 休憩ボタン用: 今日の休憩記録＋ログインユーザー
     import kyukei_store as _kyu
     _today_str = _ccr_now.strftime("%Y-%m-%d")
+
+    # 休憩記録は kyukei_store 側が TTL なしの cache_resource のため、アプリ起動時に
+    # 空をキャッシュしたまま固定化し「他の人が後から押した休憩が出ない＝記録が消えた」
+    # ように見えることがある。ここでは短TTLで Sheets から読み直す。
+    # 読めない/空のときは None を返し、従来キャッシュにフォールバック（空で上書きしない）。
+    @st.cache_data(ttl=20, show_spinner=False)
+    def _ccr_kyu_fresh(_date, _v=1):
+        import json as _kj
+        ws = _kyu._get_ws()
+        raw = ws.acell(_kyu.CELL).value
+        if not raw:
+            return None
+        return _kj.loads(raw).get(_date, {})
+
     try:
-        _kyu_day = _kyu.get_day(_today_str)
+        _kf = _ccr_kyu_fresh(_today_str)
     except Exception:
-        _kyu_day = {}
+        _kf = None
+    if _kf is not None:
+        _kyu_day = _kf
+    else:
+        try:
+            _kyu_day = _kyu.get_day(_today_str)
+        except Exception:
+            _kyu_day = {}
     _lu_ccr = st.session_state.get("logged_in_user") or {}
     _my_norm = (_lu_ccr.get("display_name") or "").replace(" ", "").replace("　", "")
     # 吉田 颯 でログイン時は管理者として他メンバーの休憩ボタンも操作できる
@@ -4753,13 +4774,21 @@ if selected_key == "ccr":
                 )
                 if st.button("■ 休憩終了", key=f"kyu_end_{_p['norm']}",
                              disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile, use_container_width=True):
-                    _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
-                    st.rerun()
+                    _ok, _msg = _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
+                    _ccr_kyu_fresh.clear()
+                    if _ok:
+                        st.rerun()
+                    else:
+                        st.warning(f"休憩の保存に失敗しました: {_msg}")
             else:
                 if st.button("☕ 休憩する", key=f"kyu_start_{_p['norm']}", type="primary",
                              disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile, use_container_width=True):
-                    _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
-                    st.rerun()
+                    _ok, _msg = _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
+                    _ccr_kyu_fresh.clear()
+                    if _ok:
+                        st.rerun()
+                    else:
+                        st.warning(f"休憩の保存に失敗しました: {_msg}")
             if _is_me:
                 st.markdown(
                     '<div class="ccr-kyu-note">※ 休憩の開始/終了はPCから操作してください'

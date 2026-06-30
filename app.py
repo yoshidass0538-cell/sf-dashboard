@@ -604,9 +604,11 @@ if _cs_only_view and not st.session_state.get("_cs_view_initialized"):
 
 # サイドバー: TOTAL はそのまま表示、他カテゴリはトグル式
 # SECRET / 資料 は「マスタ」ボタンの下に表示するためここではスキップ
+# 1週間後FC / 促進 / タイミー は SECRET タブ内に収納するためここではスキップ
+_SECRET_NESTED_CATS = ("1週間後FC", "促進", "タイミー")
 for container in st.session_state["board_order"]:
     cat = container["header"]
-    if cat in ("SECRET", "資料"):
+    if cat in ("SECRET", "資料") or cat in _SECRET_NESTED_CATS:
         continue
     if _cs_only_view and cat != "ツール":
         continue
@@ -861,6 +863,33 @@ if _secret_container and not _cs_only_view:
             mkey = label_to_key.get(label)
             if mkey and st.sidebar.button(label, key=f"btn_{mkey}", use_container_width=True):
                 st.session_state["selected"] = mkey
+        # SECRET内に収納したカテゴリ（1週間後FC / 促進 / タイミー）を折りたたみで表示
+        for _sub_cat in _SECRET_NESTED_CATS:
+            _sub_c = next(
+                (c for c in st.session_state["board_order"] if c.get("header") == _sub_cat),
+                None,
+            )
+            if not _sub_c or not _sub_c.get("items"):
+                continue
+            _sub_tk = f"cat_open_SECRET_{_sub_cat}"
+            if _sub_tk not in st.session_state:
+                st.session_state[_sub_tk] = False
+            _sub_open = st.session_state[_sub_tk]
+            _sub_arrow = "▼" if _sub_open else "▶"
+            if st.sidebar.button(
+                f"　{_sub_arrow} {_sub_cat}",
+                key=f"toggle_SECRET_{_sub_cat}",
+                use_container_width=True,
+            ):
+                st.session_state[_sub_tk] = not _sub_open
+                st.rerun()
+            if _sub_open:
+                for label in _sub_c.get("items", []):
+                    mkey = label_to_key.get(label)
+                    if mkey and st.sidebar.button(
+                        f"　{label}", key=f"btn_{mkey}", use_container_width=True
+                    ):
+                        st.session_state["selected"] = mkey
 
 # --- 資料カテゴリ（SECRETの直下、パスワード保護）---
 _presen_container = next(

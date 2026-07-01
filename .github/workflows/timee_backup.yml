@@ -10,6 +10,10 @@ concurrency:
 
 jobs:
   backup:
+    # === タイミー機構 一時停止 (2026-07-01) ===
+    # 同期停止に伴い日次バックアップも停止（データは凍結済みで変化しないため）。
+    # 再開するときは下の if 行を削除するだけ。
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

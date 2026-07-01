@@ -10,6 +10,11 @@ concurrency:
 
 jobs:
   sync:
+    # === タイミー機構 一時停止 (2026-07-01) ===
+    # しばらく新規データが入らないため同期を停止。cron-job.org が発火しても
+    # このガードで全ステップがスキップされ、スクレイピング/書込/通知は行わない。
+    # 再開するときは下の if 行を削除するだけ。
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:

@@ -4120,24 +4120,23 @@ if selected_key == "call_type_total":
 
     from datetime import timedelta as _ct_td
 
-    # ── 期間: 月移動（← 先月 / 当月 / 翌月 →）。既定=今月・未来月は不可 ──
+    # ── 期間: 月移動。今月からのオフセット(0=今月, 負=過去月)をコールバックで更新 ──
+    # on_click コールバックはスクリプト本体より前に実行されるため、ラベルとデータの
+    # 参照月が必ず一致する（st.rerun のタイミング差で表が追従しない事象を回避）。
     _ct_today = _ct_date.today()
-    _cur_ym = (_ct_today.year, _ct_today.month)
-    _sel_ym = st.session_state.get("_ct_month") or f"{_ct_today.year}-{_ct_today.month:02d}"
-    try:
-        _sy, _sm = int(_sel_ym[:4]), int(_sel_ym[5:7])
-    except Exception:
-        _sy, _sm = _cur_ym
-    if (_sy, _sm) > _cur_ym:
-        _sy, _sm = _cur_ym
-    _is_cur_month = (_sy, _sm) == _cur_ym
+
+    def _ct_month_shift(_delta):
+        st.session_state["_ct_month_off"] = min(0, int(st.session_state.get("_ct_month_off", 0)) + _delta)
+
+    _off = min(0, int(st.session_state.get("_ct_month_off", 0)))
+    _basem = _ct_today.year * 12 + (_ct_today.month - 1) + _off
+    _sy, _sm = _basem // 12, _basem % 12 + 1
+    _is_cur_month = (_off == 0)
 
     _mnav = st.columns([1, 2, 1])
     with _mnav[0]:
-        if st.button("←　先月", key="ct_prev_month", use_container_width=True):
-            _py, _pm = (_sy - 1, 12) if _sm == 1 else (_sy, _sm - 1)
-            st.session_state["_ct_month"] = f"{_py}-{_pm:02d}"
-            st.rerun()
+        st.button("←　先月", key="ct_prev_month", use_container_width=True,
+                  on_click=_ct_month_shift, args=(-1,))
     with _mnav[1]:
         st.markdown(
             f'<div style="text-align:center;font-size:17px;font-weight:800;color:#fff;'
@@ -4146,10 +4145,8 @@ if selected_key == "call_type_total":
             unsafe_allow_html=True,
         )
     with _mnav[2]:
-        if st.button("翌月　→", key="ct_next_month", disabled=_is_cur_month, use_container_width=True):
-            _ny, _nm = (_sy + 1, 1) if _sm == 12 else (_sy, _sm + 1)
-            st.session_state["_ct_month"] = f"{_ny}-{_nm:02d}"
-            st.rerun()
+        st.button("翌月　→", key="ct_next_month", use_container_width=True,
+                  disabled=_is_cur_month, on_click=_ct_month_shift, args=(1,))
 
     _ct_prod = st.radio("商材", _ctm.CALL_TOTAL_PRODUCTS, horizontal=True, key="ct_product")
 

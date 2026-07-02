@@ -4114,26 +4114,20 @@ if selected_key == "call_type_total":
     from datetime import date as _ct_date
 
     st.subheader("架電種別トータルコール数")
-    st.caption("商材別・日にち別・担当者別に、架電種別ごとのコール結果（完了/留守/再コール/対応依頼、"
-               "開通前後対応は＋処理のみ/キャンセル依頼）を集計します。")
+    st.caption("商材別・日にち別・担当者別に、架電種別ごとのコール結果を集計します。"
+               "各セルは「件数（総数に対する割合）」。完了=緑・留守=赤で濃いほど高割合。"
+               "「キャンセル依頼」はキャンセル受理＋希望の合算。対象=CS促進メンバー。")
 
     _ct_prod = st.radio("商材", _ctm.CALL_TOTAL_PRODUCTS, horizontal=True, key="ct_product")
 
+    # 期間は選択せず「今月(1日〜本日)」を常に全表示
     _ct_today = _ct_date.today()
-    _c1, _c2, _c3 = st.columns([1, 1, 1])
-    with _c1:
-        _ct_start = st.date_input("開始日", value=_ct_today.replace(day=1), key="ct_start")
-    with _c2:
-        _ct_end = st.date_input("終了日", value=_ct_today, key="ct_end")
-    with _c3:
-        _ct_view = st.radio("表示", ["件数", "割合(%)"], horizontal=True, key="ct_view")
-
-    if _ct_start > _ct_end:
-        st.warning("開始日が終了日より後です。日付を修正してください。")
-        st.stop()
+    _ct_start = _ct_today.replace(day=1)
+    _ct_end = _ct_today
+    st.caption(f"表示期間：{_ct_start.strftime('%Y/%m/%d')} 〜 {_ct_end.strftime('%m/%d')}（今月・全日表示）")
 
     @st.cache_data(ttl=300, show_spinner="集計中...")
-    def _ct_load(_s, _e, _prod, _v=1):
+    def _ct_load(_s, _e, _prod, _v=2):
         return _ctm.fetch_call_type_totals(_sf(), _s, _e, _prod)
 
     try:
@@ -4146,31 +4140,118 @@ if selected_key == "call_type_total":
         st.info("該当期間・商材のコール実績がありません。")
         st.stop()
 
-    _ct_res_cols = ["完了", "留守", "再コール", "対応依頼", "処理のみ", "キャンセル依頼"]
+    _people_all = sorted(_ct_df["担当者"].unique())
+    _ct_pick = st.multiselect("担当者で絞り込む（未選択=全員）", _people_all, key="ct_people")
+    _people = _ct_pick or _people_all
 
-    def _ct_to_view(df):
-        """件数DF → 表示用DF（割合(%)なら結果列を合計比の%へ）。"""
-        if _ct_view == "件数":
-            return df
-        d = df.copy()
-        for _c in _ct_res_cols:
-            if _c in d.columns:
-                d[_c] = (d[_c] / d["合計"] * 100).round(1).where(d["合計"] > 0, 0.0)
-        return d.rename(columns={_c: f"{_c}%" for _c in _ct_res_cols})
+    # データがある日付（昇順）を列にする
+    _dcol = sorted(_ct_df["日付"].unique())
 
-    # 種別別サマリー（期間合計）
-    st.markdown("##### 架電種別サマリー（期間合計）")
-    _ct_sum = (
-        _ct_df.groupby("架電種別", sort=False)[_ct_res_cols + ["合計"]]
-        .sum().reindex(_ctm.CALL_TYPE_ORDER).dropna(how="all").fillna(0)
-        .astype(int).reset_index()
-    )
-    st.dataframe(_ct_to_view(_ct_sum), use_container_width=True, hide_index=True)
+    def _dlabel(d):
+        return f"{int(d[5:7])}/{int(d[8:10])}"
 
-    # 明細（日付×担当者×架電種別）
-    st.markdown("##### 明細（日付 × 担当者 × 架電種別）")
-    st.dataframe(_ct_to_view(_ct_df), use_container_width=True, hide_index=True,
-                 height=560)
+    # (担当者, 種別, 日付) -> 件数行
+    _idx = {}
+    for _r in _ct_df.to_dict("records"):
+        _idx[(_r["担当者"], _r["架電種別"], _r["日付"])] = _r
+
+    _BASE = ["完了", "留守", "再コール", "対応依頼"]
+    _EXTRA = ["処理のみ", "キャンセル依頼"]
+    _KIND = {"完了": "g", "留守": "r"}
+
+    _THEAD = ("padding:4px 8px;border:1px solid #33414d;font-size:11px;color:#cfd8dc;"
+              "background:#263340;white-space:nowrap;text-align:center;position:sticky;top:0;")
+    _TL = ("padding:3px 9px;border:1px solid #2b3640;font-size:12px;color:#e6edf3;"
+           "text-align:left;white-space:nowrap;")
+    _TR = ("padding:3px 9px;border:1px solid #2b3640;font-size:12px;color:#e6edf3;"
+           "text-align:right;white-space:nowrap;")
+
+    def _rate_bg(kind, pct):
+        if not kind:
+            return ""
+        a = 0.10 + 0.50 * min(pct, 100) / 100.0
+        if kind == "g":
+            return f"background:rgba(67,160,71,{a:.2f});"
+        return f"background:rgba(229,57,53,{a:.2f});"
+
+    def _num_td(n, strong=False):
+        fw = "font-weight:700;color:#ffffff;" if strong else ""
+        return f'<td style="{_TR}{fw}">{n}</td>'
+
+    def _res_td(n, denom, kind=None):
+        if denom and denom > 0:
+            pct = round(n / denom * 100)
+            bg = _rate_bg(kind, pct)
+            return (f'<td style="{_TR}{bg}">{n} '
+                    f'<span style="color:#aeb9c4;font-size:10px;">({pct}%)</span></td>')
+        return f'<td style="{_TR}color:#6b7885;">0</td>'
+
+    def _label_td(text, indent=False, strong=False):
+        pad = "padding-left:22px;" if indent else ""
+        fw = "font-weight:700;" if strong else ""
+        bg = "background:#22303a;" if strong else ""
+        return f'<td style="{_TL}{pad}{fw}{bg}">{text}</td>'
+
+    st.caption(f"表示担当者：{len(_people)}名／対象日：{len(_dcol)}日")
+
+    for _p in _people:
+        # この担当者に存在する種別
+        _tp = [t for t in _ctm.CALL_TYPE_ORDER
+               if any((_p, t, d) in _idx for d in _dcol)]
+        if not _tp:
+            continue
+
+        # 全種別横断の総数（日別・合計）
+        _grand = {d: {"完了": 0, "留守": 0, "再コール": 0, "対応依頼": 0, "合計": 0} for d in _dcol}
+        for t in _tp:
+            for d in _dcol:
+                r = _idx.get((_p, t, d))
+                if r:
+                    for k in ("完了", "留守", "再コール", "対応依頼"):
+                        _grand[d][k] += r[k]
+                    _grand[d]["合計"] += r["合計"]
+        _gtot = {k: sum(_grand[d][k] for d in _dcol)
+                 for k in ("完了", "留守", "再コール", "対応依頼", "合計")}
+
+        _h = []
+        _h.append(f'<div style="font-size:15px;font-weight:800;color:#fff;margin:14px 0 4px;">{_p}</div>')
+        _h.append('<div style="overflow-x:auto;">')
+        _h.append('<table style="border-collapse:collapse;background:#1e2730;">')
+        # ヘッダー
+        _h.append('<tr><th style="' + _THEAD + 'text-align:left;">架電種別 / 結果</th>'
+                  '<th style="' + _THEAD + '">合計</th>'
+                  + "".join('<th style="' + _THEAD + '">' + _dlabel(d) + '</th>' for d in _dcol)
+                  + '</tr>')
+
+        # ── 総数（全種別横断）ブロック ──
+        _h.append('<tr>' + _label_td("総数（全種別）", strong=True)
+                  + _num_td(_gtot["合計"], strong=True)
+                  + "".join(_num_td(_grand[d]["合計"], strong=True) for d in _dcol) + '</tr>')
+        for k in _BASE:
+            kind = _KIND.get(k)
+            _h.append('<tr>' + _label_td("合計" + k, indent=True)
+                      + _res_td(_gtot[k], _gtot["合計"], kind)
+                      + "".join(_res_td(_grand[d][k], _grand[d]["合計"], kind) for d in _dcol)
+                      + '</tr>')
+
+        # ── 種別ごと ──
+        for t in _tp:
+            _ttot = {d: (_idx[(_p, t, d)]["合計"] if (_p, t, d) in _idx else 0) for d in _dcol}
+            _ttot_sum = sum(_ttot.values())
+            _h.append('<tr>' + _label_td(t + "　総数", strong=True)
+                      + _num_td(_ttot_sum, strong=True)
+                      + "".join(_num_td(_ttot[d], strong=True) for d in _dcol) + '</tr>')
+            _rows = _BASE + (_EXTRA if t in _ctm.CALL_TYPE_TAIOU else [])
+            for k in _rows:
+                kind = _KIND.get(k)
+                _ksum = sum((_idx[(_p, t, d)][k] if (_p, t, d) in _idx else 0) for d in _dcol)
+                _h.append('<tr>' + _label_td(k, indent=True)
+                          + _res_td(_ksum, _ttot_sum, kind)
+                          + "".join(_res_td((_idx[(_p, t, d)][k] if (_p, t, d) in _idx else 0),
+                                            _ttot[d], kind) for d in _dcol)
+                          + '</tr>')
+        _h.append('</table></div>')
+        st.markdown("".join(_h), unsafe_allow_html=True)
 
     _ct_csv = _ct_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
@@ -4178,8 +4259,8 @@ if selected_key == "call_type_total":
         file_name=f"call_type_total_{_ct_prod}_{_ct_start.isoformat()}_{_ct_end.isoformat()}.csv",
         mime="text/csv", key="ct_csv",
     )
-    st.caption("※ 対象=CS促進メンバー。合計=各種別の集計対象コール結果の総和。"
-               "割合は合計に対する各結果の%。「キャンセル依頼」はキャンセル受理＋キャンセル希望の合算。")
+    st.caption("※ 各種別の総数＝集計対象コール結果の総和（開通前/後対応は処理のみ・キャンセル依頼を含む）。"
+               "割合は各種別の総数に対する%。総数（全種別）はその担当者の全対象コールの合算。")
     st.stop()
 
 # CCR(試作): コールランニング — 始業10時からの稼働を個人別に可視化

@@ -4118,13 +4118,50 @@ if selected_key == "call_type_total":
                "各セルは「件数（総数に対する割合）」。完了=緑・留守=赤で濃いほど高割合。"
                "「キャンセル依頼」はキャンセル受理＋希望の合算。対象=CS促進メンバー。")
 
+    from datetime import timedelta as _ct_td
+
+    # ── 期間: 月移動（← 先月 / 当月 / 翌月 →）。既定=今月・未来月は不可 ──
+    _ct_today = _ct_date.today()
+    _cur_ym = (_ct_today.year, _ct_today.month)
+    _sel_ym = st.session_state.get("_ct_month") or f"{_ct_today.year}-{_ct_today.month:02d}"
+    try:
+        _sy, _sm = int(_sel_ym[:4]), int(_sel_ym[5:7])
+    except Exception:
+        _sy, _sm = _cur_ym
+    if (_sy, _sm) > _cur_ym:
+        _sy, _sm = _cur_ym
+    _is_cur_month = (_sy, _sm) == _cur_ym
+
+    _mnav = st.columns([1, 2, 1])
+    with _mnav[0]:
+        if st.button("←　先月", key="ct_prev_month", use_container_width=True):
+            _py, _pm = (_sy - 1, 12) if _sm == 1 else (_sy, _sm - 1)
+            st.session_state["_ct_month"] = f"{_py}-{_pm:02d}"
+            st.rerun()
+    with _mnav[1]:
+        st.markdown(
+            f'<div style="text-align:center;font-size:17px;font-weight:800;color:#fff;'
+            f'background:#1e2730;border-radius:10px;padding:6px 0;">'
+            f'{_sy}年{_sm}月{"　＜今月＞" if _is_cur_month else ""}</div>',
+            unsafe_allow_html=True,
+        )
+    with _mnav[2]:
+        if st.button("翌月　→", key="ct_next_month", disabled=_is_cur_month, use_container_width=True):
+            _ny, _nm = (_sy + 1, 1) if _sm == 12 else (_sy, _sm + 1)
+            st.session_state["_ct_month"] = f"{_ny}-{_nm:02d}"
+            st.rerun()
+
     _ct_prod = st.radio("商材", _ctm.CALL_TOTAL_PRODUCTS, horizontal=True, key="ct_product")
 
-    # 期間は選択せず「今月(1日〜本日)」を常に全表示
-    _ct_today = _ct_date.today()
-    _ct_start = _ct_today.replace(day=1)
-    _ct_end = _ct_today
-    st.caption(f"表示期間：{_ct_start.strftime('%Y/%m/%d')} 〜 {_ct_end.strftime('%m/%d')}（今月・全日表示）")
+    # 期間 = 選択月の1日〜末日（今月のみ本日まで）
+    _ct_start = _ct_date(_sy, _sm, 1)
+    if _is_cur_month:
+        _ct_end = _ct_today
+    else:
+        _nfirst = _ct_date(_sy + 1, 1, 1) if _sm == 12 else _ct_date(_sy, _sm + 1, 1)
+        _ct_end = _nfirst - _ct_td(days=1)
+    st.caption(f"表示期間：{_ct_start.strftime('%Y/%m/%d')} 〜 {_ct_end.strftime('%m/%d')}"
+               f"（{'今月・本日まで' if _is_cur_month else '月全体'}）")
 
     @st.cache_data(ttl=300, show_spinner="集計中...")
     def _ct_load(_s, _e, _prod, _v=2):
@@ -4192,66 +4229,72 @@ if selected_key == "call_type_total":
         bg = "background:#22303a;" if strong else ""
         return f'<td style="{_TL}{pad}{fw}{bg}">{text}</td>'
 
-    st.caption(f"表示担当者：{len(_people)}名／対象日：{len(_dcol)}日")
-
-    for _p in _people:
-        # この担当者に存在する種別
-        _tp = [t for t in _ctm.CALL_TYPE_ORDER
-               if any((_p, t, d) in _idx for d in _dcol)]
-        if not _tp:
-            continue
-
-        # 全種別横断の総数（日別・合計）
-        _grand = {d: {"完了": 0, "留守": 0, "再コール": 0, "対応依頼": 0, "合計": 0} for d in _dcol}
-        for t in _tp:
+    def _ct_render(title, getter):
+        """1つの表を描画。getter(t,d)-> 件数行dict or None。"""
+        tp = [t for t in _ctm.CALL_TYPE_ORDER if any(getter(t, d) for d in _dcol)]
+        if not tp:
+            return
+        grand = {d: {"完了": 0, "留守": 0, "再コール": 0, "対応依頼": 0, "合計": 0} for d in _dcol}
+        for t in tp:
             for d in _dcol:
-                r = _idx.get((_p, t, d))
+                r = getter(t, d)
                 if r:
                     for k in ("完了", "留守", "再コール", "対応依頼"):
-                        _grand[d][k] += r[k]
-                    _grand[d]["合計"] += r["合計"]
-        _gtot = {k: sum(_grand[d][k] for d in _dcol)
-                 for k in ("完了", "留守", "再コール", "対応依頼", "合計")}
+                        grand[d][k] += r[k]
+                    grand[d]["合計"] += r["合計"]
+        gtot = {k: sum(grand[d][k] for d in _dcol)
+                for k in ("完了", "留守", "再コール", "対応依頼", "合計")}
 
-        _h = []
-        _h.append(f'<div style="font-size:15px;font-weight:800;color:#fff;margin:14px 0 4px;">{_p}</div>')
-        _h.append('<div style="overflow-x:auto;">')
-        _h.append('<table style="border-collapse:collapse;background:#1e2730;">')
-        # ヘッダー
-        _h.append('<tr><th style="' + _THEAD + 'text-align:left;">架電種別 / 結果</th>'
-                  '<th style="' + _THEAD + '">合計</th>'
-                  + "".join('<th style="' + _THEAD + '">' + _dlabel(d) + '</th>' for d in _dcol)
-                  + '</tr>')
-
-        # ── 総数（全種別横断）ブロック ──
-        _h.append('<tr>' + _label_td("総数（全種別）", strong=True)
-                  + _num_td(_gtot["合計"], strong=True)
-                  + "".join(_num_td(_grand[d]["合計"], strong=True) for d in _dcol) + '</tr>')
+        h = [f'<div style="font-size:15px;font-weight:800;color:#fff;margin:14px 0 4px;">{title}</div>',
+             '<div style="overflow-x:auto;">',
+             '<table style="border-collapse:collapse;background:#1e2730;">']
+        h.append('<tr><th style="' + _THEAD + 'text-align:left;">架電種別 / 結果</th>'
+                 '<th style="' + _THEAD + '">合計</th>'
+                 + "".join('<th style="' + _THEAD + '">' + _dlabel(d) + '</th>' for d in _dcol) + '</tr>')
+        # 総数（種別関係なし・全種別横断）
+        h.append('<tr>' + _label_td("総数", strong=True)
+                 + _num_td(gtot["合計"], strong=True)
+                 + "".join(_num_td(grand[d]["合計"], strong=True) for d in _dcol) + '</tr>')
         for k in _BASE:
             kind = _KIND.get(k)
-            _h.append('<tr>' + _label_td("合計" + k, indent=True)
-                      + _res_td(_gtot[k], _gtot["合計"], kind)
-                      + "".join(_res_td(_grand[d][k], _grand[d]["合計"], kind) for d in _dcol)
-                      + '</tr>')
-
-        # ── 種別ごと ──
-        for t in _tp:
-            _ttot = {d: (_idx[(_p, t, d)]["合計"] if (_p, t, d) in _idx else 0) for d in _dcol}
-            _ttot_sum = sum(_ttot.values())
-            _h.append('<tr>' + _label_td(t + "　総数", strong=True)
-                      + _num_td(_ttot_sum, strong=True)
-                      + "".join(_num_td(_ttot[d], strong=True) for d in _dcol) + '</tr>')
-            _rows = _BASE + (_EXTRA if t in _ctm.CALL_TYPE_TAIOU else [])
-            for k in _rows:
+            h.append('<tr>' + _label_td("合計" + k + "数", indent=True)
+                     + _res_td(gtot[k], gtot["合計"], kind)
+                     + "".join(_res_td(grand[d][k], grand[d]["合計"], kind) for d in _dcol) + '</tr>')
+        # 種別ごと
+        for t in tp:
+            ttot = {d: (getter(t, d)["合計"] if getter(t, d) else 0) for d in _dcol}
+            ttot_sum = sum(ttot.values())
+            h.append('<tr>' + _label_td(t + "　総数", strong=True)
+                     + _num_td(ttot_sum, strong=True)
+                     + "".join(_num_td(ttot[d], strong=True) for d in _dcol) + '</tr>')
+            rows = _BASE + (_EXTRA if t in _ctm.CALL_TYPE_TAIOU else [])
+            for k in rows:
                 kind = _KIND.get(k)
-                _ksum = sum((_idx[(_p, t, d)][k] if (_p, t, d) in _idx else 0) for d in _dcol)
-                _h.append('<tr>' + _label_td(k, indent=True)
-                          + _res_td(_ksum, _ttot_sum, kind)
-                          + "".join(_res_td((_idx[(_p, t, d)][k] if (_p, t, d) in _idx else 0),
-                                            _ttot[d], kind) for d in _dcol)
-                          + '</tr>')
-        _h.append('</table></div>')
-        st.markdown("".join(_h), unsafe_allow_html=True)
+                ksum = sum((getter(t, d)[k] if getter(t, d) else 0) for d in _dcol)
+                h.append('<tr>' + _label_td(k, indent=True)
+                         + _res_td(ksum, ttot_sum, kind)
+                         + "".join(_res_td((getter(t, d)[k] if getter(t, d) else 0), ttot[d], kind)
+                                   for d in _dcol) + '</tr>')
+        h.append('</table></div>')
+        st.markdown("".join(h), unsafe_allow_html=True)
+
+    # 表示担当者の合算（合計表用）
+    _pset = set(_people)
+    _agg_all = {}
+    for (_pp, _tt, _dd), _rr in _idx.items():
+        if _pp not in _pset:
+            continue
+        a = _agg_all.setdefault((_tt, _dd), {"完了": 0, "留守": 0, "再コール": 0, "対応依頼": 0,
+                                             "処理のみ": 0, "キャンセル依頼": 0, "合計": 0})
+        for k in ("完了", "留守", "再コール", "対応依頼", "処理のみ", "キャンセル依頼", "合計"):
+            a[k] += _rr[k]
+
+    st.caption(f"表示担当者：{len(_people)}名／対象日：{len(_dcol)}日")
+
+    # 先頭に「合計（全担当者合算）」→ その下に各担当者
+    _ct_render("合計（全担当者）", lambda t, d: _agg_all.get((t, d)))
+    for _p in _people:
+        _ct_render(_p, (lambda pp: (lambda t, d: _idx.get((pp, t, d))))(_p))
 
     _ct_csv = _ct_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(

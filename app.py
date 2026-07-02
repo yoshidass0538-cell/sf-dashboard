@@ -3653,6 +3653,9 @@ elif selected_key == "ccr":
 elif selected_key == "kpi_time_report":
     # 時間効率レポート — 後の専用ブロックで表示
     fetched = None
+elif selected_key == "call_type_total":
+    # 架電種別トータルコール数 — 後の専用ブロックで表示
+    fetched = None
 elif selected_key in ("ext_seisansei_kaitsu", "ext_gyomu_tanaoshi"):
     # 外部公開資料(Cloudflare Pages)の埋め込み — 後の専用ブロックで表示
     fetched = None
@@ -4103,6 +4106,80 @@ if selected_key == "day_calls":
     for chart_title, chart_df in fetched.items():
         _render_bar_chart(chart_title, chart_df)
         st.divider()
+    st.stop()
+
+# 架電種別トータルコール数: 商材別×日別×担当者別のコール結果集計
+if selected_key == "call_type_total":
+    import metrics as _ctm
+    from datetime import date as _ct_date
+
+    st.subheader("架電種別トータルコール数")
+    st.caption("商材別・日にち別・担当者別に、架電種別ごとのコール結果（完了/留守/再コール/対応依頼、"
+               "開通前後対応は＋処理のみ/キャンセル依頼）を集計します。")
+
+    _ct_prod = st.radio("商材", _ctm.CALL_TOTAL_PRODUCTS, horizontal=True, key="ct_product")
+
+    _ct_today = _ct_date.today()
+    _c1, _c2, _c3 = st.columns([1, 1, 1])
+    with _c1:
+        _ct_start = st.date_input("開始日", value=_ct_today.replace(day=1), key="ct_start")
+    with _c2:
+        _ct_end = st.date_input("終了日", value=_ct_today, key="ct_end")
+    with _c3:
+        _ct_view = st.radio("表示", ["件数", "割合(%)"], horizontal=True, key="ct_view")
+
+    if _ct_start > _ct_end:
+        st.warning("開始日が終了日より後です。日付を修正してください。")
+        st.stop()
+
+    @st.cache_data(ttl=300, show_spinner="集計中...")
+    def _ct_load(_s, _e, _prod, _v=1):
+        return _ctm.fetch_call_type_totals(_sf(), _s, _e, _prod)
+
+    try:
+        _ct_df = _ct_load(_ct_start.isoformat(), _ct_end.isoformat(), _ct_prod)
+    except Exception as _e:
+        st.error(f"集計に失敗しました: {_e}")
+        st.stop()
+
+    if _ct_df.empty:
+        st.info("該当期間・商材のコール実績がありません。")
+        st.stop()
+
+    _ct_res_cols = ["完了", "留守", "再コール", "対応依頼", "処理のみ", "キャンセル依頼"]
+
+    def _ct_to_view(df):
+        """件数DF → 表示用DF（割合(%)なら結果列を合計比の%へ）。"""
+        if _ct_view == "件数":
+            return df
+        d = df.copy()
+        for _c in _ct_res_cols:
+            if _c in d.columns:
+                d[_c] = (d[_c] / d["合計"] * 100).round(1).where(d["合計"] > 0, 0.0)
+        return d.rename(columns={_c: f"{_c}%" for _c in _ct_res_cols})
+
+    # 種別別サマリー（期間合計）
+    st.markdown("##### 架電種別サマリー（期間合計）")
+    _ct_sum = (
+        _ct_df.groupby("架電種別", sort=False)[_ct_res_cols + ["合計"]]
+        .sum().reindex(_ctm.CALL_TYPE_ORDER).dropna(how="all").fillna(0)
+        .astype(int).reset_index()
+    )
+    st.dataframe(_ct_to_view(_ct_sum), use_container_width=True, hide_index=True)
+
+    # 明細（日付×担当者×架電種別）
+    st.markdown("##### 明細（日付 × 担当者 × 架電種別）")
+    st.dataframe(_ct_to_view(_ct_df), use_container_width=True, hide_index=True,
+                 height=560)
+
+    _ct_csv = _ct_df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "CSVダウンロード（件数明細）", _ct_csv,
+        file_name=f"call_type_total_{_ct_prod}_{_ct_start.isoformat()}_{_ct_end.isoformat()}.csv",
+        mime="text/csv", key="ct_csv",
+    )
+    st.caption("※ 対象=CS促進メンバー。合計=各種別の集計対象コール結果の総和。"
+               "割合は合計に対する各結果の%。「キャンセル依頼」はキャンセル受理＋キャンセル希望の合算。")
     st.stop()
 
 # CCR(試作): コールランニング — 始業10時からの稼働を個人別に可視化

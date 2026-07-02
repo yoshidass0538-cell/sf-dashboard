@@ -4164,6 +4164,8 @@ if selected_key == "ccr":
         cs_names.discard("")
         cs_names = {n for n in cs_names if not any(ex in n for ex in DAY_CALLS_EXCLUDE)}
         cs_names |= DAY_CALLS_INCLUDE
+        # 集計対象日（過去日も指定可）。SOQL日付リテラル YYYY-MM-DD
+        _date_lit = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
         data = {}
 
         def _acc(owner, label, cnt, rusu):
@@ -4178,7 +4180,7 @@ if selected_key == "ccr":
         # 対応以外（指定11種のうち対応を除く）
         for r in _sf().query_all(
             "SELECT Owner.Name oname, Field2_del__c status, Field4_del__c result, COUNT(Id) cnt "
-            "FROM Task WHERE ActivityDate = TODAY AND Field2_del__c != '対応' "
+            f"FROM Task WHERE ActivityDate = {_date_lit} AND Field2_del__c != '対応' "
             "GROUP BY Owner.Name, Field2_del__c, Field4_del__c"
         )["records"]:
             label = _CCR_LABEL.get(_ccr_np(r.get("status")))
@@ -4194,7 +4196,7 @@ if selected_key == "ccr":
         ):
             for r in _sf().query_all(
                 "SELECT Owner.Name oname, Field4_del__c result, COUNT(Id) cnt "
-                f"FROM Task WHERE ActivityDate = TODAY AND Field2_del__c = '対応' {_cond} "
+                f"FROM Task WHERE ActivityDate = {_date_lit} AND Field2_del__c = '対応' {_cond} "
                 "GROUP BY Owner.Name, Field4_del__c"
             )["records"]:
                 cnt = int(r["cnt"])
@@ -4227,7 +4229,7 @@ if selected_key == "ccr":
 
         for r in _sf().query_all(
             "SELECT Owner.Name oname, Field4_del__c result, COUNT(Id) n FROM Task "
-            f"WHERE ActivityDate = TODAY AND {_nott} "
+            f"WHERE ActivityDate = {_date_lit} AND {_nott} "
             "GROUP BY Owner.Name, Field4_del__c"
         )["records"]:
             _n = int(r["n"])
@@ -4270,7 +4272,7 @@ if selected_key == "ccr":
                 _eff_recs = {}
                 for r in _sf().query_all(
                     "SELECT Owner.Name, Account.X1__c, Field1_del__c FROM Task "
-                    "WHERE ActivityDate = TODAY AND Field2_del__c != null "
+                    f"WHERE ActivityDate = {_date_lit} AND Field2_del__c != null "
                     "AND (Field4_del__c = null OR Field4_del__c != '留守')"
                 )["records"]:
                     _nm = ((r.get("Owner") or {}).get("Name") or "").replace(" ", "").replace("　", "")
@@ -4291,7 +4293,7 @@ if selected_key == "ccr":
                 ).json().get("access_token")
                 if _tok:
                     _H = {"Authorization": "Bearer " + _tok}
-                    _tstr = _dt2.now(_JSTz).strftime("%Y-%m-%d")
+                    _tstr = _date_lit
                     _zidx = {}
                     _tkn = None
                     for _pg in range(30):
@@ -4387,11 +4389,48 @@ if selected_key == "ccr":
 
     _ccr_now = _ccr_dt.now(_CCR_JST)
     _now_min = _ccr_now.hour * 60 + _ccr_now.minute + _ccr_now.second / 60.0
+
+    # ── 表示対象日（過去日も閲覧可。既定=本日、未来は不可）──
+    _ccr_today = _ccr_now.date()
+    _sel_iso = st.session_state.get("_ccr_view_ymd") or _ccr_today.isoformat()
     try:
-        _ccr, _ccr_shifts, _ccr_zoomok = _ccr_load(_ccr_now.year, _ccr_now.month, _ccr_now.day)
+        _ccr_sel = _ccr_dt.strptime(_sel_iso, "%Y-%m-%d").date()
+    except Exception:
+        _ccr_sel = _ccr_today
+    if _ccr_sel > _ccr_today:
+        _ccr_sel = _ccr_today
+    _is_today = (_ccr_sel == _ccr_today)
+
+    _cnav = st.columns([1, 2, 1])
+    with _cnav[0]:
+        if st.button("← 前日", key="ccr_prev_day", use_container_width=True):
+            st.session_state["_ccr_view_ymd"] = (_ccr_sel - _ccr_td(days=1)).isoformat()
+            st.rerun()
+    with _cnav[1]:
+        _wd = ["月", "火", "水", "木", "金", "土", "日"][_ccr_sel.weekday()]
+        _lbl = _ccr_sel.strftime("%Y/%m/%d") + f"（{_wd}）" + ("　＜本日＞" if _is_today else "")
+        st.markdown(
+            f'<div style="text-align:center;font-size:18px;font-weight:800;color:#fff;'
+            f'background:#1e2730;border-radius:10px;padding:6px 0;">{_lbl}</div>',
+            unsafe_allow_html=True,
+        )
+    with _cnav[2]:
+        if st.button("翌日 →", key="ccr_next_day", disabled=_is_today, use_container_width=True):
+            st.session_state["_ccr_view_ymd"] = (_ccr_sel + _ccr_td(days=1)).isoformat()
+            st.rerun()
+    if not _is_today:
+        if st.button("↩ 本日に戻る", key="ccr_back_today", use_container_width=True):
+            st.session_state["_ccr_view_ymd"] = _ccr_today.isoformat()
+            st.rerun()
+
+    try:
+        _ccr, _ccr_shifts, _ccr_zoomok = _ccr_load(_ccr_sel.year, _ccr_sel.month, _ccr_sel.day)
     except Exception as _e:
-        st.error(f"CCRの集計に失敗しました: {_e}")
+        st.error(f"時間効率表の集計に失敗しました: {_e}")
         st.stop()
+
+    # 過去日は終業(20:00)まで経過済みとして全日集計。本日は現在時刻基準。
+    _ref_min = _now_min if _is_today else 1200
 
     # 休憩区間（分）: 10分休憩×7（11:10/12:10/13:10/16:10/17:10/18:10/19:10）＋ 昼休憩(14:00-15:00)
     _BREAKS = [(670, 680), (730, 740), (790, 800), (840, 900),
@@ -4405,8 +4444,8 @@ if selected_key == "ccr":
             return None
 
     def _ccr_biz(start_min, end_min):
-        """(経過時間raw, 休憩除く業務時間) を返す。シフトの[開始,終了]と現在時刻で算出。"""
-        cap = min(_now_min, end_min)
+        """(経過時間raw, 休憩除く業務時間) を返す。シフトの[開始,終了]と基準時刻(_ref_min)で算出。"""
+        cap = min(_ref_min, end_min)
         raw = max(0.0, cap - start_min)
         brk = sum(max(0.0, min(cap, b) - max(start_min, a)) for a, b in _BREAKS)
         return raw, max(0.0, raw - brk)
@@ -4426,21 +4465,27 @@ if selected_key == "ccr":
             ss = 0
         return f"{mm}分{ss:02d}秒"
 
-    # ── 上部: コンパクトな時計＋業務経過時間（1行）──
+    # ── 上部: コンパクトな時計＋業務経過時間（1行）。過去日は日付＋全日集計表示 ──
+    if _is_today:
+        _clock_main = _ccr_now.strftime("%H:%M")
+        _clock_sub = f'業務経過(標準) {_ccr_fmt(_work_elapsed)}'
+    else:
+        _clock_main = _ccr_sel.strftime("%m/%d")
+        _clock_sub = f'全日集計（業務{_ccr_fmt(_work_elapsed)}）'
     st.markdown(
         '<div style="text-align:center;margin:0 0 10px;">'
         '<div style="display:inline-block;background:#1e2730;border:1px solid rgba(255,255,255,.12);'
         'border-radius:12px;padding:8px 24px;box-shadow:0 2px 8px rgba(0,0,0,.25);line-height:1.15;">'
         f'<span style="font-size:46px;font-weight:800;letter-spacing:2px;color:#ffffff;vertical-align:middle;">'
-        f'{_ccr_now.strftime("%H:%M")}</span>'
+        f'{_clock_main}</span>'
         f'<span style="font-size:22px;font-weight:700;color:#7ee0a4;margin-left:16px;">'
-        f'業務経過(標準) {_ccr_fmt(_work_elapsed)}</span>'
+        f'{_clock_sub}</span>'
         '</div></div>',
         unsafe_allow_html=True,
     )
 
     # 9:30〜10:00 に「今日もがんばろう」系の前向きバナーを表示。デザインは日替わり
-    if 570 <= _now_min < 600:
+    if _is_today and 570 <= _now_min < 600:
         _MORNING_VARIANTS = [
             ("linear-gradient(135deg,#f6d365 0%,#fda085 100%)", "☀️🌅", "今日も一日がんばろう！"),
             ("linear-gradient(135deg,#4facfe 0%,#00c6fb 100%)", "🌤️✨", "おはよう！今日もはりきっていきましょう"),
@@ -4472,7 +4517,7 @@ if selected_key == "ccr":
         )
 
     # 18:50〜19:30 と 20:00〜20:30 に「お疲れ様」バナーを表示。デザインは日替わり
-    if (1130 <= _now_min < 1170) or (1200 <= _now_min < 1230):
+    if _is_today and ((1130 <= _now_min < 1170) or (1200 <= _now_min < 1230)):
         _BANNER_VARIANTS = [
             ("linear-gradient(135deg,#ff9a9e 0%,#fecfef 40%,#a18cd1 100%)", "🎉🌸", "今日も一日お疲れさまでした！"),
             ("linear-gradient(135deg,#f093fb 0%,#f5576c 100%)", "💖🎆", "本日も全力、お疲れさまでした！"),
@@ -4561,12 +4606,13 @@ if selected_key == "ccr":
     _ncol = 3 if len(_ccr_people) >= 3 else max(1, len(_ccr_people))
     _cols = st.columns(_ncol)
     try:
-        _ed_map = _ccr_editing()
+        # 編集中案件はリアルタイム情報のため本日のみ表示（過去日は対象外）
+        _ed_map = _ccr_editing() if _is_today else {}
     except Exception:
         _ed_map = {}
-    # 休憩ボタン用: 今日の休憩記録＋ログインユーザー
+    # 休憩ボタン用: 表示対象日の休憩記録＋ログインユーザー
     import kyukei_store as _kyu
-    _today_str = _ccr_now.strftime("%Y-%m-%d")
+    _today_str = _ccr_sel.strftime("%Y-%m-%d")
 
     # 休憩記録は kyukei_store 側が TTL なしの cache_resource のため、アプリ起動時に
     # 空をキャッシュしたまま固定化し「他の人が後から押した休憩が出ない＝記録が消えた」
@@ -4619,7 +4665,7 @@ if selected_key == "ccr":
 
     # 日次「着地」スナップショットを外部Sheetsに約15分間隔でappend保存（月次資料の元データ）
     _snap_last = st.session_state.get("_ccr_snap_last", 0)
-    if _ccr_people and (_now_epoch - _snap_last >= 900):
+    if _is_today and _ccr_people and (_now_epoch - _snap_last >= 900):
         try:
             import kpi_snapshot_store as _snap
             _snap_at = _ccr_now.strftime("%Y-%m-%d %H:%M:%S")
@@ -4713,12 +4759,19 @@ if selected_key == "ccr":
                     continue
                 _bn += 1
                 _be = _b.get("e")
-                _dur = ((_be if _be else _now_epoch) - _bs) / 60.0
-                _btot += _dur
                 _from = _ccr_dt.fromtimestamp(_bs, _CCR_JST).strftime("%H:%M")
-                _to = _ccr_dt.fromtimestamp(_be, _CCR_JST).strftime("%H:%M") if _be else "進行中"
-                _bcol = "#ffcc80" if _be else "#ffa726"
-                _bsuf = "" if _be else "… 計測中"
+                if _be:
+                    _dur = (_be - _bs) / 60.0
+                    _to, _bcol, _bsuf = _ccr_dt.fromtimestamp(_be, _CCR_JST).strftime("%H:%M"), "#ffcc80", ""
+                elif _is_today:
+                    # 本日・進行中の休憩は現在時刻まで計測
+                    _dur = (_now_epoch - _bs) / 60.0
+                    _to, _bcol, _bsuf = "進行中", "#ffa726", "… 計測中"
+                else:
+                    # 過去日で終了記録が無い＝終了押し忘れ。ライブ計算しない
+                    _dur = 0.0
+                    _to, _bcol, _bsuf = "終了記録なし", "#9fb3c8", ""
+                _btot += _dur
                 _bl += (
                     '<div style="font-size:12.5px;color:#e6edf3;">'
                     f'<span style="display:inline-block;width:152px;">休憩{_bn}（{_from}〜{_to}）</span>'
@@ -4760,7 +4813,8 @@ if selected_key == "ccr":
                 unsafe_allow_html=True,
             )
             # 休憩ボタン（常に表示。本人＝ログイン者のカードのみ押せる／他人は無効）
-            _has_open = any(b.get("e") is None for b in _breaks)
+            # 過去日は操作不可（記録閲覧のみ）。「休憩中」ライブ表示も本日のみ。
+            _has_open = _is_today and any(b.get("e") is None for b in _breaks)
             _is_me = bool(_my_norm) and (_my_norm == _p["norm"])
             if _has_open:
                 _open_b = next((b for b in _breaks if b.get("e") is None), None)
@@ -4773,7 +4827,7 @@ if selected_key == "ccr":
                     unsafe_allow_html=True,
                 )
                 if st.button("■ 休憩終了", key=f"kyu_end_{_p['norm']}",
-                             disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile, use_container_width=True):
+                             disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile or (not _is_today), use_container_width=True):
                     _ok, _msg = _kyu.end_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     _ccr_kyu_fresh.clear()
                     if _ok:
@@ -4782,7 +4836,7 @@ if selected_key == "ccr":
                         st.warning(f"休憩の保存に失敗しました: {_msg}")
             else:
                 if st.button("☕ 休憩する", key=f"kyu_start_{_p['norm']}", type="primary",
-                             disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile, use_container_width=True):
+                             disabled=((not _is_me) and (not _ccr_admin)) or _is_mobile or (not _is_today), use_container_width=True):
                     _ok, _msg = _kyu.start_break(_today_str, _p["norm"], _ccr_dt.now(_CCR_JST).timestamp())
                     _ccr_kyu_fresh.clear()
                     if _ok:

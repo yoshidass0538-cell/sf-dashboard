@@ -4367,6 +4367,13 @@ if selected_key == "ccr":
         cs_names |= DAY_CALLS_INCLUDE
         # 集計対象日（過去日も指定可）。SOQL日付リテラル YYYY-MM-DD
         _date_lit = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+        # 「実際に電話した案件」だけを通話時間・件数の対象にする。
+        #  対応区分=架電 or FC、かつコール結果が入力済み、かつ「記録のみ」でない。
+        #  → コール結果空欄・記録のみ（＝履歴を残しただけ）や、
+        #    区分=LINE/受電/顧客以外/処理（＝電話ではない）は除外。
+        #  これにより、他人が架けた通話が「履歴だけ残した人」に誤って換算されるのを防ぐ。
+        _CALL_ONLY = ("Field3_del__c IN ('架電','FC') "
+                      "AND Field4_del__c != null AND Field4_del__c != '記録のみ'")
         data = {}
 
         def _acc(owner, label, cnt, rusu):
@@ -4382,6 +4389,7 @@ if selected_key == "ccr":
         for r in _sf().query_all(
             "SELECT Owner.Name oname, Field2_del__c status, Field4_del__c result, COUNT(Id) cnt "
             f"FROM Task WHERE ActivityDate = {_date_lit} AND Field2_del__c != '対応' "
+            f"AND {_CALL_ONLY} "
             "GROUP BY Owner.Name, Field2_del__c, Field4_del__c"
         )["records"]:
             label = _CCR_LABEL.get(_ccr_np(r.get("status")))
@@ -4398,13 +4406,15 @@ if selected_key == "ccr":
             for r in _sf().query_all(
                 "SELECT Owner.Name oname, Field4_del__c result, COUNT(Id) cnt "
                 f"FROM Task WHERE ActivityDate = {_date_lit} AND Field2_del__c = '対応' {_cond} "
+                f"AND {_CALL_ONLY} "
                 "GROUP BY Owner.Name, Field4_del__c"
             )["records"]:
                 cnt = int(r["cnt"])
                 _acc(r.get("oname"), _label, cnt, cnt if r.get("result") == "留守" else 0)
 
-        # 対象11種以外のコール（前確架電/後確架電/決済促進/その他/顧客以外/LINE 等）。
+        # 対象11種以外の「実際の架電」（前確架電/後確架電/決済促進 等。区分=架電/FCのみ）。
         # ステータス入力済の手動記録のみ対象（Zoom自動ログ=ステータス空欄は二重計上になるため除外）。
+        # 区分=LINE/受電/顧客以外/処理、コール結果空欄/記録のみ は電話ではないため _CALL_ONLY で除外。
         # 11種と同様、コール結果が留守=無効、それ以外=有効として標準平均で計上
         _TARGET_F2 = [
             "対応", "キャンセル対応", "自社OP", "管理会社", "消セン",
@@ -4416,8 +4426,8 @@ if selected_key == "ccr":
             "フォローコール（開通後①）", "フォローコール(開通後①)",
         ]
         _tin = ", ".join("'" + s + "'" for s in _TARGET_F2)
-        # ステータス入力済 かつ 11種以外（空欄=自動ログは除外）
-        _nott = f"(Field2_del__c != null AND Field2_del__c NOT IN ({_tin}))"
+        # ステータス入力済 かつ 11種以外（空欄=自動ログは除外）。実架電のみ(_CALL_ONLY)。
+        _nott = f"(Field2_del__c != null AND Field2_del__c NOT IN ({_tin}) AND {_CALL_ONLY})"
 
         def _acc_other(owner, eff_n, rusu_n):
             norm = (owner or "").replace(" ", "").replace("　", "")
@@ -4473,8 +4483,8 @@ if selected_key == "ccr":
                 _eff_recs = {}
                 for r in _sf().query_all(
                     "SELECT Owner.Name, Account.X1__c, Field1_del__c FROM Task "
-                    f"WHERE ActivityDate = {_date_lit} AND Field2_del__c != null "
-                    "AND (Field4_del__c = null OR Field4_del__c != '留守')"
+                    f"WHERE ActivityDate = {_date_lit} AND {_CALL_ONLY} "
+                    "AND Field4_del__c != '留守'"
                 )["records"]:
                     _nm = ((r.get("Owner") or {}).get("Name") or "").replace(" ", "").replace("　", "")
                     if _nm not in cs_names:

@@ -4450,102 +4450,47 @@ if selected_key == "ccr":
             _is_rusu = r.get("result") == "留守"
             _acc_other(r.get("oname"), 0 if _is_rusu else _n, _n if _is_rusu else 0)
 
-        # ── 有効(留守以外)の実通話時間をZoom通話履歴と突合（電話番号＋時刻±20分）──
-        # 認証情報が無い/失敗時は突合せず、呼び出し側で標準平均にフォールバック
-        import os as _os, base64 as _b64, re as _re2
-        import requests as _rq2
-        from datetime import datetime as _dt2, timezone as _tz2, timedelta as _td2
-        _UTC = _tz2.utc
-        _JSTz = _tz2(_td2(hours=9))
+        # ── 実通話時間: SF同期のZoom通話ログ(ZVC__Zoom_Call_Log__c)から、発信者本人(Owner)の
+        #    connected 通話時間を合算する。発信者(=名前)で紐づくため、履歴だけ残した人に
+        #    他人が架けた通話が混ざらない（電話番号＋時刻＋発信者名での突合に相当・SF内で完結）。
+        #    取得失敗時は呼び出し側で標準平均にフォールバック。
         zoom_ok = False
 
-        def _zc(k):
-            v = None
+        def _dur_sec(s):
+            # "mm:ss" / "hh:mm:ss" / 秒数 → 秒
+            if not s:
+                return 0
             try:
-                if hasattr(st, "secrets"):
-                    v = st.secrets.get(k)
+                parts = [int(p) for p in str(s).split(":")]
             except Exception:
-                v = None
-            if not v:
-                v = _os.environ.get(k)
-            if not v:
-                try:
-                    from dotenv import dotenv_values as _dv
-                    v = _dv(".env").get(k)
-                except Exception:
-                    v = None
-            return v
+                return 0
+            if len(parts) == 3:
+                return parts[0] * 3600 + parts[1] * 60 + parts[2]
+            if len(parts) == 2:
+                return parts[0] * 60 + parts[1]
+            if len(parts) == 1:
+                return parts[0]
+            return 0
 
-        _zaid, _zcid, _zsec = _zc("ZOOM_ACCOUNT_ID"), _zc("ZOOM_CLIENT_ID"), _zc("ZOOM_CLIENT_SECRET")
-        if _zaid and _zcid and _zsec:
-            try:
-                def _e164(p):
-                    d = _re2.sub(r"\D", "", p or "")
-                    return "+81" + d[1:] if d.startswith("0") and len(d) >= 10 else None
-
-                _eff_recs = {}
-                for r in _sf().query_all(
-                    "SELECT Owner.Name, Account.X1__c, Field1_del__c FROM Task "
-                    f"WHERE ActivityDate = {_date_lit} AND {_CALL_ONLY} "
-                    "AND Field4_del__c != '留守'"
-                )["records"]:
-                    _nm = ((r.get("Owner") or {}).get("Name") or "").replace(" ", "").replace("　", "")
-                    if _nm not in cs_names:
-                        continue
-                    _ph = _e164((r.get("Account") or {}).get("X1__c"))
-                    _dt = r.get("Field1_del__c")
-                    if _ph and _dt:
-                        _eff_recs.setdefault(_nm, []).append(
-                            (_ph, _dt2.fromisoformat(_dt.replace("Z", "+00:00")).astimezone(_UTC))
-                        )
-
-                _tok = _rq2.post(
-                    "https://zoom.us/oauth/token",
-                    params={"grant_type": "account_credentials", "account_id": _zaid},
-                    headers={"Authorization": "Basic " + _b64.b64encode(f"{_zcid}:{_zsec}".encode()).decode()},
-                    timeout=30,
-                ).json().get("access_token")
-                if _tok:
-                    _H = {"Authorization": "Bearer " + _tok}
-                    _tstr = _date_lit
-                    _zidx = {}
-                    _tkn = None
-                    for _pg in range(30):
-                        _pr = {"from": _tstr, "to": _tstr, "page_size": 300}
-                        if _tkn:
-                            _pr["next_page_token"] = _tkn
-                        _j = _rq2.get(
-                            "https://api.zoom.us/v2/phone/call_logs", headers=_H, params=_pr, timeout=60
-                        ).json()
-                        for _c in _j.get("call_logs", []):
-                            if _c.get("direction") != "outbound":
-                                continue
-                            _cn = _c.get("callee_number")
-                            _cd = _dt2.fromisoformat(_c["date_time"].replace("Z", "+00:00")).astimezone(_UTC)
-                            _zidx.setdefault(_cn, []).append((_cd, int(_c.get("duration") or 0)))
-                        _tkn = _j.get("next_page_token")
-                        if not _tkn:
-                            break
-                    _WIN = 20 * 60
-                    for _nm, _recs in _eff_recs.items():
-                        _sec = 0
-                        _mn = 0
-                        for (_ph, _sd) in _recs:
-                            _best = None
-                            _bd = None
-                            for (_zd, _du) in _zidx.get(_ph, []):
-                                _df = abs((_zd - _sd).total_seconds())
-                                if _df <= _WIN and (_bd is None or _df < _bd):
-                                    _bd = _df
-                                    _best = _du
-                            if _best is not None:
-                                _sec += _best
-                                _mn += 1
-                        if _nm in data:
-                            data[_nm]["matched"] = {"sec": _sec, "n": _mn}
-                    zoom_ok = True
-            except Exception:
-                zoom_ok = False
+        try:
+            _talk = {}
+            for r in _sf().query_all(
+                "SELECT Owner.Name, ZVC__Call_Duration__c FROM ZVC__Zoom_Call_Log__c "
+                f"WHERE DAY_ONLY(ZVC__Answer_Start_Time__c) = {_date_lit} "
+                "AND ZVC__Call_Result__c = 'connected'"
+            )["records"]:
+                _nm = ((r.get("Owner") or {}).get("Name") or "").replace(" ", "").replace("　", "")
+                if _nm not in cs_names:
+                    continue
+                _agg = _talk.setdefault(_nm, [0, 0])
+                _agg[0] += _dur_sec(r.get("ZVC__Call_Duration__c"))
+                _agg[1] += 1
+            for _nm, (_s, _n) in _talk.items():
+                if _nm in data:
+                    data[_nm]["matched"] = {"sec": _s, "n": _n}
+            zoom_ok = True
+        except Exception:
+            zoom_ok = False
 
         # 今日のシフト(開始,終了)を取得（CS促進＋追加メンバー）。各人の業務時間算出に使う
         shifts = {}
@@ -4798,10 +4743,10 @@ if selected_key == "ccr":
         _std_talk = sum((v[0] - v[1]) * _CCR_AVG.get(lb, 3.5) for lb, v in _types.items()) \
             + _o["eff_n"] * _CCR_OTHER_AVG
         if _ccr_zoomok:
-            # Zoom実測: 突合できた有効コールは実通話、未突合はその人の標準平均で補完
+            # Zoom実測(発信者本人のconnected通話)の合計をそのまま実通話時間とする。
+            # 他人の通話は混ざらず、履歴だけ残した案件は0秒（通話ログが無い）。
             _m = (_p.get("matched") if _p else None) or {"sec": 0, "n": 0}
-            _avg_per = (_std_talk / _eff_total) if _eff_total else 0.0
-            _actual_talk = _m["sec"] / 60.0 + max(0, _eff_total - _m["n"]) * _avg_per
+            _actual_talk = _m["sec"] / 60.0
         else:
             _actual_talk = _std_talk
         # 有効対話時間 = 通話時間 ＋ 有効件数×処理1分30秒

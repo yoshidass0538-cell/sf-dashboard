@@ -4160,15 +4160,21 @@ if selected_key == "call_type_total":
     st.caption(f"表示期間：{_ct_start.strftime('%Y/%m/%d')} 〜 {_ct_end.strftime('%m/%d')}"
                f"（{'今月・本日まで' if _is_cur_month else '月全体'}）")
 
-    @st.cache_data(ttl=300, show_spinner="集計中...")
-    def _ct_load(_s, _e, _prod, _v=2):
-        return _ctm.fetch_call_type_totals(_sf(), _s, _e, _prod)
-
-    try:
-        _ct_df = _ct_load(_ct_start.isoformat(), _ct_end.isoformat(), _ct_prod)
-    except Exception as _e:
-        st.error(f"集計に失敗しました: {_e}")
-        st.stop()
+    # 実際の日付＋商材をキーにした自前キャッシュ（st.cache_dataのキー取り違え回避）。
+    # 過去月は静的なのでキャッシュ、当月は最新反映のため毎回取得。
+    _ct_key = (_ct_start.isoformat(), _ct_end.isoformat(), _ct_prod)
+    _ct_cache = st.session_state.setdefault("_ct_cache", {})
+    if (not _is_cur_month) and (_ct_key in _ct_cache):
+        _ct_df = _ct_cache[_ct_key]
+    else:
+        try:
+            with st.spinner(f"{_ct_key[0]}〜{_ct_key[1]} を集計中..."):
+                _ct_df = _ctm.fetch_call_type_totals(_sf(), _ct_key[0], _ct_key[1], _ct_key[2])
+        except Exception as _e:
+            st.error(f"集計に失敗しました: {_e}")
+            st.stop()
+        if not _is_cur_month:
+            _ct_cache[_ct_key] = _ct_df
 
     if _ct_df.empty:
         st.info("該当期間・商材のコール実績がありません。")

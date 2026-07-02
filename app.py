@@ -4390,16 +4390,18 @@ if selected_key == "ccr":
     _ccr_now = _ccr_dt.now(_CCR_JST)
     _now_min = _ccr_now.hour * 60 + _ccr_now.minute + _ccr_now.second / 60.0
 
-    # ── 表示対象日（過去日も閲覧可。既定=本日、未来は不可）──
+    # ── 表示対象日。過去日=実績閲覧 / 未来日=出勤予定閲覧（最大 today+45日）──
     _ccr_today = _ccr_now.date()
+    _ccr_max = _ccr_today + _ccr_td(days=45)
     _sel_iso = st.session_state.get("_ccr_view_ymd") or _ccr_today.isoformat()
     try:
         _ccr_sel = _ccr_dt.strptime(_sel_iso, "%Y-%m-%d").date()
     except Exception:
         _ccr_sel = _ccr_today
-    if _ccr_sel > _ccr_today:
-        _ccr_sel = _ccr_today
+    if _ccr_sel > _ccr_max:
+        _ccr_sel = _ccr_max
     _is_today = (_ccr_sel == _ccr_today)
+    _is_future = (_ccr_sel > _ccr_today)
 
     _cnav = st.columns([1, 2, 1])
     with _cnav[0]:
@@ -4415,7 +4417,7 @@ if selected_key == "ccr":
             unsafe_allow_html=True,
         )
     with _cnav[2]:
-        if st.button("翌日 →", key="ccr_next_day", disabled=_is_today, use_container_width=True):
+        if st.button("翌日 →", key="ccr_next_day", disabled=(_ccr_sel >= _ccr_max), use_container_width=True):
             st.session_state["_ccr_view_ymd"] = (_ccr_sel + _ccr_td(days=1)).isoformat()
             st.rerun()
     if not _is_today:
@@ -4469,6 +4471,9 @@ if selected_key == "ccr":
     if _is_today:
         _clock_main = _ccr_now.strftime("%H:%M")
         _clock_sub = f'業務経過(標準) {_ccr_fmt(_work_elapsed)}'
+    elif _is_future:
+        _clock_main = _ccr_sel.strftime("%m/%d")
+        _clock_sub = '出勤予定'
     else:
         _clock_main = _ccr_sel.strftime("%m/%d")
         _clock_sub = f'全日集計（業務{_ccr_fmt(_work_elapsed)}）'
@@ -4548,11 +4553,16 @@ if selected_key == "ccr":
             unsafe_allow_html=True,
         )
 
-    if _work_elapsed <= 0:
+    if _is_today and _work_elapsed <= 0:
         st.info("始業（10:00）前です。")
         st.stop()
     if not _ccr_shifts:
-        st.info("本日シフトのメンバーがいません。")
+        if _is_future:
+            st.info("この日に出勤予定のメンバーはいません。")
+        elif _is_today:
+            st.info("本日シフトのメンバーがいません。")
+        else:
+            st.info("この日に出勤していたメンバーはいません。")
         st.stop()
 
     # 個人別に集計（本日シフトのある＝稼働メンバーのみ表示。シフト無しは除外）
@@ -4689,6 +4699,14 @@ if selected_key == "ccr":
         except Exception:
             pass
 
+    if _is_future:
+        _fcnt = sum(1 for _p in _ccr_people if _p["norm"] not in _CCR_HIDE)
+        st.markdown(
+            f'<div style="text-align:center;color:#9fb3c8;font-size:13px;margin:2px 0 8px;">'
+            f'この日の出勤予定：<b style="color:#fff;">{_fcnt}名</b></div>',
+            unsafe_allow_html=True,
+        )
+
     for _i, _p in enumerate(_ccr_people):
         _denom = max(_p["work"], _p["talk"] + _p["proc"] + _p["ring"], 1.0)
         _tw = _p["talk"] / _denom * 100
@@ -4696,6 +4714,19 @@ if selected_key == "ccr":
         _rw = _p["ring"] / _denom * 100
         _bw = _p["blank"] / _denom * 100
         _shift_lbl = f'{_p["shift"][0]}-{_p["shift"][1]}' if _p["shift"] else "10-19既定"
+        # 未来日は実績が無いため、出勤予定メンバーの簡易カードのみ表示
+        if _is_future:
+            with _cols[_i % _ncol]:
+                st.markdown(
+                    '<div style="background:#1e2730;border-radius:9px;padding:10px 12px;margin:0 0 8px;">'
+                    f'<div style="font-size:15px;color:#fff;font-weight:800;">{_p["name"]}</div>'
+                    f'<div style="font-size:12px;color:#9fb3c8;margin-top:3px;">シフト {_shift_lbl}</div>'
+                    '<div style="display:inline-block;margin-top:7px;font-size:11px;font-weight:700;'
+                    'color:#7ee0a4;background:#22303a;border-radius:6px;padding:2px 9px;">出勤予定</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            continue
         # 現在編集中の案件（電話番号＋編集中になってからの経過。複数は縦に並べる）
         _ed_inline = ""
         _ed = _ed_map.get(_p["norm"], [])

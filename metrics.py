@@ -1665,140 +1665,18 @@ def fetch_call_history(sf: Salesforce, start_date: str | None = None, end_date: 
 
 # ======================================================================
 # 架電種別トータルコール数（TOTAL）
-#   商材別(全て/NIFTY/NURO/SO-NET/AU光) × 日にち別 × 担当者別 に、
-#   架電種別ごとのコール結果(完了/留守/再コール/対応依頼、対応系は+処理のみ/キャンセル依頼)
-#   の件数・合計を集計する。割合はアプリ側で算出。
+#   集計ロジックとHTML生成は call_type_report.py に集約（Streamlit/gspread等の
+#   重い依存を持たず、GitHub Actions からも使えるようにするため）。
+#   ここでは互換のため必要名を再エクスポートする。
 # ======================================================================
-CALL_TYPE_ORDER = [
-    "開通後対応", "開通前対応", "自社OP", "キャンセル対応",
-    "1週間後FC", "工事取得FC", "新設FC(顧客架電)", "新設FC(コンサル窓口架電)",
-    "開通後FC", "オーナー確認(新設FC)",
-]
-# 開通前/後対応のみ、コール結果に「処理のみ」「キャンセル依頼」を追加集計する
-CALL_TYPE_TAIOU = {"開通後対応", "開通前対応"}
-CALL_RESULT_BASE = ["完了", "留守", "再コール", "対応依頼"]
-CALL_RESULT_TAIOU_EXTRA = ["処理のみ", "キャンセル依頼"]
-CALL_TOTAL_PRODUCTS = ["全て", "NIFTY", "NURO", "SO-NET", "AU光"]
-_CALL_PRODUCT_LIKE = {
-    "NIFTY": "NIFTY光%", "NURO": "NURO光%", "SO-NET": "So-net光%", "AU光": "AU光%",
-}
-# 区分=FC のステータス（全角/半角括弧を正規化後）→ 架電種別
-_CALL_FC_STATUS_MAP = {
-    "フォローコール(1週間後FC)": "1週間後FC",
-    "フォローコール(工事取得)": "工事取得FC",
-    "フォローコール(代コン)": "新設FC(顧客架電)",
-    "フォローコール(代コン窓口)": "新設FC(コンサル窓口架電)",
-    "フォローコール(開通後①)": "開通後FC",
-    "オーナー確認": "オーナー確認(新設FC)",
-}
-# 区分=架電 のステータス → 架電種別（対応は開通日有無で別途分割）
-_CALL_KADEN_STATUS_MAP = {"自社OP": "自社OP", "キャンセル対応": "キャンセル対応"}
-
-
-def _call_paren_np(s: str) -> str:
-    return (s or "").replace("（", "(").replace("）", ")")
-
-
-def _call_norm_result(r: str) -> str:
-    """コール結果を正規化。キャンセル受理/希望 は『キャンセル依頼』へ合算。"""
-    r = r or ""
-    if r in ("キャンセル受理", "キャンセル希望", "キャンセル依頼"):
-        return "キャンセル依頼"
-    return r
-
-
-def fetch_call_type_totals(sf: Salesforce, start_date: str, end_date: str,
-                           product: str = "全て") -> pd.DataFrame:
-    """架電種別トータルコール数を日別×担当者別に集計して返す。
-
-    product: 全て / NIFTY / NURO / SO-NET / AU光
-    戻り値カラム:
-      日付, 担当者, 架電種別, 完了, 留守, 再コール, 対応依頼, 処理のみ, キャンセル依頼, 合計
-    （合計 = 各種別の集計対象コール結果の総和。開通前/後対応のみ処理のみ・キャンセル依頼を含む）
-    """
-    from collections import defaultdict
-
-    cols = ["日付", "担当者", "架電種別", "完了", "留守", "再コール",
-            "対応依頼", "処理のみ", "キャンセル依頼", "合計"]
-
-    users_rs = sf.query_all(
-        "SELECT Id, Name FROM User WHERE Department = 'CS促進' AND IsActive = true"
-    )["records"]
-    cs_ids = {
-        r["Id"] for r in users_rs
-        if (r.get("Name") or "").replace(" ", "").replace("　", "") not in EXCLUDED_OWNERS_NORM
-    }
-    if not cs_ids:
-        return pd.DataFrame(columns=cols)
-    ids_lit = ",".join(f"'{u}'" for u in cs_ids)
-
-    prod_filter = ""
-    if product and product != "全て" and product in _CALL_PRODUCT_LIKE:
-        prod_filter = f" AND Account.Field76__r.Name LIKE '{_CALL_PRODUCT_LIKE[product]}'"
-    base_where = (
-        f"ActivityDate >= {start_date} AND ActivityDate <= {end_date} "
-        f"AND OwnerId IN ({ids_lit}){prod_filter}"
-    )
-
-    # agg[(日付, 担当者, 架電種別)][コール結果] = 件数
-    agg: dict = defaultdict(lambda: defaultdict(int))
-
-    def _add(date, owner, ctype, result, cnt):
-        agg[(date, owner, ctype)][_call_norm_result(result)] += cnt
-
-    # A/B: 区分=架電・ステータス=対応 → 開通日有無で 開通前/後対応
-    for cond, ctype in ((" AND Account.Field130__c = null", "開通前対応"),
-                        (" AND Account.Field130__c != null", "開通後対応")):
-        for r in sf.query_all(
-            "SELECT ActivityDate ad, Owner.Name oname, Field4_del__c res, COUNT(Id) c FROM Task "
-            f"WHERE {base_where} AND Field3_del__c = '架電' AND Field2_del__c = '対応'{cond} "
-            "GROUP BY ActivityDate, Owner.Name, Field4_del__c"
-        )["records"]:
-            _add(r.get("ad"), r.get("oname"), ctype, r.get("res"), int(r["c"]))
-
-    # C: 区分=架電・ステータス IN (自社OP, キャンセル対応)
-    for r in sf.query_all(
-        "SELECT ActivityDate ad, Owner.Name oname, Field2_del__c st, Field4_del__c res, COUNT(Id) c FROM Task "
-        f"WHERE {base_where} AND Field3_del__c = '架電' AND Field2_del__c IN ('自社OP','キャンセル対応') "
-        "GROUP BY ActivityDate, Owner.Name, Field2_del__c, Field4_del__c"
-    )["records"]:
-        ctype = _CALL_KADEN_STATUS_MAP.get(r.get("st"))
-        if ctype:
-            _add(r.get("ad"), r.get("oname"), ctype, r.get("res"), int(r["c"]))
-
-    # D: 区分=FC（ステータスは正規化してマップ。対象外FCは無視）
-    for r in sf.query_all(
-        "SELECT ActivityDate ad, Owner.Name oname, Field2_del__c st, Field4_del__c res, COUNT(Id) c FROM Task "
-        f"WHERE {base_where} AND Field3_del__c = 'FC' "
-        "GROUP BY ActivityDate, Owner.Name, Field2_del__c, Field4_del__c"
-    )["records"]:
-        ctype = _CALL_FC_STATUS_MAP.get(_call_paren_np(r.get("st")))
-        if ctype:
-            _add(r.get("ad"), r.get("oname"), ctype, r.get("res"), int(r["c"]))
-
-    rows = []
-    for (date, owner, ctype), rmap in agg.items():
-        is_taiou = ctype in CALL_TYPE_TAIOU
-        base_sum = sum(rmap.get(k, 0) for k in CALL_RESULT_BASE)
-        extra_sum = sum(rmap.get(k, 0) for k in CALL_RESULT_TAIOU_EXTRA) if is_taiou else 0
-        total = base_sum + extra_sum
-        if total == 0:
-            continue
-        rows.append({
-            "日付": date, "担当者": owner, "架電種別": ctype,
-            "完了": rmap.get("完了", 0), "留守": rmap.get("留守", 0),
-            "再コール": rmap.get("再コール", 0), "対応依頼": rmap.get("対応依頼", 0),
-            "処理のみ": rmap.get("処理のみ", 0) if is_taiou else 0,
-            "キャンセル依頼": rmap.get("キャンセル依頼", 0) if is_taiou else 0,
-            "合計": total,
-        })
-    if not rows:
-        return pd.DataFrame(columns=cols)
-    df = pd.DataFrame(rows, columns=cols)
-    df["架電種別"] = pd.Categorical(df["架電種別"], categories=CALL_TYPE_ORDER, ordered=True)
-    df = df.sort_values(["日付", "担当者", "架電種別"]).reset_index(drop=True)
-    df["架電種別"] = df["架電種別"].astype(str)
-    return df
+from call_type_report import (  # noqa: E402
+    CALL_TYPE_ORDER,
+    CALL_TYPE_TAIOU,
+    CALL_RESULT_BASE,
+    CALL_RESULT_TAIOU_EXTRA,
+    CALL_TOTAL_PRODUCTS,
+    fetch as fetch_call_type_totals,
+)
 
 
 def fetch_kari_keisan(sf: Salesforce) -> dict[str, pd.DataFrame]:

@@ -4538,17 +4538,35 @@ if selected_key == "call_type_total":
         return f"https://raw.githack.com/{repo}/main/{base}", None
 
     def _ct_publish_html(summary):
-        _exp = (_ct_today + _ct_td(days=7))
-        _exp_ymd = _exp.strftime("%Y-%m-%d")
+        # 権限変更なし方式: PATの workflow_dispatch でActionsを起動し、
+        # Actions内(GITHUB_TOKEN=contents:write)でHTMLを生成・コミットさせる。
+        import requests as _rq, os as _os
+        pat, repo = "", "yoshidass0538-cell/sf-dashboard"
+        try:
+            if "github" in st.secrets:
+                pat = st.secrets["github"].get("pat", "") or ""
+                repo = st.secrets["github"].get("repo", repo) or repo
+        except Exception:
+            pass
+        pat = pat or _os.environ.get("GH_PAT", "")
+        _exp_ymd = (_ct_today + _ct_td(days=7)).strftime("%Y-%m-%d")
+        if not pat:
+            return None, "GH_PAT 未設定（Streamlit Secrets [github] pat）", _exp_ymd
+        url = f"https://api.github.com/repos/{repo}/actions/workflows/call_type_html.yml/dispatches"
+        hd = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {pat}",
+              "X-GitHub-Api-Version": "2022-11-28"}
+        body = {"ref": "main", "inputs": {
+            "mode": "summary" if summary else "full", "product": _ct_prod,
+            "start": _ct_start.isoformat(), "end": _ct_end.isoformat()}}
+        try:
+            r = _rq.post(url, headers=hd, json=body, timeout=20)
+        except Exception as _e:
+            return None, f"通信エラー: {_e}", _exp_ymd
+        if r.status_code != 204:
+            return None, f"起動失敗 HTTP {r.status_code}: {r.text[:150]}", _exp_ymd
         name = "call-type-total-teishutsu" if summary else "call-type-total"
-        title = (f"コール集計 {_ct_month_lbl}（{_ct_prod}）" if summary else _ct_doc_title)
-        body = _ct_summary_body_html() if summary else "".join(
-            _ct_table_html(_t, _g) for _t, _g in _ct_entities)
-        html = _ct_standalone_html(body, title, _exp_ymd, summary)
-        files = [(f"docs/files/{name}.html", html),
-                 (f"docs/files/{name}-expire.txt", _exp.strftime("%Y%m%d"))]
-        url, err = _ct_gh_publish(files, _exp.strftime("%Y%m%d"))
-        return url, err, _exp_ymd
+        public = f"https://raw.githack.com/{repo}/main/docs/files/{name}.html"
+        return public, None, _exp_ymd
 
     st.caption(f"表示担当者：{len(_people)}名／対象日：{len(_dcol)}日")
 
@@ -4596,9 +4614,10 @@ if selected_key == "call_type_total":
         for _pk, _lab in (("_ct_pub_full", "HTML"), ("_ct_pub_sum", "提出用HTML")):
             _pv = st.session_state.get(_pk)
             if _pv:
-                st.success(f"{_lab} 公開URL（{_pv[1]} 失効・以降は自動削除）: {_pv[0]}")
-        st.caption("PDF/提出用PDFはダウンロード保存。HTML/提出用HTMLはGitHubへ公開し1週間で失効・自動削除。"
-                   "反映に数十秒かかることがあります。")
+                st.success(f"{_lab}：公開ジョブを起動しました（生成に1〜2分／{_pv[1]}失効・以降は自動削除）")
+                st.code(_pv[0], language=None)
+        st.caption("PDF/提出用PDFはダウンロード保存。HTML/提出用HTMLはGitHub Actionsで生成・公開し"
+                   "1週間で失効・自動削除。反映まで1〜2分かかります（URLは反映後に閲覧可）。")
 
     try:
         _ct_export_ui()

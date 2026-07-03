@@ -1,0 +1,69 @@
+name: Call Type HTML Publish
+
+# アプリから workflow_dispatch で起動。架電種別トータルの公開HTMLを生成しコミット。
+# PAT に Contents 書込権限が無くても、Actions内の GITHUB_TOKEN(contents:write)で公開できる。
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full or summary'
+        required: true
+        type: string
+      product:
+        description: '全て/NIFTY/NURO/SO-NET/AU光'
+        required: true
+        type: string
+      start:
+        description: 'YYYY-MM-DD'
+        required: true
+        type: string
+      end:
+        description: 'YYYY-MM-DD'
+        required: true
+        type: string
+
+concurrency:
+  group: call-type-html
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install simple-salesforce pandas python-dotenv
+
+      - name: Generate HTML
+        env:
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_TOKEN: ${{ secrets.SF_TOKEN }}
+          SF_DOMAIN: login
+          CT_MODE: ${{ inputs.mode }}
+          CT_PRODUCT: ${{ inputs.product }}
+          CT_START: ${{ inputs.start }}
+          CT_END: ${{ inputs.end }}
+        run: python generate_call_type_html.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/files/call-type-total*.html docs/files/call-type-total*-expire.txt
+          if git diff --cached --quiet; then
+            echo "no change"
+          else
+            git commit -m "架電種別トータル資料を公開/更新(${{ inputs.mode }}/${{ inputs.product }})"
+            git push
+          fi

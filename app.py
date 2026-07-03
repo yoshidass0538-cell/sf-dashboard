@@ -8466,8 +8466,8 @@ if selected_key == "cs_shift_calendar":
                         def _is_changed(nm: str) -> bool:
                             return any(k in (nm or "") for k in _changed_keys)
                         # 名前の左の色付き丸（emojiでサイズ統一）
-                        #  青🔵=室谷＋新規5名 ／ 黄🟡=既存ハイライト6名＋新規5名
-                        _BLUE_SET = ("柳原", "対馬", "杉山", "太田", "早瀬")
+                        #  青🔵=柳原・原田・佐々木・対馬 ／ 黄🟡=既存ハイライト
+                        _BLUE_SET = ("柳原", "原田", "佐々木", "対馬")
                         _YELLOW_SET = ("佐々木", "堀田", "菊地", "室谷", "原田", "金澤",
                                        "柳原", "対馬", "杉山", "太田", "早瀬")
                         def _is_blue(nm: str) -> bool:

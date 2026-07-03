@@ -81,16 +81,27 @@ def _get_ws():
 
 @st.cache_resource
 def _shared_cache() -> dict:
-    """全ユーザー共有キャッシュ。"""
-    try:
-        ws = _get_ws()
-        raw = ws.acell(CELL).value
-        if raw:
-            data = json.loads(raw)
-            if isinstance(data, dict) and isinstance(data.get("users"), list):
-                return {"users": data["users"]}
-    except Exception:
-        pass
+    """全ユーザー共有キャッシュ。
+
+    読込失敗を「未初期化(None)」と誤認すると ensure_seeded 等が既存データを初期値で
+    上書きする事故になるため、失敗時はリトライしてからでないと None にしない。
+    """
+    last_err = None
+    for _ in range(3):
+        try:
+            ws = _get_ws()
+            raw = ws.acell(CELL).value
+            if raw:
+                data = json.loads(raw)
+                if isinstance(data, dict) and isinstance(data.get("users"), list):
+                    return {"users": data["users"]}
+            # 読めたが空 → 未初期化
+            return {"users": None}
+        except Exception as e:
+            last_err = e
+            time.sleep(0.4)
+    # 3回とも失敗 = 読込不能。未初期化とは区別できないため None を返すが、
+    # この状態を根拠に「書き込み(シード/保存)」してはならない（各関数側で直読みする）。
     return {"users": None}
 
 
@@ -103,14 +114,25 @@ def get_users() -> list[dict]:
 
 
 def ensure_seeded() -> None:
-    """シート未初期化なら初期ユーザーで一度だけ書き込み（冪等）。"""
-    if _shared_cache().get("users") is not None:
-        return
+    """シートが本当に空のときだけ初期ユーザーを1度書き込む（冪等・fail-safe）。
+
+    重要: キャッシュ(_shared_cache)は読込失敗時も None を返すため、それを根拠に
+    シードすると既存ユーザーを初期13名で上書きする重大事故になる（過去に複数回発生）。
+    必ず Sheets を直読みし、
+      - 読めない → 何もしない（既存データ保護）
+      - セルに何か入っている → 何もしない（上書き禁止）
+      - セルが本当に空 → そのときだけ初期シード
+    """
     try:
         ws = _get_ws()
+        raw = ws.acell(CELL).value
+    except Exception:
+        return  # 読込不能時は絶対にシードしない
+    if raw is not None and str(raw).strip() != "":
+        return  # 既にデータあり → 触らない
+    try:
         ws.update_acell(CELL, json.dumps({"users": _DEFAULT_USERS}, ensure_ascii=False))
-        cache = _shared_cache()
-        cache["users"] = [u.copy() for u in _DEFAULT_USERS]
+        _shared_cache.clear()
     except Exception:
         pass
 

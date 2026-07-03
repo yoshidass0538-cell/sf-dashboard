@@ -275,8 +275,8 @@ def _summary_body(idx, people, agg, month_lbl, product):
         v = per_person.setdefault(pp, {"完了": 0, "合計": 0})
         v["完了"] += r["完了"]
         v["合計"] += r["合計"]
-    h = [f'<h1>コール集計 {month_lbl}（{product}）</h1>', '<p class="meta">対象：CS促進メンバー全体</p>',
-         '<div class="cards">']
+    # タイトル/メタは _standalone 側で出すため、本文は中身のみ（重複防止）
+    h = ['<div class="cards">']
     for lbl, k in [("コール総数", "合計"), ("完了", "完了"), ("留守", "留守"),
                    ("再コール", "再コール"), ("対応依頼", "対応依頼")]:
         val = overall[k]

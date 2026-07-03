@@ -11,3 +11,4 @@ gspread
 google-auth
 requests
 graphviz
+reportlab

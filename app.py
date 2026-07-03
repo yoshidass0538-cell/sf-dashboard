@@ -4232,11 +4232,15 @@ if selected_key == "call_type_total":
         bg = "background:#22303a;" if strong else ""
         return f'<td style="{_TL}{pad}{fw}{bg}">{text}</td>'
 
-    def _ct_render(title, getter):
-        """1つの表を描画。getter(t,d)-> 件数行dict or None。"""
+    def _ct_entity_rows(getter):
+        """1エンティティ(合計 or 担当者)の表示行を返す。
+        各行: (label, indent, kind, celltype, cells)
+          celltype='num' → cells=[int,...]（合計＋各日）
+          celltype='rate'→ cells=[(n,denom),...]。None なら該当データ無し。
+        """
         tp = [t for t in _ctm.CALL_TYPE_ORDER if any(getter(t, d) for d in _dcol)]
         if not tp:
-            return
+            return None
         grand = {d: {"完了": 0, "留守": 0, "再コール": 0, "対応依頼": 0, "合計": 0} for d in _dcol}
         for t in tp:
             for d in _dcol:
@@ -4247,39 +4251,41 @@ if selected_key == "call_type_total":
                     grand[d]["合計"] += r["合計"]
         gtot = {k: sum(grand[d][k] for d in _dcol)
                 for k in ("完了", "留守", "再コール", "対応依頼", "合計")}
+        rows = [("総数", False, None, "num", [gtot["合計"]] + [grand[d]["合計"] for d in _dcol])]
+        for k in _BASE:
+            rows.append(("合計" + k + "数", True, _KIND.get(k), "rate",
+                         [(gtot[k], gtot["合計"])] + [(grand[d][k], grand[d]["合計"]) for d in _dcol]))
+        for t in tp:
+            ttot = {d: (getter(t, d)["合計"] if getter(t, d) else 0) for d in _dcol}
+            ttot_sum = sum(ttot.values())
+            rows.append((t + "　総数", False, None, "num", [ttot_sum] + [ttot[d] for d in _dcol]))
+            for k in _BASE + (_EXTRA if t in _ctm.CALL_TYPE_TAIOU else []):
+                ksum = sum((getter(t, d)[k] if getter(t, d) else 0) for d in _dcol)
+                rows.append((k, True, _KIND.get(k), "rate",
+                             [(ksum, ttot_sum)] + [((getter(t, d)[k] if getter(t, d) else 0), ttot[d])
+                                                   for d in _dcol]))
+        return rows
 
+    def _ct_table_html(title, getter):
+        rows = _ct_entity_rows(getter)
+        if not rows:
+            return ""
         h = [f'<div style="font-size:15px;font-weight:800;color:#fff;margin:14px 0 4px;">{title}</div>',
              '<div style="overflow-x:auto;">',
              '<table style="border-collapse:collapse;background:#1e2730;">']
         h.append('<tr><th style="' + _THEAD + 'text-align:left;">架電種別 / 結果</th>'
                  '<th style="' + _THEAD + '">合計</th>'
                  + "".join('<th style="' + _THEAD + '">' + _dlabel(d) + '</th>' for d in _dcol) + '</tr>')
-        # 総数（種別関係なし・全種別横断）
-        h.append('<tr>' + _label_td("総数", strong=True)
-                 + _num_td(gtot["合計"], strong=True)
-                 + "".join(_num_td(grand[d]["合計"], strong=True) for d in _dcol) + '</tr>')
-        for k in _BASE:
-            kind = _KIND.get(k)
-            h.append('<tr>' + _label_td("合計" + k + "数", indent=True)
-                     + _res_td(gtot[k], gtot["合計"], kind)
-                     + "".join(_res_td(grand[d][k], grand[d]["合計"], kind) for d in _dcol) + '</tr>')
-        # 種別ごと
-        for t in tp:
-            ttot = {d: (getter(t, d)["合計"] if getter(t, d) else 0) for d in _dcol}
-            ttot_sum = sum(ttot.values())
-            h.append('<tr>' + _label_td(t + "　総数", strong=True)
-                     + _num_td(ttot_sum, strong=True)
-                     + "".join(_num_td(ttot[d], strong=True) for d in _dcol) + '</tr>')
-            rows = _BASE + (_EXTRA if t in _ctm.CALL_TYPE_TAIOU else [])
-            for k in rows:
-                kind = _KIND.get(k)
-                ksum = sum((getter(t, d)[k] if getter(t, d) else 0) for d in _dcol)
-                h.append('<tr>' + _label_td(k, indent=True)
-                         + _res_td(ksum, ttot_sum, kind)
-                         + "".join(_res_td((getter(t, d)[k] if getter(t, d) else 0), ttot[d], kind)
-                                   for d in _dcol) + '</tr>')
+        for label, indent, kind, ctype, cells in rows:
+            strong = (ctype == "num")
+            tds = _label_td(label, indent=indent, strong=strong)
+            if ctype == "num":
+                tds += "".join(_num_td(c, strong=True) for c in cells)
+            else:
+                tds += "".join(_res_td(c[0], c[1], kind) for c in cells)
+            h.append('<tr>' + tds + '</tr>')
         h.append('</table></div>')
-        st.markdown("".join(h), unsafe_allow_html=True)
+        return "".join(h)
 
     # 表示担当者の合算（合計表用）
     _pset = set(_people)
@@ -4292,12 +4298,320 @@ if selected_key == "call_type_total":
         for k in ("完了", "留守", "再コール", "対応依頼", "処理のみ", "キャンセル依頼", "合計"):
             a[k] += _rr[k]
 
+    # ── 出力(資料)用の共通データ・タイトル ──
+    _ct_entities = [("合計（全担当者）", lambda t, d: _agg_all.get((t, d)))]
+    for _p in _people:
+        _ct_entities.append((_p, (lambda pp: (lambda t, d: _idx.get((pp, t, d))))(_p)))
+    _ct_doc_title = f"架電種別トータルコール数（{_ct_prod}）"
+    _ct_period = f"{_ct_start.strftime('%Y/%m/%d')}〜{_ct_end.strftime('%Y/%m/%d')}"
+    _ct_meta = f"期間 {_ct_period} ／ 対象 CS促進メンバー ／ 作成 {_ct_today.strftime('%Y/%m/%d')}"
+    if _is_cur_month:
+        _ct_month_lbl = f"{_sy}年{_sm}月（{_ct_end.month}/{_ct_end.day}時点）"
+    else:
+        _ct_month_lbl = f"{_sy}年{_sm}月"
+
+    def _ct_summary_data():
+        overall = {k: 0 for k in ("完了", "留守", "再コール", "対応依頼", "合計")}
+        per_type = {}
+        for (t, d), r in _agg_all.items():
+            pt = per_type.setdefault(t, {"完了": 0, "留守": 0, "再コール": 0, "対応依頼": 0, "合計": 0})
+            for k in ("完了", "留守", "再コール", "対応依頼", "合計"):
+                pt[k] += r[k]
+                overall[k] += r[k]
+        per_person = {}
+        for (pp, t, d), r in _idx.items():
+            if pp not in _pset:
+                continue
+            pv = per_person.setdefault(pp, {"完了": 0, "合計": 0})
+            pv["完了"] += r["完了"]
+            pv["合計"] += r["合計"]
+        return overall, per_type, per_person
+
+    def _pct(n, dn):
+        return round(n / dn * 100) if dn else 0
+
+    # ── 提出用サマリー本文(HTML) ──
+    def _ct_summary_body_html():
+        ov, pt, pp = _ct_summary_data()
+        h = [f'<h1>コール集計 {_ct_month_lbl}（{_ct_prod}）</h1>',
+             '<p class="meta">対象：CS促進メンバー全体</p>']
+        h.append('<div class="cards">')
+        for lbl, k in [("コール総数", "合計"), ("完了", "完了"), ("留守", "留守"),
+                       ("再コール", "再コール"), ("対応依頼", "対応依頼")]:
+            val = ov[k]
+            sub = "" if k == "合計" else f'<span class="p">{_pct(val, ov["合計"])}%</span>'
+            h.append(f'<div class="card"><div class="cl">{lbl}</div>'
+                     f'<div class="cv">{val:,}件 {sub}</div></div>')
+        h.append('</div>')
+        h.append('<h2>架電の種類ごと</h2><table class="s"><tr><th>種類</th><th>コール数</th>'
+                 '<th>完了率</th><th>留守率</th></tr>')
+        for t in _ctm.CALL_TYPE_ORDER:
+            if t in pt and pt[t]["合計"] > 0:
+                v = pt[t]
+                h.append(f'<tr><td class="l">{t}</td><td>{v["合計"]:,}</td>'
+                         f'<td>{_pct(v["完了"], v["合計"])}%</td><td>{_pct(v["留守"], v["合計"])}%</td></tr>')
+        h.append('</table>')
+        h.append('<h2>担当者ごと</h2><table class="s"><tr><th>担当者</th><th>コール数</th><th>完了率</th></tr>')
+        for nm, v in sorted(pp.items(), key=lambda x: -x[1]["合計"]):
+            h.append(f'<tr><td class="l">{nm}</td><td>{v["合計"]:,}</td>'
+                     f'<td>{_pct(v["完了"], v["合計"])}%</td></tr>')
+        h.append('</table>')
+        return "".join(h)
+
+    # ── スタンドアロンHTML(失効ガード付き) ──
+    def _ct_standalone_html(body, title, expire_ymd, summary):
+        if summary:
+            style = ("body{background:#fff;color:#1a1f26;font-family:'Segoe UI',sans-serif;"
+                     "margin:0;padding:22px;max-width:820px;}"
+                     "h1{font-size:22px;margin:0 0 2px;}h2{font-size:16px;margin:20px 0 6px;}"
+                     ".meta{color:#667;font-size:13px;margin:0 0 14px;}"
+                     ".cards{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 4px;}"
+                     ".card{background:#f2f5f8;border-radius:10px;padding:10px 14px;min-width:120px;}"
+                     ".cl{font-size:12px;color:#667;}.cv{font-size:18px;font-weight:700;}"
+                     ".cv .p{font-size:13px;color:#2e7d32;font-weight:600;margin-left:4px;}"
+                     "table.s{border-collapse:collapse;width:100%;margin:2px 0 6px;}"
+                     "table.s th,table.s td{border:1px solid #dde3ea;padding:5px 10px;font-size:13px;text-align:right;}"
+                     "table.s th{background:#eef2f6;}table.s td.l,table.s th:first-child{text-align:left;}")
+        else:
+            style = ("body{background:#151b22;color:#e6edf3;font-family:'Segoe UI',sans-serif;"
+                     "margin:0;padding:18px;}h1{font-size:20px;margin:0 0 2px;}"
+                     ".meta{color:#9fb3c8;font-size:13px;margin:0 0 14px;}"
+                     "table{border-collapse:collapse;}")
+        return (
+            "<!doctype html><html lang='ja'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>{title}</title><style>{style}"
+            "#ctx{display:none;padding:48px 16px;text-align:center;font-size:18px;color:#b26a00;}"
+            "</style></head><body>"
+            f"<div id='ctb'><h1>{title}</h1><div class='meta'>{_ct_meta}"
+            f"　／　公開期限 {expire_ymd}</div>{body}</div>"
+            "<div id='ctx'>この資料は公開期限が切れています。</div>"
+            "<script>(function(){try{var exp=new Date('" + expire_ymd + "T23:59:59+09:00');"
+            "if(isNaN(exp.getTime())||new Date()>exp){throw 0;}}catch(e){"
+            "document.getElementById('ctb').style.display='none';"
+            "document.getElementById('ctx').style.display='block';}})();</script>"
+            "</body></html>"
+        )
+
+    # ── PDF生成(reportlab・日本語CIDフォント) ──
+    def _ct_pdf(full):
+        import io as _io
+        from reportlab.lib.pagesizes import A3, A4, landscape as _land
+        from reportlab.lib import colors as _rc
+        from reportlab.lib.units import mm as _mm
+        from reportlab.pdfbase import pdfmetrics as _pm
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont as _CID
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import ParagraphStyle
+        try:
+            _pm.registerFont(_CID('HeiseiKakuGo-W5'))
+        except Exception:
+            pass
+        FN = 'HeiseiKakuGo-W5'
+
+        def _tint(kind, pct):
+            a = 0.12 + 0.5 * min(pct, 100) / 100.0
+            base = (67, 160, 71) if kind == "g" else (229, 57, 53)
+            return _rc.Color(*[(255 * (1 - a) + c * a) / 255.0 for c in base])
+
+        _H = ParagraphStyle('H', fontName=FN, fontSize=15, leading=19)
+        _M = ParagraphStyle('M', fontName=FN, fontSize=9, leading=12, textColor=_rc.HexColor('#555555'))
+        _T = ParagraphStyle('T', fontName=FN, fontSize=11, leading=14, spaceBefore=10, spaceAfter=3)
+        buf = _io.BytesIO()
+        if full:
+            doc = SimpleDocTemplate(buf, pagesize=_land(A3), leftMargin=8 * _mm, rightMargin=8 * _mm,
+                                    topMargin=8 * _mm, bottomMargin=8 * _mm)
+        else:
+            doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=15 * _mm, rightMargin=15 * _mm,
+                                    topMargin=15 * _mm, bottomMargin=15 * _mm)
+
+        if full:
+            story = [Paragraph(_ct_doc_title, _H), Paragraph(_ct_meta, _M), Spacer(1, 6)]
+            _labw, _colw = 92, max(24, min(46, int((1120 - 92) / max(1, len(_dcol) + 1))))
+            for title, getter in _ct_entities:
+                rows = _ct_entity_rows(getter)
+                if not rows:
+                    continue
+                story.append(Paragraph(title, _T))
+                header = ["架電種別 / 結果", "合計"] + [_dlabel(d) for d in _dcol]
+                data = [header]
+                ops = [('FONTNAME', (0, 0), (-1, -1), FN), ('FONTSIZE', (0, 0), (-1, -1), 6),
+                       ('GRID', (0, 0), (-1, -1), 0.3, _rc.HexColor('#bbbbbb')),
+                       ('BACKGROUND', (0, 0), (-1, 0), _rc.HexColor('#263340')),
+                       ('TEXTCOLOR', (0, 0), (-1, 0), _rc.white),
+                       ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]
+                for ri, (label, indent, kind, ctype, cells) in enumerate(rows, start=1):
+                    lab = ("  " + label) if indent else label
+                    line = [lab]
+                    if ctype == "num":
+                        line += [f"{c:,}" for c in cells]
+                        ops.append(('BACKGROUND', (0, ri), (-1, ri), _rc.HexColor('#eef1f4')))
+                    else:
+                        for ci, (n, dn) in enumerate(cells, start=1):
+                            if dn > 0:
+                                pct = round(n / dn * 100)
+                                line.append(f"{n} ({pct}%)")
+                                if kind:
+                                    ops.append(('BACKGROUND', (ci, ri), (ci, ri), _tint(kind, pct)))
+                            else:
+                                line.append("0")
+                    data.append(line)
+                tbl = Table(data, repeatRows=1, colWidths=[_labw] + [_colw] * (len(_dcol) + 1))
+                tbl.setStyle(TableStyle(ops))
+                story.append(tbl)
+        else:
+            ov, pt, pp = _ct_summary_data()
+            story = [Paragraph(f"コール集計 {_ct_month_lbl}（{_ct_prod}）", _H),
+                     Paragraph("対象：CS促進メンバー全体", _M), Spacer(1, 8)]
+            o = [["コール総数", "完了", "留守", "再コール", "対応依頼"],
+                 [f'{ov["合計"]:,}件',
+                  f'{ov["完了"]:,} ({_pct(ov["完了"], ov["合計"])}%)',
+                  f'{ov["留守"]:,} ({_pct(ov["留守"], ov["合計"])}%)',
+                  f'{ov["再コール"]:,} ({_pct(ov["再コール"], ov["合計"])}%)',
+                  f'{ov["対応依頼"]:,} ({_pct(ov["対応依頼"], ov["合計"])}%)']]
+            t1 = Table(o, colWidths=[95, 95, 95, 95, 95])
+            t1.setStyle(TableStyle([('FONTNAME', (0, 0), (-1, -1), FN), ('FONTSIZE', (0, 0), (-1, -1), 9),
+                                    ('GRID', (0, 0), (-1, -1), 0.4, _rc.HexColor('#bbbbbb')),
+                                    ('BACKGROUND', (0, 0), (-1, 0), _rc.HexColor('#eef2f6')),
+                                    ('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+            story += [t1, Spacer(1, 12), Paragraph("架電の種類ごと", _T)]
+            d2 = [["種類", "コール数", "完了率", "留守率"]]
+            for t in _ctm.CALL_TYPE_ORDER:
+                if t in pt and pt[t]["合計"] > 0:
+                    v = pt[t]
+                    d2.append([t, f'{v["合計"]:,}', f'{_pct(v["完了"], v["合計"])}%', f'{_pct(v["留守"], v["合計"])}%'])
+            t2 = Table(d2, repeatRows=1, colWidths=[200, 90, 90, 90])
+            t2.setStyle(TableStyle([('FONTNAME', (0, 0), (-1, -1), FN), ('FONTSIZE', (0, 0), (-1, -1), 9),
+                                    ('GRID', (0, 0), (-1, -1), 0.4, _rc.HexColor('#bbbbbb')),
+                                    ('BACKGROUND', (0, 0), (-1, 0), _rc.HexColor('#eef2f6')),
+                                    ('ALIGN', (1, 0), (-1, -1), 'RIGHT')]))
+            story += [t2, Spacer(1, 12), Paragraph("担当者ごと", _T)]
+            d3 = [["担当者", "コール数", "完了率"]]
+            for nm, v in sorted(pp.items(), key=lambda x: -x[1]["合計"]):
+                d3.append([nm, f'{v["合計"]:,}', f'{_pct(v["完了"], v["合計"])}%'])
+            t3 = Table(d3, repeatRows=1, colWidths=[200, 120, 120])
+            t3.setStyle(TableStyle([('FONTNAME', (0, 0), (-1, -1), FN), ('FONTSIZE', (0, 0), (-1, -1), 9),
+                                    ('GRID', (0, 0), (-1, -1), 0.4, _rc.HexColor('#bbbbbb')),
+                                    ('BACKGROUND', (0, 0), (-1, 0), _rc.HexColor('#eef2f6')),
+                                    ('ALIGN', (1, 0), (-1, -1), 'RIGHT')]))
+            story.append(t3)
+        doc.build(story)
+        return buf.getvalue()
+
+    # ── GitHub公開(Contents API) ──
+    def _ct_gh_publish(files, expire_ymd):
+        import base64 as _b64, requests as _rq, os as _os
+        pat, repo = "", "yoshidass0538-cell/sf-dashboard"
+        try:
+            if "github" in st.secrets:
+                pat = st.secrets["github"].get("pat", "") or ""
+                repo = st.secrets["github"].get("repo", repo) or repo
+        except Exception:
+            pass
+        pat = pat or _os.environ.get("GH_PAT", "")
+        if not pat:
+            return None, "GH_PAT 未設定（Streamlit Secrets [github] pat）"
+        hd = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {pat}",
+              "X-GitHub-Api-Version": "2022-11-28"}
+        for path, content in files:
+            api = f"https://api.github.com/repos/{repo}/contents/{path}"
+            sha = None
+            try:
+                g = _rq.get(api, headers=hd, params={"ref": "main"}, timeout=15)
+                if g.status_code == 200:
+                    sha = g.json().get("sha")
+            except Exception:
+                pass
+            body = {"message": f"架電種別トータル資料 公開/更新({expire_ymd}失効)",
+                    "content": _b64.b64encode(content.encode("utf-8")).decode(), "branch": "main"}
+            if sha:
+                body["sha"] = sha
+            r = _rq.put(api, headers=hd, json=body, timeout=25)
+            if r.status_code not in (200, 201):
+                return None, f"GitHub API エラー HTTP {r.status_code}: {r.text[:150]}"
+        base = files[0][0]
+        return f"https://raw.githack.com/{repo}/main/{base}", None
+
+    def _ct_publish_html(summary):
+        _exp = (_ct_today + _ct_td(days=7))
+        _exp_ymd = _exp.strftime("%Y-%m-%d")
+        name = "call-type-total-teishutsu" if summary else "call-type-total"
+        title = (f"コール集計 {_ct_month_lbl}（{_ct_prod}）" if summary else _ct_doc_title)
+        body = _ct_summary_body_html() if summary else "".join(
+            _ct_table_html(_t, _g) for _t, _g in _ct_entities)
+        html = _ct_standalone_html(body, title, _exp_ymd, summary)
+        files = [(f"docs/files/{name}.html", html),
+                 (f"docs/files/{name}-expire.txt", _exp.strftime("%Y%m%d"))]
+        url, err = _ct_gh_publish(files, _exp.strftime("%Y%m%d"))
+        return url, err, _exp_ymd
+
     st.caption(f"表示担当者：{len(_people)}名／対象日：{len(_dcol)}日")
 
+    # PDFは状態が変わらなければ再生成しない（再描画のたびの負荷を回避）
+    _pdf_cache = st.session_state.setdefault("_ct_pdfcache", {})
+
+    def _ct_pdf_cached(full):
+        k = (_ct_key, tuple(_people), full)
+        if k not in _pdf_cache:
+            _pdf_cache.clear()
+            _pdf_cache[k] = _ct_pdf(full)
+        return _pdf_cache[k]
+
+    # ── 出力ボタン(4種)。ヘッダー直下 ──
+    st.markdown("##### 資料出力")
+    _cb = st.columns(4)
+    try:
+        _pdf_full = _ct_pdf_cached(True)
+        _pdf_sum = _ct_pdf_cached(False)
+        _pdf_err = None
+    except Exception as _pe:
+        _pdf_full = _pdf_sum = None
+        _pdf_err = str(_pe)
+    with _cb[0]:
+        if _pdf_full is not None:
+            st.download_button("PDF", _pdf_full, key="ct_pdf_full",
+                               file_name=f"架電種別トータル_{_ct_prod}_{_ct_start.isoformat()}.pdf",
+                               mime="application/pdf", use_container_width=True)
+        else:
+            st.button("PDF", key="ct_pdf_full", use_container_width=True, disabled=True)
+    with _cb[1]:
+        if _pdf_sum is not None:
+            st.download_button("提出用PDF", _pdf_sum, key="ct_pdf_sum",
+                               file_name=f"コール集計_提出用_{_sy}年{_sm}月_{_ct_prod}.pdf",
+                               mime="application/pdf", use_container_width=True)
+        else:
+            st.button("提出用PDF", key="ct_pdf_sum", use_container_width=True, disabled=True)
+    with _cb[2]:
+        if st.button("HTML（公開）", key="ct_html_full", use_container_width=True):
+            with st.spinner("公開中..."):
+                _u, _e, _ex = _ct_publish_html(False)
+            if _u:
+                st.session_state["_ct_pub_full"] = (_u, _ex)
+            else:
+                st.error(f"公開に失敗: {_e}")
+    with _cb[3]:
+        if st.button("提出用HTML（公開）", key="ct_html_sum", use_container_width=True):
+            with st.spinner("公開中..."):
+                _u, _e, _ex = _ct_publish_html(True)
+            if _u:
+                st.session_state["_ct_pub_sum"] = (_u, _ex)
+            else:
+                st.error(f"公開に失敗: {_e}")
+    if _pdf_err:
+        st.caption(f"PDF生成不可: {_pdf_err}（reportlab未導入の可能性）")
+    for _pk, _lab in (("_ct_pub_full", "HTML"), ("_ct_pub_sum", "提出用HTML")):
+        _pv = st.session_state.get(_pk)
+        if _pv:
+            st.success(f"{_lab} 公開URL（{_pv[1]} 失効・以降は自動削除）: {_pv[0]}")
+    st.caption("PDF/提出用PDFはダウンロード保存。HTML/提出用HTMLはGitHubへ公開し1週間で失効・自動削除。"
+               "反映に数十秒かかることがあります。")
+
     # 先頭に「合計（全担当者合算）」→ その下に各担当者
-    _ct_render("合計（全担当者）", lambda t, d: _agg_all.get((t, d)))
+    st.markdown(_ct_table_html("合計（全担当者）", lambda t, d: _agg_all.get((t, d))),
+                unsafe_allow_html=True)
     for _p in _people:
-        _ct_render(_p, (lambda pp: (lambda t, d: _idx.get((pp, t, d))))(_p))
+        st.markdown(_ct_table_html(_p, (lambda pp: (lambda t, d: _idx.get((pp, t, d))))(_p)),
+                    unsafe_allow_html=True)
 
     _ct_csv = _ct_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(

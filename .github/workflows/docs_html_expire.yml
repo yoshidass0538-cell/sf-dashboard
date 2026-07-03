@@ -1,0 +1,48 @@
+name: Docs HTML Expire (auto-delete)
+
+# docs/files 配下の公開HTMLを、失効日(<name>-expire.txt)以降に自動削除する汎用ジョブ。
+# 各 <name>-expire.txt(YYYYMMDD) に対し <name>.html が存在すれば対象。
+# KPI(kpi-expire.txt)は対応する kpi.html が無いため本ジョブでは触らない(専用の
+# kpi_html_expire.yml が担当)。削除で raw.githack 等の公開URLも参照不可になる。
+
+on:
+  schedule:
+    - cron: '20 15 * * *'   # 毎日 00:20 JST (15:20 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete expired docs/files HTML
+        run: |
+          set -e
+          TODAY=$(TZ=Asia/Tokyo date +%Y%m%d)
+          changed=0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          shopt -s nullglob
+          for expf in docs/files/*-expire.txt; do
+            base="${expf%-expire.txt}"
+            html="${base}.html"
+            [ -f "$html" ] || continue
+            exp=$(tr -dc '0-9' < "$expf")
+            [ -n "$exp" ] || continue
+            echo "check $html expire=$exp today=$TODAY"
+            if [ "$TODAY" -ge "$exp" ]; then
+              git rm -f "$html" "$expf" || true
+              echo "deleted $html (expired)"
+              changed=1
+            fi
+          done
+          if [ "$changed" = "1" ]; then
+            git commit -m "公開HTML: 失効分を自動削除($TODAY)"
+            git push
+          else
+            echo "nothing expired"
+          fi

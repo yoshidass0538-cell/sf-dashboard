@@ -4547,64 +4547,59 @@ if selected_key == "call_type_total":
 
     st.caption(f"表示担当者：{len(_people)}名／対象日：{len(_dcol)}日")
 
-    # PDFは状態が変わらなければ再生成しない（再描画のたびの負荷を回避）
-    _pdf_cache = st.session_state.setdefault("_ct_pdfcache", {})
+    # ── 出力ボタン(4種)。ヘッダー直下。押した時だけ生成（初期表示を軽く・安全に）──
+    def _ct_export_ui():
+        st.markdown("##### 資料出力")
+        _cb = st.columns(4)
+        with _cb[0]:
+            if st.button("PDF", key="ct_pdf_full", use_container_width=True):
+                st.session_state["_ct_gen"] = ("pdf", True)
+        with _cb[1]:
+            if st.button("提出用PDF", key="ct_pdf_sum", use_container_width=True):
+                st.session_state["_ct_gen"] = ("pdf", False)
+        with _cb[2]:
+            if st.button("HTML（公開）", key="ct_html_full", use_container_width=True):
+                with st.spinner("公開中..."):
+                    _u, _e, _ex = _ct_publish_html(False)
+                st.session_state["_ct_pub_full"] = (_u, _ex) if _u else None
+                if not _u:
+                    st.error(f"公開に失敗: {_e}")
+        with _cb[3]:
+            if st.button("提出用HTML（公開）", key="ct_html_sum", use_container_width=True):
+                with st.spinner("公開中..."):
+                    _u, _e, _ex = _ct_publish_html(True)
+                st.session_state["_ct_pub_sum"] = (_u, _ex) if _u else None
+                if not _u:
+                    st.error(f"公開に失敗: {_e}")
+        # PDFはボタン押下後に生成してダウンロードボタンを表示
+        _gen = st.session_state.get("_ct_gen")
+        if _gen and _gen[0] == "pdf":
+            _full = _gen[1]
+            try:
+                with st.spinner("PDF生成中..."):
+                    _bytes = _ct_pdf(_full)
+                if _full:
+                    st.download_button("PDFをダウンロード", _bytes, key="ct_pdf_dl_full",
+                                       file_name=f"架電種別トータル_{_ct_prod}_{_ct_start.isoformat()}.pdf",
+                                       mime="application/pdf")
+                else:
+                    st.download_button("提出用PDFをダウンロード", _bytes, key="ct_pdf_dl_sum",
+                                       file_name=f"コール集計_提出用_{_sy}年{_sm}月_{_ct_prod}.pdf",
+                                       mime="application/pdf")
+            except Exception as _pe:
+                st.error(f"PDF生成に失敗しました: {_pe}")
+        for _pk, _lab in (("_ct_pub_full", "HTML"), ("_ct_pub_sum", "提出用HTML")):
+            _pv = st.session_state.get(_pk)
+            if _pv:
+                st.success(f"{_lab} 公開URL（{_pv[1]} 失効・以降は自動削除）: {_pv[0]}")
+        st.caption("PDF/提出用PDFはダウンロード保存。HTML/提出用HTMLはGitHubへ公開し1週間で失効・自動削除。"
+                   "反映に数十秒かかることがあります。")
 
-    def _ct_pdf_cached(full):
-        k = (_ct_key, tuple(_people), full)
-        if k not in _pdf_cache:
-            _pdf_cache.clear()
-            _pdf_cache[k] = _ct_pdf(full)
-        return _pdf_cache[k]
-
-    # ── 出力ボタン(4種)。ヘッダー直下 ──
-    st.markdown("##### 資料出力")
-    _cb = st.columns(4)
     try:
-        _pdf_full = _ct_pdf_cached(True)
-        _pdf_sum = _ct_pdf_cached(False)
-        _pdf_err = None
-    except Exception as _pe:
-        _pdf_full = _pdf_sum = None
-        _pdf_err = str(_pe)
-    with _cb[0]:
-        if _pdf_full is not None:
-            st.download_button("PDF", _pdf_full, key="ct_pdf_full",
-                               file_name=f"架電種別トータル_{_ct_prod}_{_ct_start.isoformat()}.pdf",
-                               mime="application/pdf", use_container_width=True)
-        else:
-            st.button("PDF", key="ct_pdf_full", use_container_width=True, disabled=True)
-    with _cb[1]:
-        if _pdf_sum is not None:
-            st.download_button("提出用PDF", _pdf_sum, key="ct_pdf_sum",
-                               file_name=f"コール集計_提出用_{_sy}年{_sm}月_{_ct_prod}.pdf",
-                               mime="application/pdf", use_container_width=True)
-        else:
-            st.button("提出用PDF", key="ct_pdf_sum", use_container_width=True, disabled=True)
-    with _cb[2]:
-        if st.button("HTML（公開）", key="ct_html_full", use_container_width=True):
-            with st.spinner("公開中..."):
-                _u, _e, _ex = _ct_publish_html(False)
-            if _u:
-                st.session_state["_ct_pub_full"] = (_u, _ex)
-            else:
-                st.error(f"公開に失敗: {_e}")
-    with _cb[3]:
-        if st.button("提出用HTML（公開）", key="ct_html_sum", use_container_width=True):
-            with st.spinner("公開中..."):
-                _u, _e, _ex = _ct_publish_html(True)
-            if _u:
-                st.session_state["_ct_pub_sum"] = (_u, _ex)
-            else:
-                st.error(f"公開に失敗: {_e}")
-    if _pdf_err:
-        st.caption(f"PDF生成不可: {_pdf_err}（reportlab未導入の可能性）")
-    for _pk, _lab in (("_ct_pub_full", "HTML"), ("_ct_pub_sum", "提出用HTML")):
-        _pv = st.session_state.get(_pk)
-        if _pv:
-            st.success(f"{_lab} 公開URL（{_pv[1]} 失効・以降は自動削除）: {_pv[0]}")
-    st.caption("PDF/提出用PDFはダウンロード保存。HTML/提出用HTMLはGitHubへ公開し1週間で失効・自動削除。"
-               "反映に数十秒かかることがあります。")
+        _ct_export_ui()
+    except Exception as _ee:
+        st.warning("資料出力でエラーが発生しました（下の集計表は表示されます）。")
+        st.exception(_ee)
 
     # 先頭に「合計（全担当者合算）」→ その下に各担当者
     st.markdown(_ct_table_html("合計（全担当者）", lambda t, d: _agg_all.get((t, d))),

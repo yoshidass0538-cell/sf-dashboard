@@ -4528,7 +4528,12 @@ if selected_key == "call_type_total":
                 body["sha"] = sha
             r = _rq.put(api, headers=hd, json=body, timeout=25)
             if r.status_code not in (200, 201):
-                return None, f"GitHub API エラー HTTP {r.status_code}: {r.text[:150]}"
+                _hint = ""
+                if r.status_code in (403, 404):
+                    _hint = ("　→ PATにリポジトリの Contents（内容）書き込み権限が必要です。"
+                             "GitHubのFine-grained token設定で当該リポジトリの "
+                             "Repository permissions → Contents を「Read and write」にしてください。")
+                return None, f"GitHub API エラー HTTP {r.status_code}: {r.text[:150]}{_hint}"
         base = files[0][0]
         return f"https://raw.githack.com/{repo}/main/{base}", None
 

@@ -1,8 +1,13 @@
 """
 ITワード解説記事 日替わり配信スクリプト（GitHub Actions用）
 
-登録ワードから毎日3つ選び、各ワードの解説記事URL（使い方・解説中心に
-キュレーション済み）を1本ずつ、指定のChatworkルームへ送信する。
+配信ワードはGoogleスプレッドシート「使用URLまとめ」タブのA列から取得し、
+毎日3つ選んで指定のChatworkルームへ送信する。
+
+- シートのワードが下記WORDS（キュレーション済み記事URL辞書）にあれば、
+  ワード＋説明＋記事URL1本を配信（記事はワード一巡ごとに次のURLへ進む）
+- 辞書に無い新ワードは、ワード＋検索リンクを配信（URLは後から辞書に追加可能）
+- シートが読めない場合はWORDS全件を母集団にして配信を継続（配信を止めない）
 
 2段ローテーション:
 - どのワードか      = 通算日 ordinal×3+k（k=0..2）をワード数で割った余り
@@ -10,9 +15,12 @@ ITワード解説記事 日替わり配信スクリプト（GitHub Actions用）
 これにより毎日ワードが入れ替わり、かつ数週間かけて記事も入れ替わる。
 """
 
+import json
 import os
+import re
 import sys
 from datetime import datetime, timezone, timedelta
+from urllib.parse import quote
 
 import requests
 
@@ -22,6 +30,32 @@ JST = timezone(timedelta(hours=9))
 
 # 送信先ルームID
 ROOM_ID = os.environ.get("WORD_ARTICLE_ROOM_ID", "REPLACE_WITH_ROOM_ID")
+
+# ワード候補の取得元スプレッドシート（サービスアカウントに閲覧共有が必要）
+WORD_SHEET_ID = os.environ.get(
+    "WORD_SHEET_ID", "16AhaqFxneRacjAsOsRdrZXOdLTDlBwvc_ZbmHV0r03g"
+)
+WORD_SHEET_TAB = os.environ.get("WORD_SHEET_TAB", "使用URLまとめ")
+
+
+def _sheet_credentials():
+    """環境変数 GCP_SERVICE_ACCOUNT_JSON（Base64対応）またはローカル鍵ファイルから
+    読み取り専用の認証情報を作る（send_hourly_summary.py と同じ方式）。"""
+    import base64
+    from google.oauth2.service_account import Credentials
+
+    scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    sa_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON", "")
+    if sa_json:
+        try:
+            creds_dict = json.loads(base64.b64decode(sa_json))
+        except Exception:
+            creds_dict = json.loads(sa_json)
+        return Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    # ローカルフォールバック
+    return Credentials.from_service_account_file(
+        "yoshida0538-f46ce1eea153.json", scopes=scopes
+    )
 
 # --- ワード × 解説記事URL（使い方・解説中心にキュレーション） ---
 WORDS = [
@@ -251,27 +285,77 @@ WORDS = [
 WORDS_PER_DAY = 3
 
 
-def pick(now: datetime):
-    """通算日(ordinal)から当日分の (ワード, URL) を WORDS_PER_DAY 件決める。"""
+def fetch_sheet_words() -> list:
+    """スプレッドシートA列（A1は見出しのためA2以下）からワード候補を取得する。
+    失敗時は空リスト。"""
+    try:
+        from google.auth.transport.requests import AuthorizedSession
+
+        sess = AuthorizedSession(_sheet_credentials())
+        resp = sess.get(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{WORD_SHEET_ID}"
+            f"/values/{quote(WORD_SHEET_TAB)}!A2:A",
+            timeout=20,
+        )
+        resp.raise_for_status()
+        rows = resp.json().get("values", [])
+    except Exception as e:
+        print(f"WARN: sheet fetch failed: {e}")
+        return []
+    words = []
+    for row in rows:
+        w = (row[0] if row else "").strip()
+        if w and w not in words:
+            words.append(w)
+    return words
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[\s　]", "", s or "").casefold()
+
+
+def _build_lookup() -> dict:
+    """WORDS辞書を「正規化ワード→エントリ」で引けるようにする。
+    「Claude（クロード）」は「claude（クロード）」と「claude」の両方で引ける。"""
+    lookup = {}
+    for entry in WORDS:
+        full = _norm(entry["word"])
+        base = _norm(re.sub(r"[（(].*?[）)]", "", entry["word"]))
+        for key in (full, base):
+            if key:
+                lookup.setdefault(key, entry)
+    return lookup
+
+
+def pick(now: datetime, words: list):
+    """通算日(ordinal)から当日分の (表示ワード, 説明, URL) を WORDS_PER_DAY 件決める。"""
+    lookup = _build_lookup()
     ordinal = now.date().toordinal()
     picks = []
     for k in range(WORDS_PER_DAY):
         idx = ordinal * WORDS_PER_DAY + k
-        entry = WORDS[idx % len(WORDS)]
-        cycle = idx // len(WORDS)
-        url = entry["urls"][cycle % len(entry["urls"])]
-        picks.append((entry, url))
+        word = words[idx % len(words)]
+        cycle = idx // len(words)
+        entry = lookup.get(_norm(word))
+        if entry:
+            url = entry["urls"][cycle % len(entry["urls"])]
+            picks.append((entry["word"], entry["desc"], url))
+        else:
+            # 辞書未登録の新ワード: 検索リンクで代替（URLは後からWORDSに追加できる）
+            url = "https://www.google.com/search?q=" + quote(f"{word} とは わかりやすく")
+            picks.append((word, "", url))
     return picks
 
 
 def build_body(picks: list) -> str:
     blocks = []
-    for i, (entry, url) in enumerate(picks, 1):
+    for i, (word, desc, url) in enumerate(picks, 1):
+        if desc:
+            body = f"{desc}\n\n▼解説記事はこちら\n{url}"
+        else:
+            body = f"▼解説記事を探して読んでみよう\n{url}"
         blocks.append(
-            f"[info][title]今日のITワード解説 その{i}　{entry['word']}[/title]"
-            f"{entry['desc']}\n\n"
-            f"▼解説記事はこちら\n"
-            f"{url}[/info]"
+            f"[info][title]今日のITワード解説 その{i}　{word}[/title]{body}[/info]"
         )
     return "\n".join(blocks)
 
@@ -299,11 +383,19 @@ def main():
         print("ERROR: WORD_ARTICLE_ROOM_ID not set")
         sys.exit(1)
 
+    sheet_words = fetch_sheet_words()
+    if sheet_words:
+        print(f"sheet words: {len(sheet_words)}件")
+    else:
+        # シートが読めなくても配信は止めない（従来の内蔵リストで継続）
+        print("WARN: falling back to built-in WORDS list")
+        sheet_words = [entry["word"] for entry in WORDS]
+
     now = datetime.now(JST)
-    picks = pick(now)
+    picks = pick(now, sheet_words)
     body = build_body(picks)
 
-    words = " / ".join(entry["word"] for entry, _ in picks)
+    words = " / ".join(word for word, _, _ in picks)
     print(f"--- {now.strftime('%Y/%m/%d')} {words} ---")
     print(body)
     print("--- Sending ---")

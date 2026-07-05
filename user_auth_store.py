@@ -11,7 +11,7 @@
   "users": [
     {
       "id": "s-yoshida",
-      "password": "0538",
+      "password": "<パスワード>",
       "display_name": "吉田 颯",
       "active": true,
       "last_login": "",
@@ -48,21 +48,41 @@ def _now_jst() -> str:
     return datetime.now(_JST).strftime("%Y-%m-%d %H:%M")
 
 
-# 初期登録ユーザー（初回デプロイ時のシード）
+def _seed_password(user_id: str) -> str:
+    """シード用パスワードを st.secrets から取得（コードに平文を置かない）。
+
+    secrets.toml 例:
+      [seed_passwords]
+      s-yoshida = "xxxx"
+    未設定ユーザーは空文字となり、verify_credentials でログイン不可として扱う。
+    """
+    try:
+        return str(st.secrets["seed_passwords"][user_id])
+    except Exception:
+        return ""
+
+
+# 初期登録ユーザー（初回デプロイ時のシード）。パスワードは st.secrets 管理。
+_SEED_MEMBERS = [
+    ("s-yoshida",   "吉田 颯"),
+    ("k-muro",      "室谷 慧"),
+    ("r-harada",    "原田 綾子"),
+    ("s-zawa",      "金澤 駿平"),
+    ("s-yoshimoto", "吉本 将吾"),
+    ("k-horita",    "堀田 輝斗"),
+    ("k-kakuta",    "角田 心華"),
+    ("a-sasaki",    "佐々木 彩乃"),
+    ("t-kasai",     "葛西 翼"),
+    ("k-amagai",    "雨貝 一生"),
+    ("r-kikuti",    "菊地 隆真"),
+    ("y-kuri",      "栗田 優衣"),
+    ("s-kan",       "勘七 瞬"),
+]
+
 _DEFAULT_USERS = [
-    {"id": "s-yoshida",  "password": "0538",      "display_name": "吉田 颯",   "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "k-muro",     "password": "nitihamu",  "display_name": "室谷 慧",   "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "r-harada",   "password": "nyantama",  "display_name": "原田 綾子", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "s-zawa",     "password": "gittya",    "display_name": "金澤 駿平", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "s-yoshimoto","password": "bitamin",   "display_name": "吉本 将吾", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "k-horita",   "password": "kirato",    "display_name": "堀田 輝斗", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "k-kakuta",   "password": "simaenaga", "display_name": "角田 心華", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "a-sasaki",   "password": "ti-kawa",   "display_name": "佐々木 彩乃", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "t-kasai",    "password": "pearl",     "display_name": "葛西 翼",   "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "k-amagai",   "password": "kinniku",   "display_name": "雨貝 一生", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "r-kikuti",   "password": "mei",       "display_name": "菊地 隆真", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "y-kuri",     "password": "kurisu",    "display_name": "栗田 優衣", "active": True, "last_login": "", "created_at": "2026-05-20"},
-    {"id": "s-kan",      "password": "kantya",    "display_name": "勘七 瞬",   "active": True, "last_login": "", "created_at": "2026-05-20"},
+    {"id": uid, "password": _seed_password(uid), "display_name": name,
+     "active": True, "last_login": "", "created_at": "2026-05-20"}
+    for uid, name in _SEED_MEMBERS
 ]
 
 
@@ -165,7 +185,9 @@ def verify_credentials(user_id: str, password: str) -> tuple[bool, str, dict | N
     user = next((u for u in users if u.get("id") == user_id), None)
     if user is None:
         return False, "IDまたはパスワードが違います", None
-    if user.get("password") != password:
+    stored = user.get("password") or ""
+    # パスワード未設定ユーザー（シード未投入等）は空文字一致でのログインを許さない
+    if not stored or stored != password:
         return False, "IDまたはパスワードが違います", None
     if not user.get("active", True):
         return False, "このアカウントは無効化されています。管理者に連絡してください。", None

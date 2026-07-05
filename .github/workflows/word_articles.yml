@@ -18,10 +18,13 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests google-auth
 
       - name: Send daily word article
         env:
           CHATWORK_API_TOKEN: ${{ secrets.CHATWORK_API_TOKEN }}
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
           WORD_ARTICLE_ROOM_ID: '372837276'
+          WORD_SHEET_ID: '16AhaqFxneRacjAsOsRdrZXOdLTDlBwvc_ZbmHV0r03g'
+          WORD_SHEET_TAB: '使用URLまとめ'
         run: python send_word_articles.py

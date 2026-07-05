@@ -52,9 +52,9 @@ def _sheet_credentials():
         except Exception:
             creds_dict = json.loads(sa_json)
         return Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    # ローカルフォールバック
+    # ローカルフォールバック（キーファイル名は GCP_KEY_FILE 環境変数に統一）
     return Credentials.from_service_account_file(
-        "yoshida0538-f46ce1eea153.json", scopes=scopes
+        os.environ.get("GCP_KEY_FILE", ""), scopes=scopes
     )
 
 # --- ワード × 解説記事URL（使い方・解説中心にキュレーション） ---
